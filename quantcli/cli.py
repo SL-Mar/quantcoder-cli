@@ -20,42 +20,11 @@ logger = logging.getLogger(__name__)
 
 @click.group()
 @click.option('--verbose', is_flag=True, help='Enables verbose mode.')
-@click.option('--version', is_flag=True, help='Show version information.')
 @click.pass_context
-def cli(ctx, verbose, version):
+def cli(ctx, verbose):
     """
-    QuantCoder CLI - Generate QuantConnect Trading Algorithms from Research Articles
-    
-    QuantCoder uses NLP and LLMs to transform academic research articles into 
-    executable trading algorithms for the QuantConnect platform.
-    
-    WORKFLOW:
-    
-        1. Search for articles:     quantcli search "momentum trading"
-        2. List found articles:     quantcli list
-        3. Download article PDF:    quantcli download 1
-        4. Summarize article:       quantcli summarize 1
-        5. Generate trading code:   quantcli generate-code 1
-    
-    INTERACTIVE MODE:
-    
-        quantcli interactive        Launch GUI for guided workflow
-    
-    For help on a specific command:
-    
-        quantcli <command> --help
-    
-    Examples:
-    
-        quantcli search "algorithmic trading" --num 5
-        quantcli download 1
-        quantcli generate-code 1
+    QuantCoder CLI Tool
     """
-    if version:
-        click.echo("QuantCoder CLI v0.3 (Legacy)")
-        click.echo("Using OpenAI SDK v0.28")
-        ctx.exit()
-        
     setup_logging(verbose)
     load_api_key()
     ctx.ensure_object(dict)
@@ -63,7 +32,7 @@ def cli(ctx, verbose, version):
 
 @cli.command()
 def hello():
-    """Test command to verify CLI installation."""
+    """A simple command to test the CLI."""
     logger.info("Executing hello command")
     click.echo("Hello from QuantCLI!")
 
@@ -72,14 +41,10 @@ def hello():
 @click.option('--num', default=5, help='Number of results to return')
 def search(query, num):
     """
-    Search for academic articles using CrossRef API.
+    Search for articles based on QUERY.
     
-    QUERY: Search keywords (e.g., "momentum trading", "mean reversion")
-    
-    Examples:
-    
+    Example:
         quantcli search "algorithmic trading" --num 3
-        quantcli search "pairs trading strategies" --num 10
     """
     logger.info(f"Searching for articles with query: {query}, number of results: {num}")
     articles = search_crossref(query, rows=num)
@@ -102,10 +67,7 @@ def search(query, num):
 @cli.command()
 def list():
     """
-    List previously searched articles from the current session.
-    
-    Displays all articles from the most recent search operation.
-    Articles are saved in articles.json.
+    List previously searched articles.
     """
     if not os.path.exists(ARTICLES_FILE):
         click.echo("No articles found. Please perform a search first.")
@@ -124,13 +86,10 @@ def list():
 @click.argument('article_id', type=int)
 def download(article_id):
     """
-    Download an article's PDF by its list position.
-
-    ARTICLE_ID: The number shown in the 'list' command (1, 2, 3, etc.)
+    Download an article's PDF by ARTICLE_ID.
 
     Example:
-    
-        quantcli download 1    # Downloads the first article from your search
+        quantcli download 1
     """
     if not os.path.exists(ARTICLES_FILE):
         click.echo("No articles found. Please perform a search first.")
@@ -163,15 +122,9 @@ def download(article_id):
 @click.argument('article_id', type=int)
 def summarize(article_id):
     """
-    Generate an AI summary of a downloaded article.
-
-    ARTICLE_ID: The number of the article to summarize
-    
-    The article must be downloaded first using the 'download' command.
-    Summary is saved to downloads/article_<ID>_summary.txt
+    Summarize a downloaded article by ARTICLE_ID.
 
     Example:
-    
         quantcli summarize 1
     """
     filepath = os.path.join(DOWNLOADS_DIR, f"article_{article_id}.pdf")
@@ -201,17 +154,9 @@ def summarize(article_id):
 @click.argument('article_id', type=int)
 def generate_code_cmd(article_id):
     """
-    Generate a QuantConnect trading algorithm from an article.
-
-    ARTICLE_ID: The number of the article to process
-    
-    Extracts trading strategy logic from the article and generates
-    executable Python code for the QuantConnect platform.
-    
-    Output is saved to generated_code/algorithm_<ID>.py
+    Generate QuantConnect code from a summarized article.
 
     Example:
-    
         quantcli generate-code 1
     """
     filepath = os.path.join(DOWNLOADS_DIR, f"article_{article_id}.pdf")
@@ -242,12 +187,9 @@ def generate_code_cmd(article_id):
 @click.argument('article_id', type=int)
 def open_article(article_id):
     """
-    Open the article's webpage in your default browser.
-
-    ARTICLE_ID: The number of the article to open
+    Open the article's URL in the default web browser.
 
     Example:
-    
         quantcli open-article 1
     """
     if not os.path.exists(ARTICLES_FILE):
@@ -266,15 +208,7 @@ def open_article(article_id):
 @cli.command()
 def interactive():
     """
-    Launch the interactive GUI for a guided workflow.
-    
-    The GUI provides a visual interface for:
-    - Searching articles
-    - Viewing search results
-    - Downloading PDFs
-    - Generating summaries and code
-    
-    Recommended for first-time users.
+    Perform an interactive search and process with a GUI.
     """
     click.echo("Starting interactive mode...")
     launch_gui()  # Call the launch_gui function to run the GUI
