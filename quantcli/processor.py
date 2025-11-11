@@ -27,8 +27,7 @@ import os
 import logging
 from dotenv import load_dotenv, find_dotenv
 import ast
-import tkinter as tk
-from tkinter import scrolledtext, messagebox, filedialog
+# tkinter imports moved to GUI class methods (lazy loading)
 from pygments import lex
 from pygments.lexers import PythonLexer
 from pygments.styles import get_style_by_name
@@ -388,6 +387,10 @@ class GUI:
         """
         self.logger.info("Displaying summary and code in GUI.")
         try:
+            # Lazy import tkinter (only when GUI is actually used)
+            import tkinter as tk
+            from tkinter import scrolledtext, messagebox, filedialog
+
             # Create the main Tkinter root
             root = tk.Tk()
             root.title("Article Processor")
@@ -464,14 +467,21 @@ class GUI:
             root.mainloop()
         except Exception as e:
             self.logger.error(f"Failed to display GUI: {e}")
-            messagebox.showerror("GUI Error", f"An error occurred while displaying the GUI: {e}")
+            try:
+                from tkinter import messagebox
+                messagebox.showerror("GUI Error", f"An error occurred while displaying the GUI: {e}")
+            except ImportError:
+                pass  # Silently fail if tkinter not available
 
-    def apply_syntax_highlighting(self, code: str, text_widget: scrolledtext.ScrolledText):
+    def apply_syntax_highlighting(self, code: str, text_widget):
         """
         Apply syntax highlighting to the code using Pygments and insert it into the Text widget.
         """
         self.logger.info("Applying syntax highlighting to code.")
         try:
+            # Lazy import tkinter
+            import tkinter as tk
+
             lexer = PythonLexer()
             style = get_style_by_name('monokai')  # Choose a Pygments style
             token_colors = {
@@ -516,6 +526,10 @@ class GUI:
         """
         self.logger.info("Copying text to clipboard.")
         try:
+            # Lazy import tkinter
+            import tkinter as tk
+            from tkinter import messagebox
+
             root = tk.Tk()
             root.withdraw()
             root.clipboard_clear()
@@ -525,7 +539,11 @@ class GUI:
             messagebox.showinfo("Copied", "Text copied to clipboard.")
         except Exception as e:
             self.logger.error(f"Failed to copy to clipboard: {e}")
-            messagebox.showerror("Copy Error", f"Failed to copy text to clipboard: {e}")
+            try:
+                from tkinter import messagebox
+                messagebox.showerror("Copy Error", f"Failed to copy text to clipboard: {e}")
+            except ImportError:
+                pass  # Silently fail if tkinter not available
 
     def save_code(self, code: str):
         """
@@ -533,6 +551,9 @@ class GUI:
         """
         self.logger.info("Saving code to file.")
         try:
+            # Lazy import tkinter
+            from tkinter import filedialog, messagebox
+
             filetypes = [('Python Files', '*.py'), ('All Files', '*.*')]
             filename = filedialog.asksaveasfilename(
                 title="Save Code", defaultextension=".py", filetypes=filetypes
@@ -543,7 +564,11 @@ class GUI:
                 messagebox.showinfo("Saved", f"Code saved to {filename}.")
         except Exception as e:
             self.logger.error(f"Failed to save code: {e}")
-            messagebox.showerror("Save Error", f"Failed to save code: {e}")
+            try:
+                from tkinter import messagebox
+                messagebox.showerror("Save Error", f"Failed to save code: {e}")
+            except ImportError:
+                pass  # Silently fail if tkinter not available
 
 class ArticleProcessor:
     """Main processor that orchestrates the PDF processing, analysis, and code generation."""

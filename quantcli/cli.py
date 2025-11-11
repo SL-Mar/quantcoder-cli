@@ -3,7 +3,7 @@
 import click
 import os
 import json
-from .gui import launch_gui  
+# Lazy import for GUI to avoid tkinter dependency
 from .processor import ArticleProcessor
 from .utils import setup_logging, load_api_key, download_pdf
 from .search import search_crossref, save_to_html
@@ -211,7 +211,13 @@ def interactive():
     Perform an interactive search and process with a GUI.
     """
     click.echo("Starting interactive mode...")
-    launch_gui()  # Call the launch_gui function to run the GUI
+    try:
+        from .gui import launch_gui
+        launch_gui()
+    except ImportError as e:
+        click.echo("⚠️  Interactive mode requires tkinter (GUI library)")
+        click.echo("Install with: sudo apt-get install python3-tk")
+        click.echo("Or use CLI commands: search, list, download, summarize, generate-code")
 
 if __name__ == '__main__':
     cli()
