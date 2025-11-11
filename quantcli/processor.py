@@ -267,7 +267,7 @@ class OpenAIHandler:
         #risk_management = '\n'.join(extracted_data.get('risk_management', []))
 
         prompt = f"""
-        You are a QuantConnect algorithm developer. Convert the following trading strategy descriptions into a complete, error-free QuantConnect Python algorithm.
+        You are a QuantConnect algorithm developer. Convert the following trading strategy descriptions into a complete, PRODUCTION-READY QuantConnect Python algorithm.
 
         ### Trading Strategy Summary:
         {summary}
@@ -276,17 +276,49 @@ class OpenAIHandler:
         1. **Initialize Method**:
             - Set the start and end dates.
             - Set the initial cash.
-            - Define the universe selection logic as described in trading strategy summary. 
+            - Define the universe selection logic as described in trading strategy summary.
             - Initialize required indicators as described in summary.
         2. **OnData Method**:
-            - Implement buy/sell logic as described in summary. 
+            - Implement buy/sell logic as described in summary.
             - Ensure indicators are updated correctly.
         3. **Risk Management**:
-            - Apply position sizing or stop-loss mechanisms as described in summary. 
-        4. **Ensure Compliance**:
+            - Apply position sizing or stop-loss mechanisms as described in summary.
+
+        ### CRITICAL: Defensive Programming (REQUIRED)
+        4. **Runtime Safety Checks** (MANDATORY - code will fail without these):
+            - ALWAYS check indicator.IsReady before using indicator.Current.Value
+            - ALWAYS initialize variables before using max() or min() operations
+            - ALWAYS add None checks before comparisons with dictionary values
+            - ALWAYS add zero-division checks before division operations
+            - Use max(calculated_value, minimum_threshold) for risk parameters to avoid zero
+
+        5. **Required Safety Patterns**:
+            ```python
+            # Example: Indicator check
+            if not atr.IsReady:
+                continue
+
+            # Example: None check before max/min
+            if indicators["high"] is None:
+                indicators["high"] = bar.High
+            else:
+                indicators["high"] = max(indicators["high"], bar.High)
+
+            # Example: Division safety
+            stopLoss = max(0.1 * atr.Current.Value, 0.01 * price)  # minimum threshold
+            if stopLoss <= 0:
+                continue
+            positionSize = riskAmount / stopLoss
+
+            # Example: None guard before trading
+            if indicators["high"] is None or indicators["low"] is None:
+                continue
+            ```
+
+        6. **Ensure Compliance**:
             - Use only QuantConnect's supported indicators and methods.
-            - The code must be syntactically correct and free of errors.
-        ```
+            - The code must be syntactically correct and free of runtime errors.
+            - Include defensive checks for all edge cases.
 
         ### Generated Code:
         ```
@@ -310,15 +342,24 @@ class OpenAIHandler:
         
     def refine_code(self, code: str) -> Optional[str]:
         """
-        Ask the LLM to fix syntax errors in the generated code.
+        Ask the LLM to fix syntax errors and add runtime safety checks in the generated code.
         """
         self.logger.info("Refining generated code using OpenAI.")
         prompt = f"""
-        The following QuantConnect Python code may have syntax or logical errors. Please fix them as required and provide the corrected code.
+        The following QuantConnect Python code has syntax or runtime errors. Fix all issues and add defensive programming patterns.
+
+        ### CRITICAL: Add these safety checks if missing:
+        1. Check indicator.IsReady before using indicator.Current.Value
+        2. Initialize variables before max()/min() operations
+        3. Add None checks before comparisons
+        4. Add zero-division guards
+        5. Use max(value, minimum_threshold) for risk parameters
 
         ```python
         {code}
         ```
+
+        Return ONLY the corrected Python code in a code block, with all safety checks added.
         """
 
         corrected_code = self.llm_client.simple_prompt(
@@ -640,12 +681,11 @@ class ArticleProcessor:
 
         if not qc_code or not self.code_validator.validate_code(qc_code):
             self.logger.error("Failed to generate valid QuantConnect code after multiple attempts.")
-            qc_code = "QuantConnect code could not be generated successfully."
+            qc_code = None
 
-        # Display summary and code in the GUI
-        self.gui.display_summary_and_code(summary, qc_code)
-
-        if qc_code != "QuantConnect code could not be generated successfully.":
-            self.logger.info("QuantConnect code generation and display completed successfully.")
-        else:
-            self.logger.error("Failed to generate and display QuantConnect code.")
+        # Return results instead of displaying GUI
+        self.logger.info("QuantConnect code generation completed successfully.")
+        return {
+            "summary": summary,
+            "code": qc_code
+        }

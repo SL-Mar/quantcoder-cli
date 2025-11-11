@@ -167,6 +167,10 @@ def generate_code_cmd(article_id):
     processor = ArticleProcessor()
     results = processor.extract_structure_and_generate_code(filepath)
 
+    if not results:
+        click.echo("Failed to extract structure and generate code.")
+        return
+
     summary = results.get("summary")
     code = results.get("code")
 
