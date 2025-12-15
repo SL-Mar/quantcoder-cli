@@ -37,11 +37,13 @@ dependencies = [
     "prompt-toolkit>=3.0.43",
     "toml>=0.10.2",
     "InquirerPy>=0.3.4",
+    "aiohttp>=3.9.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
     "black>=23.0.0",
     "ruff>=0.1.0",
     "mypy>=1.7.0",
@@ -50,6 +52,7 @@ dev = [
 [project.scripts]
 quantcoder = "quantcoder.cli:main"
 qc = "quantcoder.cli:main"
+quantconnect-mcp = "quantcoder.mcp.quantconnect_mcp:main"
 
 [project.urls]
 Homepage = "https://github.com/SL-Mar/quantcoder-cli"
