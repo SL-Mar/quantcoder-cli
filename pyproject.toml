@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quantcoder-cli"
+version = "2.0.0"
+description = "A modern CLI coding assistant for generating QuantConnect trading algorithms from research articles"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "SL-MAR", email = "smr.laignel@gmail.com"}
+]
+keywords = ["quantconnect", "trading", "algorithmic-trading", "cli", "ai", "llm"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
+
+dependencies = [
+    "click>=8.1.0",
+    "requests>=2.31.0",
+    "pdfplumber>=0.10.0",
+    "spacy>=3.7.0",
+    "openai>=1.0.0",
+    "python-dotenv>=1.0.0",
+    "pygments>=2.17.0",
+    "rich>=13.7.0",
+    "prompt-toolkit>=3.0.43",
+    "toml>=0.10.2",
+    "InquirerPy>=0.3.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.7.0",
+]
+
+[project.scripts]
+quantcoder = "quantcoder.cli:main"
+qc = "quantcoder.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/SL-Mar/quantcoder-cli"
+Repository = "https://github.com/SL-Mar/quantcoder-cli"
+Issues = "https://github.com/SL-Mar/quantcoder-cli/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["quantcoder*"]
+exclude = ["tests*", "quantcli*"]
+
+[tool.black]
+line-length = 100
+target-version = ['py310']
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true

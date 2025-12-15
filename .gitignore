@@ -1,17 +1,66 @@
-# Python virtual environments
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+.venv/
 .venv-legacy/
 venv/
+ENV/
+env/
 
-# Bytecode files
-__pycache__/
-*.pyc
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 
-# Environment variables
-.env
-
-# Logs and output
+# Logs
 *.log
-output.*
+quantcli.log
+article_processor.log
 
-# Packaging metadata
-*.egg-info/
+# QuantCoder specific
+downloads/
+generated_code/
+articles.json
+output.html
+
+# Configuration (contains API keys)
+.env
+.quantcoder/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# SpaCy models
+*.bin
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Distribution
+*.whl
