@@ -1,4 +1,18 @@
-"""Agent system for QuantCoder - future extensibility."""
+"""Specialized agents for QuantConnect algorithm generation."""
 
-# Placeholder for future agent implementations
-# inspired by Vibe CLI's agent architecture
+from .base import BaseAgent, AgentResult
+from .universe_agent import UniverseAgent
+from .alpha_agent import AlphaAgent
+from .risk_agent import RiskAgent
+from .strategy_agent import StrategyAgent
+from .coordinator_agent import CoordinatorAgent
+
+__all__ = [
+    "BaseAgent",
+    "AgentResult",
+    "UniverseAgent",
+    "AlphaAgent",
+    "RiskAgent",
+    "StrategyAgent",
+    "CoordinatorAgent",
+]

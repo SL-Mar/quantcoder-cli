@@ -1,14 +1,26 @@
-# QuantCoder CLI Requirements
-# Generated from pyproject.toml for easier installation
+# QuantCoder CLI v3.0 Requirements
+# Multi-Agent System with MCP Support
 
+# Core Dependencies
 click>=8.1.0
 requests>=2.31.0
 pdfplumber>=0.10.0
 spacy>=3.7.0
-openai>=1.0.0
 python-dotenv>=1.0.0
 pygments>=2.17.0
 rich>=13.7.0
 prompt-toolkit>=3.0.43
 toml>=0.10.2
 InquirerPy>=0.3.4
+
+# Multi-LLM Support
+anthropic>=0.18.0  # Sonnet 4.5
+mistralai>=0.1.0   # Devstral 2
+openai>=1.0.0      # GPT-4o / DeepSeek
+
+# Async & Parallel Execution
+aiohttp>=3.9.0
+asyncio>=3.4.3
+
+# Optional: MCP SDK (when available)
+# mcp>=0.1.0

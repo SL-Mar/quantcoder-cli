@@ -13,10 +13,15 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ModelConfig:
     """Configuration for the AI model."""
-    provider: str = "openai"
-    model: str = "gpt-4o-2024-11-20"
+    provider: str = "anthropic"  # anthropic, mistral, deepseek, openai
+    model: str = "claude-sonnet-4-5-20250929"
     temperature: float = 0.5
-    max_tokens: int = 2000
+    max_tokens: int = 3000
+
+    # Multi-agent specific
+    coordinator_provider: str = "anthropic"  # Best for orchestration
+    code_provider: str = "mistral"  # Devstral for code generation
+    risk_provider: str = "anthropic"  # Sonnet for nuanced risk decisions
 
 
 @dataclass
@@ -37,13 +42,27 @@ class ToolsConfig:
 
 
 @dataclass
+class MultiAgentConfig:
+    """Configuration for multi-agent system."""
+    enabled: bool = True
+    parallel_execution: bool = True
+    max_parallel_agents: int = 5
+    validation_enabled: bool = True
+    auto_backtest: bool = False
+    max_refinement_attempts: int = 3
+
+
+@dataclass
 class Config:
     """Main configuration class for QuantCoder."""
 
     model: ModelConfig = field(default_factory=ModelConfig)
     ui: UIConfig = field(default_factory=UIConfig)
     tools: ToolsConfig = field(default_factory=ToolsConfig)
+    multi_agent: MultiAgentConfig = field(default_factory=MultiAgentConfig)
     api_key: Optional[str] = None
+    quantconnect_api_key: Optional[str] = None
+    quantconnect_user_id: Optional[str] = None
     home_dir: Path = field(default_factory=lambda: Path.home() / ".quantcoder")
 
     @classmethod
