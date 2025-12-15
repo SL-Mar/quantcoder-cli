@@ -269,5 +269,242 @@ def version():
     console.print(f"QuantCoder v{__version__}")
 
 
+# ============================================================================
+# AUTONOMOUS MODE COMMANDS
+# ============================================================================
+
+@main.group()
+def auto():
+    """
+    Autonomous self-improving mode for strategy generation.
+
+    This mode runs continuously, learning from errors and improving over time.
+    """
+    pass
+
+
+@auto.command(name='start')
+@click.option('--query', required=True, help='Strategy query (e.g., "momentum trading")')
+@click.option('--max-iterations', default=50, help='Maximum iterations to run')
+@click.option('--min-sharpe', default=0.5, type=float, help='Minimum Sharpe ratio threshold')
+@click.option('--output', type=click.Path(), help='Output directory for strategies')
+@click.option('--demo', is_flag=True, help='Run in demo mode (no real API calls)')
+@click.pass_context
+def auto_start(ctx, query, max_iterations, min_sharpe, output, demo):
+    """
+    Start autonomous strategy generation.
+
+    Example:
+        quantcoder auto start --query "momentum trading" --max-iterations 50
+    """
+    import asyncio
+    from pathlib import Path
+    from quantcoder.autonomous import AutonomousPipeline
+
+    config = ctx.obj['config']
+
+    if demo:
+        console.print("[yellow]Running in DEMO mode (no real API calls)[/yellow]\n")
+
+    output_dir = Path(output) if output else None
+
+    pipeline = AutonomousPipeline(
+        config=config,
+        demo_mode=demo
+    )
+
+    try:
+        asyncio.run(pipeline.run(
+            query=query,
+            max_iterations=max_iterations,
+            min_sharpe=min_sharpe,
+            output_dir=output_dir
+        ))
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Autonomous mode stopped by user[/yellow]")
+
+
+@auto.command(name='status')
+def auto_status():
+    """
+    Show autonomous mode status and learning statistics.
+    """
+    from quantcoder.autonomous.database import LearningDatabase
+
+    db = LearningDatabase()
+
+    # Show library stats
+    stats = db.get_library_stats()
+
+    console.print("\n[bold cyan]Autonomous Mode Statistics[/bold cyan]\n")
+    console.print(f"Total strategies generated: {stats.get('total_strategies', 0)}")
+    console.print(f"Successful: {stats.get('successful', 0)}")
+    console.print(f"Average Sharpe: {stats.get('avg_sharpe', 0):.2f}\n")
+
+    # Show common errors
+    console.print("[bold cyan]Common Errors:[/bold cyan]")
+    from quantcoder.autonomous.learner import ErrorLearner
+    learner = ErrorLearner(db)
+    errors = learner.get_common_errors(limit=5)
+
+    for i, error in enumerate(errors, 1):
+        fix_rate = (error['fixed_count'] / error['count'] * 100) if error['count'] > 0 else 0
+        console.print(f"  {i}. {error['error_type']}: {error['count']} ({fix_rate:.0f}% fixed)")
+
+    db.close()
+
+
+@auto.command(name='report')
+@click.option('--format', type=click.Choice(['text', 'json']), default='text')
+def auto_report(format):
+    """
+    Generate learning report from autonomous mode.
+    """
+    from quantcoder.autonomous.database import LearningDatabase
+
+    db = LearningDatabase()
+    stats = db.get_library_stats()
+
+    if format == 'json':
+        import json
+        console.print(json.dumps(stats, indent=2))
+    else:
+        # Text format
+        console.print("\n[bold cyan]Autonomous Mode Learning Report[/bold cyan]\n")
+        console.print("=" * 60)
+
+        # Overall stats
+        console.print(f"\nTotal Strategies: {stats.get('total_strategies', 0)}")
+        console.print(f"Successful: {stats.get('successful', 0)}")
+        console.print(f"Average Sharpe: {stats.get('avg_sharpe', 0):.2f}")
+        console.print(f"Average Errors: {stats.get('avg_errors', 0):.1f}")
+        console.print(f"Average Refinements: {stats.get('avg_refinements', 0):.1f}")
+
+        # Category breakdown
+        if stats.get('categories'):
+            console.print("\n[bold]Category Breakdown:[/bold]")
+            for cat in stats['categories']:
+                console.print(f"  • {cat['category']}: {cat['count']} strategies (avg Sharpe: {cat['avg_sharpe']:.2f})")
+
+    db.close()
+
+
+# ============================================================================
+# LIBRARY BUILDER MODE COMMANDS
+# ============================================================================
+
+@main.group()
+def library():
+    """
+    Library builder mode - Build comprehensive strategy library from scratch.
+
+    This mode systematically generates strategies across all major categories.
+    """
+    pass
+
+
+@library.command(name='build')
+@click.option('--comprehensive', is_flag=True, help='Build all categories')
+@click.option('--max-hours', default=24, type=int, help='Maximum build time in hours')
+@click.option('--output', type=click.Path(), help='Output directory for library')
+@click.option('--min-sharpe', default=0.5, type=float, help='Minimum Sharpe ratio threshold')
+@click.option('--categories', help='Comma-separated list of categories to build')
+@click.option('--demo', is_flag=True, help='Run in demo mode (no real API calls)')
+@click.pass_context
+def library_build(ctx, comprehensive, max_hours, output, min_sharpe, categories, demo):
+    """
+    Build strategy library from scratch.
+
+    Example:
+        quantcoder library build --comprehensive --max-hours 24
+        quantcoder library build --categories momentum,mean_reversion
+    """
+    import asyncio
+    from pathlib import Path
+    from quantcoder.library import LibraryBuilder
+
+    config = ctx.obj['config']
+
+    if demo:
+        console.print("[yellow]Running in DEMO mode (no real API calls)[/yellow]\n")
+
+    output_dir = Path(output) if output else None
+    category_list = categories.split(',') if categories else None
+
+    builder = LibraryBuilder(
+        config=config,
+        demo_mode=demo
+    )
+
+    try:
+        asyncio.run(builder.build(
+            comprehensive=comprehensive,
+            max_hours=max_hours,
+            output_dir=output_dir,
+            min_sharpe=min_sharpe,
+            categories=category_list
+        ))
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Library build stopped by user[/yellow]")
+
+
+@library.command(name='status')
+def library_status():
+    """
+    Show library build progress.
+    """
+    import asyncio
+    from quantcoder.library import LibraryBuilder
+
+    builder = LibraryBuilder()
+
+    try:
+        asyncio.run(builder.status())
+    except FileNotFoundError:
+        console.print("[yellow]No library build in progress[/yellow]")
+
+
+@library.command(name='resume')
+@click.pass_context
+def library_resume(ctx):
+    """
+    Resume interrupted library build from checkpoint.
+    """
+    import asyncio
+    from quantcoder.library import LibraryBuilder
+
+    config = ctx.obj['config']
+    builder = LibraryBuilder(config=config)
+
+    try:
+        asyncio.run(builder.resume())
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Library build stopped by user[/yellow]")
+
+
+@library.command(name='export')
+@click.option('--format', type=click.Choice(['json', 'zip']), default='zip', help='Export format')
+@click.option('--output', type=click.Path(), help='Output file path')
+def library_export(format, output):
+    """
+    Export completed library.
+
+    Example:
+        quantcoder library export --format zip --output library.zip
+        quantcoder library export --format json --output library.json
+    """
+    import asyncio
+    from pathlib import Path
+    from quantcoder.library import LibraryBuilder
+
+    output_path = Path(output) if output else None
+    builder = LibraryBuilder()
+
+    try:
+        asyncio.run(builder.export(format=format, output_file=output_path))
+    except Exception as e:
+        console.print(f"[red]Error exporting library: {e}[/red]")
+
+
 if __name__ == '__main__':
     main()
