@@ -52,8 +52,8 @@ def cli(ctx, verbose, version):
         quantcli generate-code 1
     """
     if version:
-        click.echo("QuantCoder CLI v0.3 (Legacy)")
-        click.echo("Using OpenAI SDK v0.28")
+        click.echo("QuantCoder CLI v1.0.0 (Modern)")
+        click.echo("Using OpenAI SDK v1.x")
         ctx.exit()
         
     setup_logging(verbose)
