@@ -1,6 +1,19 @@
-# QuantCoder v2.0
+# QuantCoder 2.0.0-alpha.1
+
+[![Version](https://img.shields.io/badge/version-2.0.0--alpha.1-orange)](https://github.com/SL-Mar/quantcoder-cli)
+[![Branch](https://img.shields.io/badge/branch-gamma-purple)](https://github.com/SL-Mar/quantcoder-cli/tree/gamma)
+[![Package](https://img.shields.io/badge/package-quantcoder-blue)](.)
 
 > **AI-powered CLI for generating QuantConnect trading algorithms from research articles**
+
+⚠️ **This is the GAMMA branch (2.0.0-alpha.1)** - Cutting edge with autonomous mode & library builder
+
+**Looking for stable version?** → [QuantCoder 1.0 (main branch)](https://github.com/SL-Mar/quantcoder-cli/tree/main)
+**Want improved legacy?** → [QuantCoder 1.1 (beta branch)](https://github.com/SL-Mar/quantcoder-cli/tree/beta)
+
+📖 **[Version Comparison Guide](docs/VERSION_COMPARISON.md)** | **[Branch Map](docs/BRANCH_VERSION_MAP.md)**
+
+---
 
 QuantCoder is a command-line tool that allows users to generate QuantConnect trading algorithms from research articles using natural language processing and large language models (LLMs). It was initiated in November 2023 and based on a cognitive architecture inspired by the article ["Dual Agent Chatbots and Expert Systems Design"](https://towardsdev.com/dual-agent-chatbots-and-expert-systems-design-25e2cba434e9)
 

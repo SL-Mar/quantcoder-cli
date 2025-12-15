@@ -1,202 +1,100 @@
 # QuantCoder-CLI Branch & Version Map
 
-**Last Updated**: 2025-01-15
+**Last Updated**: 2025-01-15 (**RESTRUCTURED**)
 **Repository**: SL-Mar/quantcoder-cli
 
-This document maps all branches in the repository and their respective versions/features.
+## ⚡ Quick Reference
+
+After restructuring, QuantCoder now has **3 active branches**:
+
+```
+main  (1.0)   → Stable production
+beta  (1.1)   → Improved legacy (testing)
+gamma (2.0)   → Complete rewrite (alpha)
+```
 
 ---
 
-## 📊 Overview Table
+## 📊 Active Branches Overview
 
-| Branch | Version | Package | Status | Key Features | Latest Commit |
-|--------|---------|---------|--------|--------------|---------------|
-| **main** | Legacy | `quantcli` | 🟢 Stable | Original CLI | f4b4674 |
-| **claude/refactor-quantcoder-cli-JwrsM** | v4.0 | `quantcoder` | 🟢 Active Dev | Multi-Agent + Autonomous + Library | ddabcc1 |
-| **refactor/modernize-2025** | v1.0 | `quantcli` | 🟡 Modernized | Testing + Security | 9a5f173 |
-| **feature/enhanced-help-command** | Legacy+ | `quantcli` | 🔴 Reverted | Enhanced help | af9e399 |
-| **revert-3-feature/enhanced-help-command** | Legacy | `quantcli` | 🔴 Revert | Reverts help | 4f9e253 |
+| Branch | Version | Package | Status | Use Case |
+|--------|---------|---------|--------|----------|
+| **main** | 1.0.0 | `quantcli` | 🟢 Stable | Production, simple workflows |
+| **beta** | 1.1.0-beta.1 | `quantcli` | 🧪 Testing | Improved legacy, not tested |
+| **gamma** | 2.0.0-alpha.1 | `quantcoder` | 🚀 Alpha | Autonomous mode, library builder |
+
+**Archived**: `feature/enhanced-help-command`, `revert-3-feature/enhanced-help-command`
 
 ---
 
-## 🔍 Detailed Branch Analysis
+## 🔍 Detailed Branch Information
 
-### 1️⃣ **main** (Stable Legacy)
+### 1️⃣ main → QuantCoder 1.0 (Stable)
 
+**Branch**: `main`
 **Package**: `quantcli`
-**Version**: Original/Legacy
-**Status**: 🟢 Stable, production legacy version
+**Version**: 1.0.0
+**Status**: 🟢 Production stable
+
+#### Quick Info
+```bash
+git checkout main
+pip install -e .
+```
 
 #### Structure
 ```
 quantcli/
-├── __init__.py
-├── cli.py          # Original CLI
-├── gui.py
-├── processor.py    # PDF/NLP processing
-├── search.py       # Article search
+├── cli.py           # Original CLI
+├── processor.py     # PDF/NLP processing
+├── search.py        # Article search
 └── utils.py
 ```
 
 #### Features
-- ✅ Basic CLI for generating QuantConnect algorithms
+- ✅ Basic CLI for QuantConnect algorithm generation
 - ✅ PDF article processing
 - ✅ NLP-based strategy extraction
 - ✅ OpenAI integration
-- ✅ Simple search functionality
+- ✅ Simple article search
 
-#### Commits (Recent)
-```
-f4b4674 Update project title in README.md
-a91fdbe Revise README for legacy CLI version status
-3b0608f Merge pull request #4 from SL-Mar/revert-3-feature/enhanced-help-command
-4f9e253 Revert "Add comprehensive --help documentation and --version flag"
+#### Commands
+```bash
+quantcli search "momentum trading"
+quantcli download 1
+quantcli generate 1
 ```
 
-#### Use Case
-- Legacy production version
-- Basic single-strategy generation
-- Simple workflow: search → download → generate
+#### Pros/Cons
+**Pros**: Stable, proven, simple
+**Cons**: No advanced features, basic validation
+
+#### Who Should Use
+- Production environments
+- Users needing stability
+- Simple single-strategy workflows
+- New users learning QuantCoder
 
 ---
 
-### 2️⃣ **claude/refactor-quantcoder-cli-JwrsM** (v4.0 - Current Development)
+### 2️⃣ beta → QuantCoder 1.1 (Testing)
 
-**Package**: `quantcoder` (NEW)
-**Version**: v4.0 (Multi-Agent + Autonomous)
-**Status**: 🟢 Active development, feature-complete
-
-#### Structure
-```
-quantcoder/
-├── agents/                    # v3.0: Multi-Agent System
-│   ├── base.py
-│   ├── coordinator_agent.py
-│   ├── universe_agent.py
-│   ├── alpha_agent.py
-│   ├── risk_agent.py
-│   └── strategy_agent.py
-├── autonomous/                # v4.0: NEW - Self-improving mode
-│   ├── database.py
-│   ├── learner.py
-│   ├── prompt_refiner.py
-│   └── pipeline.py
-├── library/                   # v4.0: NEW - Library builder
-│   ├── taxonomy.py
-│   ├── coverage.py
-│   └── builder.py
-├── codegen/
-│   └── multi_file.py
-├── execution/
-│   └── parallel_executor.py
-├── llm/
-│   └── providers.py          # Multi-LLM support
-├── mcp/
-│   └── quantconnect_mcp.py   # MCP integration
-├── tools/                     # v2.0: Tool-based architecture
-│   ├── article_tools.py
-│   ├── code_tools.py
-│   └── file_tools.py
-├── chat.py
-├── cli.py                     # Enhanced with auto/library commands
-└── config.py
-
-quantcli/                      # Legacy code still present
-└── ... (original files)
-
-docs/
-├── ARCHITECTURE_V3_MULTI_AGENT.md
-├── AGENTIC_WORKFLOW.md
-├── AUTONOMOUS_MODE.md         # v4.0 docs
-├── LIBRARY_BUILDER.md         # v4.0 docs
-└── NEW_FEATURES_V4.md         # v4.0 docs
-```
-
-#### Features
-
-**v2.0 Features** (Vibe CLI-inspired):
-- ✅ Tool-based architecture
-- ✅ Interactive & programmatic chat modes
-- ✅ Rich CLI with modern UI
-- ✅ Article search/download/summarize tools
-- ✅ Code generation with validation
-
-**v3.0 Features** (Claude Code-inspired):
-- ✅ Multi-agent system (6 specialized agents)
-- ✅ Parallel execution framework
-- ✅ MCP integration for QuantConnect
-- ✅ Multi-file generation (Universe, Alpha, Risk, Main)
-- ✅ Multi-LLM support (Anthropic, Mistral, DeepSeek, OpenAI)
-- ✅ Coordinator orchestration
-
-**v4.0 Features** (NEW):
-- ✅ **Autonomous Mode**: Self-improving strategy generation
-  - Learning database (SQLite)
-  - Error pattern recognition
-  - Performance-based learning
-  - Prompt evolution
-  - Self-healing code fixes
-- ✅ **Library Builder Mode**: Complete library from scratch
-  - 10 strategy categories
-  - 86 target strategies
-  - Systematic coverage
-  - Progress tracking & checkpoints
-  - Resume capability
-
-#### CLI Commands
-
-**Regular Mode (v2.0)**:
-```bash
-quantcoder chat
-quantcoder search "query"
-quantcoder generate 1
-```
-
-**Autonomous Mode (v4.0)**:
-```bash
-quantcoder auto start --query "momentum trading"
-quantcoder auto status
-quantcoder auto report
-```
-
-**Library Builder (v4.0)**:
-```bash
-quantcoder library build --comprehensive
-quantcoder library status
-quantcoder library resume
-quantcoder library export
-```
-
-#### Commits (Recent)
-```
-ddabcc1 Add Autonomous Mode and Library Builder - v4.0 🚀
-25f5a2b Complete Multi-Agent System v3.0 - Production Ready! 🚀
-32c1f11 Implement Multi-Agent Architecture v3.0 - Foundation
-7310aad Add HTML version for easy Notion import
-5bad91a Add process-oriented agentic workflow explanation
-```
-
-#### Use Case
-- Advanced multi-agent strategy generation
-- Self-improving autonomous loops
-- Building complete strategy libraries
-- Production-ready algorithm development
-
----
-
-### 3️⃣ **refactor/modernize-2025** (v1.0 Modernized)
-
+**Branch**: `beta` (renamed from `refactor/modernize-2025`)
 **Package**: `quantcli`
-**Version**: v1.0 (Modernized Legacy)
-**Status**: 🟡 Modernized with testing/security
+**Version**: 1.1.0-beta.1
+**Status**: 🧪 Beta testing (⚠️ not yet tested by maintainers)
+
+#### Quick Info
+```bash
+git checkout beta
+pip install -e .
+```
 
 #### Structure
 ```
 quantcli/
-├── __init__.py
 ├── cli.py
-├── gui.py
-├── llm_client.py        # NEW: Abstracted LLM client
+├── llm_client.py        # NEW: LLM abstraction
 ├── processor.py
 ├── qc_validator.py      # NEW: QuantConnect validator
 ├── search.py
@@ -207,246 +105,337 @@ tests/                   # NEW: Test suite
 ```
 
 #### Features
-- ✅ Original CLI functionality
-- ✅ **NEW**: Comprehensive testing
+All 1.0 features PLUS:
+- ✅ **NEW**: Comprehensive testing suite
 - ✅ **NEW**: Security improvements
 - ✅ **NEW**: Environment configuration
 - ✅ **NEW**: LLM client abstraction
-- ✅ **NEW**: QuantConnect validator
+- ✅ **NEW**: QuantConnect code validator
+- ✅ **NEW**: Better error handling
 
-#### Commits (Recent)
-```
-9a5f173 Merge pull request #7 from SL-Mar/claude/refactor-modernize-2025-011CV1sadPRrxj5sPHjWp7Wa
-de7eac0 Merge branch 'main' into refactor/modernize-2025
-79e8626 Add comprehensive testing guide for v1.0.0
-9fc699a Add security improvements and environment configuration
+#### Commands
+```bash
+# Same as 1.0
+quantcli search "query"
+quantcli generate 1
 ```
 
-#### Use Case
-- Modernized legacy code
-- Better testing coverage
-- Improved security
-- Bridge between legacy and v2.0+
+#### Pros/Cons
+**Pros**: Better quality, testing, security
+**Cons**: Not yet tested in production, same architecture as 1.0
+
+#### Who Should Use
+- Users wanting improved 1.0
+- Testing/QA contributors
+- Gradual migration from 1.0
+- Those needing better validation
+
+#### Migration from 1.0
+**Difficulty**: Easy
+```bash
+git checkout beta
+pip install -e .
+# Same commands, better internals
+```
 
 ---
 
-### 4️⃣ **feature/enhanced-help-command** (Reverted)
+### 3️⃣ gamma → QuantCoder 2.0 (Alpha)
 
-**Package**: `quantcli`
-**Version**: Legacy + Help
-**Status**: 🔴 Reverted (not in main)
+**Branch**: `gamma` (renamed from `claude/refactor-quantcoder-cli-JwrsM`)
+**Package**: `quantcoder` (⚠️ **NEW PACKAGE** - different from `quantcli`)
+**Version**: 2.0.0-alpha.1
+**Status**: 🚀 Alpha - cutting edge
+
+#### Quick Info
+```bash
+git checkout gamma
+pip install -e .
+```
+
+#### Structure
+```
+quantcoder/
+├── agents/                     # Multi-agent system
+│   ├── coordinator_agent.py
+│   ├── universe_agent.py
+│   ├── alpha_agent.py
+│   ├── risk_agent.py
+│   └── strategy_agent.py
+├── autonomous/                 # ⭐ Self-improving mode
+│   ├── database.py
+│   ├── learner.py
+│   ├── prompt_refiner.py
+│   └── pipeline.py
+├── library/                    # ⭐ Library builder
+│   ├── taxonomy.py
+│   ├── coverage.py
+│   └── builder.py
+├── codegen/
+│   └── multi_file.py
+├── execution/
+│   └── parallel_executor.py
+├── llm/
+│   └── providers.py            # Multi-LLM support
+├── mcp/
+│   └── quantconnect_mcp.py     # MCP integration
+├── tools/
+│   ├── article_tools.py
+│   ├── code_tools.py
+│   └── file_tools.py
+├── chat.py
+├── cli.py                      # Enhanced CLI
+└── config.py
+
+quantcli/                       # Legacy code (kept for reference)
+docs/                           # Comprehensive documentation
+```
 
 #### Features
-- ✅ Original CLI
-- ✅ Enhanced `--help` documentation
-- ✅ `--version` flag
 
-#### Commits
-```
-af9e399 Add comprehensive --help documentation and --version flag
-5170f19 Delete quantcli.egg-info directory
-5434ea9 Delete build directory
+**Complete rewrite** with revolutionary capabilities:
+
+**Core Architecture**:
+- ✅ Tool-based design (Mistral Vibe CLI inspired)
+- ✅ Multi-agent system (6 specialized agents)
+- ✅ Parallel execution framework (3-5x faster)
+- ✅ MCP integration for QuantConnect
+- ✅ Multi-LLM support (Anthropic, Mistral, DeepSeek, OpenAI)
+
+**🤖 Autonomous Mode** (Self-learning):
+- ✅ Learns from compilation errors automatically
+- ✅ Performance-based prompt refinement
+- ✅ Self-healing code fixes
+- ✅ Learning database (SQLite)
+- ✅ Continuous improvement over iterations
+
+**📚 Library Builder Mode**:
+- ✅ Build complete strategy library from scratch
+- ✅ 10 strategy categories (86 total strategies)
+- ✅ Systematic coverage tracking
+- ✅ Progress checkpoints & resume capability
+
+**Advanced Features**:
+- ✅ Multi-file generation (Universe, Alpha, Risk, Main)
+- ✅ Coordinator agent orchestration
+- ✅ Real-time learning and adaptation
+- ✅ Interactive and programmatic modes
+- ✅ Rich CLI with modern UI
+
+#### Commands
+
+**Regular Mode**:
+```bash
+quantcoder chat
+quantcoder search "query"
+quantcoder generate 1
 ```
 
-#### Note
-This branch was merged then reverted. Features not in main.
+**Autonomous Mode** (⭐ NEW):
+```bash
+quantcoder auto start --query "momentum trading" --max-iterations 50
+quantcoder auto status
+quantcoder auto report
+```
+
+**Library Builder** (⭐ NEW):
+```bash
+quantcoder library build --comprehensive --max-hours 24
+quantcoder library status
+quantcoder library resume
+quantcoder library export --format zip
+```
+
+#### Pros/Cons
+**Pros**:
+- Revolutionary autonomous features
+- Self-improving AI
+- Can build entire libraries
+- Multi-LLM flexibility
+- 3-5x faster with parallel execution
+
+**Cons**:
+- Alpha status (active development)
+- Breaking changes from 1.x
+- Different package name
+- Higher resource requirements
+- More complex
+
+#### Who Should Use
+- Users wanting cutting-edge features
+- Building complete strategy libraries
+- Autonomous overnight generation runs
+- Research and experimentation
+- Advanced multi-agent workflows
+
+#### Migration from 1.x
+**Difficulty**: Moderate
+
+**Breaking Changes**:
+- Package: `quantcli` → `quantcoder`
+- Commands: Different CLI interface
+- Config: New format
+- Dependencies: More requirements
+
+**Steps**:
+```bash
+git checkout gamma
+pip install -e .
+quantcoder --help  # Learn new commands
+```
 
 ---
 
-### 5️⃣ **revert-3-feature/enhanced-help-command** (Revert Branch)
-
-**Package**: `quantcli`
-**Version**: Legacy
-**Status**: 🔴 Revert branch
-
-#### Purpose
-Branch created to revert the enhanced-help-command feature.
-
-#### Commits
-```
-4f9e253 Revert "Add comprehensive --help documentation and --version flag"
-```
-
----
-
-## 🗺️ Version Evolution
+## 🗺️ Version Evolution Timeline
 
 ```
-Legacy (main)
+2023 November
     │
-    ├─> v1.0 (refactor/modernize-2025)
-    │   └─> Testing + Security
-    │
-    └─> v2.0 (claude/refactor-quantcoder-cli-JwrsM)
-        └─> Tool-based architecture (Vibe CLI)
+    └─> QuantCoder 1.0 (main)
+        └─ Original CLI, quantcli package
             │
-            └─> v3.0
-                └─> Multi-Agent System (Claude Code)
-                    │
-                    └─> v4.0 ⭐ CURRENT
-                        ├─> Autonomous Mode
-                        └─> Library Builder
+2025 January
+            │
+            ├─> QuantCoder 1.1 (beta)
+            │   └─ Improved legacy
+            │      Testing + Security
+            │      Same quantcli package
+            │
+            └─> QuantCoder 2.0 (gamma)
+                └─ Complete rewrite
+                   NEW quantcoder package
+                   ├─ Multi-agent system
+                   ├─ Autonomous mode ⭐
+                   └─ Library builder ⭐
 ```
 
 ---
 
-## 📦 Package Comparison
+## 📋 Feature Comparison Matrix
 
-### `quantcli` (Legacy Package)
-**Used by**: main, refactor/modernize-2025, feature branches
-
-**Characteristics**:
-- Original codebase from 2023
-- Single CLI entry point
-- Monolithic structure
-- Basic functionality
-
-### `quantcoder` (New Package)
-**Used by**: claude/refactor-quantcoder-cli-JwrsM
-
-**Characteristics**:
-- Complete rewrite (v2.0+)
-- Modular architecture
-- Multi-agent system
-- Advanced features (autonomous, library builder)
-- Tool-based design
-
----
-
-## 🎯 Feature Matrix
-
-| Feature | main | modernize-2025 | v4.0 (claude) |
-|---------|------|----------------|---------------|
-| Basic CLI | ✅ | ✅ | ✅ |
-| PDF Processing | ✅ | ✅ | ✅ |
-| Article Search | ✅ | ✅ | ✅ |
-| Code Generation | ✅ | ✅ | ✅ |
-| Testing Suite | ❌ | ✅ | ⚠️ |
-| Security Hardening | ❌ | ✅ | ⚠️ |
-| Tool-based Architecture | ❌ | ❌ | ✅ |
-| Multi-Agent System | ❌ | ❌ | ✅ |
-| Parallel Execution | ❌ | ❌ | ✅ |
-| MCP Integration | ❌ | ❌ | ✅ |
-| Multi-LLM Support | ❌ | ❌ | ✅ |
-| **Autonomous Mode** | ❌ | ❌ | ✅ |
-| **Library Builder** | ❌ | ❌ | ✅ |
-| Self-Learning | ❌ | ❌ | ✅ |
+| Feature | 1.0 (main) | 1.1 (beta) | 2.0 (gamma) |
+|---------|------------|------------|-------------|
+| **Package** | quantcli | quantcli | quantcoder |
+| **Status** | Stable | Testing | Alpha |
+| **Basic CLI** | ✅ | ✅ | ✅ |
+| **PDF Processing** | ✅ | ✅ | ✅ |
+| **Article Search** | ✅ | ✅ | ✅ |
+| **Code Generation** | ✅ | ✅ | ✅ |
+| **Testing Suite** | ❌ | ✅ | ⚠️ |
+| **Security** | Basic | Enhanced | Enhanced |
+| **Validation** | Basic | Enhanced | Advanced |
+| **Tool Architecture** | ❌ | ❌ | ✅ |
+| **Multi-Agent** | ❌ | ❌ | ✅ |
+| **Parallel Execution** | ❌ | ❌ | ✅ |
+| **MCP Integration** | ❌ | ❌ | ✅ |
+| **Multi-LLM** | ❌ | ❌ | ✅ |
+| **Autonomous Mode** | ❌ | ❌ | ✅ ⭐ |
+| **Library Builder** | ❌ | ❌ | ✅ ⭐ |
+| **Self-Learning** | ❌ | ❌ | ✅ ⭐ |
 
 ---
 
-## 🚀 Recommended Merge Strategy
+## 🎯 Branch Selection Guide
 
-### Option 1: Keep Separate (Recommended)
-```
-main (quantcli)           → Legacy version for production
-└─> v1.0 modernize-2025   → Improved legacy
+### Choose **main** (1.0) if:
+- ✅ You need stability and proven code
+- ✅ Simple single-strategy generation
+- ✅ Production environment
+- ✅ Learning QuantCoder
+- ✅ Low resource requirements
 
-claude/refactor (quantcoder) → New architecture (v2.0-v4.0)
-```
+### Choose **beta** (1.1) if:
+- ✅ You want improved 1.0
+- ✅ Better validation needed
+- ✅ Willing to test new features
+- ✅ Same familiar interface
+- ⚠️ Accept untested status
 
-**Pros**:
-- No breaking changes
-- Users can choose version
-- Legacy remains stable
-
-**Cons**:
-- Two codebases to maintain
-
-### Option 2: Replace Main
-```
-main → Deprecate quantcli
-└─> Point to claude/refactor as new main
-```
-
-**Pros**:
-- Single codebase
-- Modern architecture
-
-**Cons**:
-- Breaking changes for existing users
-- Migration effort
-
-### Option 3: Parallel Development
-```
-main (quantcli-legacy)       → v1.x line
-claude/refactor (quantcoder) → v2.x+ line
-```
-
-**Pros**:
-- Both active
-- Clear versioning
-
-**Cons**:
-- Duplicate maintenance
+### Choose **gamma** (2.0) if:
+- ✅ You want cutting-edge features
+- ✅ Building complete libraries
+- ✅ Autonomous overnight runs
+- ✅ Multi-agent workflows
+- ✅ Self-improving AI
+- ⚠️ Accept alpha status
 
 ---
 
-## 📝 Branch Recommendations
+## 📚 Documentation by Branch
 
-### Active Development
-- ✅ **claude/refactor-quantcoder-cli-JwrsM**: Continue as v4.0+
-  - Most advanced features
-  - Self-improving capabilities
-  - Complete library building
+### main (1.0)
+- Original README
+- Legacy documentation
 
-### Maintenance
-- ✅ **main**: Keep as legacy stable release
-  - Simple use cases
-  - Existing user base
+### beta (1.1)
+- Testing guide
+- Security documentation
+- Validation improvements
 
-### Consider Merging
-- 🔄 **refactor/modernize-2025** → Could merge improvements into main
-  - Testing suite
-  - Security enhancements
-  - Better structure
-
-### Archive/Delete
-- 🗑️ **feature/enhanced-help-command**: Already reverted
-- 🗑️ **revert-3-feature/enhanced-help-command**: Served its purpose
+### gamma (2.0)
+- [VERSION_COMPARISON.md](./VERSION_COMPARISON.md) - Choose version
+- [NEW_FEATURES_V4.md](./NEW_FEATURES_V4.md) - 2.0 overview
+- [AUTONOMOUS_MODE.md](./AUTONOMOUS_MODE.md) - Self-learning guide
+- [LIBRARY_BUILDER.md](./LIBRARY_BUILDER.md) - Library building
+- [ARCHITECTURE_V3_MULTI_AGENT.md](./ARCHITECTURE_V3_MULTI_AGENT.md) - Multi-agent
 
 ---
 
-## 🏷️ Tagging Recommendation
+## 🗑️ Archived Branches
 
-**Current Tags**: v0.3
+The following branches have been archived (tagged for history):
 
-**Suggested Tags**:
-```
-v0.3   → main (current legacy)
-v1.0.0 → refactor/modernize-2025 (modernized legacy)
-v2.0.0 → claude/refactor (tool-based)
-v3.0.0 → claude/refactor (multi-agent)
-v4.0.0 → claude/refactor (autonomous + library) ⭐
-```
+- `feature/enhanced-help-command` → Added help docs (reverted)
+- `revert-3-feature/enhanced-help-command` → Revert branch
+
+These are no longer active and can be deleted after tagging.
 
 ---
 
-## 🎓 Summary
+## 🔄 Restructuring Summary
 
-### For Users:
+**What Changed**:
+- ✅ `claude/refactor-quantcoder-cli-JwrsM` → `gamma` (2.0)
+- ✅ `refactor/modernize-2025` → `beta` (1.1)
+- ✅ `main` stays as 1.0
+- ✅ Version numbering: v4.0 → 2.0.0-alpha.1
+- ✅ Clear progression: 1.0 → 1.1 → 2.0
 
-**Want simple, stable CLI?**
-→ Use **main** branch (`quantcli`)
-
-**Want modernized legacy with tests?**
-→ Use **refactor/modernize-2025** (`quantcli` v1.0)
-
-**Want advanced multi-agent system?**
-→ Use **claude/refactor-quantcoder-cli-JwrsM** (`quantcoder` v3.0)
-
-**Want autonomous library building?**
-→ Use **claude/refactor-quantcoder-cli-JwrsM** (`quantcoder` v4.0) ⭐
-
-### For Maintainers:
-
-**Priority 1**: Continue v4.0 development on `claude/refactor-quantcoder-cli-JwrsM`
-**Priority 2**: Decide on main vs modernize-2025 merge
-**Priority 3**: Tag releases appropriately
-**Priority 4**: Archive feature/revert branches
+**Why**:
+- Clear version semantics (1.x = legacy, 2.x = rewrite)
+- Proper semantic versioning
+- Easy branch selection for users
+- Clean repository with 3 active branches
 
 ---
 
-**Generated by**: Claude
-**Date**: 2025-01-15
-**Branch**: claude/refactor-quantcoder-cli-JwrsM
-**Commit**: ddabcc1
+## ❓ FAQ
+
+**Q: Why is 2.0 called "gamma" not "v2"?**
+A: Greek letters indicate progression: alpha → beta → gamma. Shows 2.0 is beyond beta (1.1).
+
+**Q: What happened to v3.0 and v4.0?**
+A: Renumbered to 2.0.0-alpha.1 since it's the first major rewrite.
+
+**Q: Can I use both quantcli and quantcoder?**
+A: Yes! Different packages, no conflicts.
+
+**Q: Which branch gets updates?**
+A: All three are maintained. Critical bugs fixed in all. New features in 2.0.
+
+**Q: When will 2.0 be stable?**
+A: After alpha → beta → release candidate → 2.0.0 stable.
+
+---
+
+## 📞 Support
+
+- **Issues**: Open issue and specify branch (1.0/1.1/2.0)
+- **Questions**: Specify which version you're using
+- **Contributions**: See CONTRIBUTING.md
+
+---
+
+**Last Restructured**: 2025-01-15
+**Maintained by**: SL-MAR
+**Repository**: SL-Mar/quantcoder-cli

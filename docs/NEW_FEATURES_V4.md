@@ -1,8 +1,10 @@
-# QuantCoder CLI v4.0 - New Features
+# QuantCoder CLI 2.0 - New Features
 
 ## Overview
 
-Version 4.0 introduces two powerful new modes that transform QuantCoder from a single-strategy generator into a self-improving, autonomous system capable of building entire strategy libraries.
+Version 2.0.0-alpha.1 introduces two powerful new modes that transform QuantCoder from a single-strategy generator into a self-improving, autonomous system capable of building entire strategy libraries.
+
+**Note:** This is a complete rewrite from 1.0 (quantcli). See version comparison guide for migration details.
 
 ## What's New
 
@@ -46,12 +48,12 @@ quantcoder library build --comprehensive --max-hours 24
 
 ## Architecture Comparison
 
-### v3.0 (Previous)
+### 2.0.0-alpha.1 (multi-agent) (Previous)
 ```
 User Request → Multi-Agent System → Generate Strategy → Done
 ```
 
-### v4.0 (New)
+### 2.0.0-alpha.1 (New)
 ```
 User Request → Autonomous Mode → Learning Loop → Self-Improvement
                      ↓
@@ -255,24 +257,24 @@ quantcoder auto start --query "mean reversion" --max-iterations 50
 quantcoder library build --comprehensive
 ```
 
-## Integration with v3.0 Features
+## Integration with 2.0.0-alpha.1 (multi-agent) Features
 
-### v4.0 Uses v3.0 Components
+### 2.0.0-alpha.1 Uses 2.0.0-alpha.1 (multi-agent) Components
 
 ```
 Autonomous Mode
-└── Uses Multi-Agent System (v3.0)
+└── Uses Multi-Agent System (2.0.0-alpha.1 (multi-agent))
     ├── Coordinator Agent
     ├── Universe Agent
     ├── Alpha Agent
     └── Risk Agent
 
 Library Builder
-└── Uses Autonomous Mode (v4.0)
-    └── Uses Multi-Agent System (v3.0)
+└── Uses Autonomous Mode (2.0.0-alpha.1)
+    └── Uses Multi-Agent System (2.0.0-alpha.1 (multi-agent))
 ```
 
-All v3.0 features still available:
+All 2.0.0-alpha.1 (multi-agent) features still available:
 - Manual multi-agent generation
 - MCP integration
 - Parallel execution
@@ -373,9 +375,9 @@ quantcoder library resume
 ./strategies_library/     # Library builder
 ```
 
-## Migration from v3.0
+## Migration from 2.0.0-alpha.1 (multi-agent)
 
-**No breaking changes!** All v3.0 commands still work:
+**No breaking changes!** All 2.0.0-alpha.1 (multi-agent) commands still work:
 
 ```bash
 quantcoder chat              # Still works
@@ -410,7 +412,7 @@ quantcoder library build ... # NEW
 
 - **Autonomous Mode**: See [AUTONOMOUS_MODE.md](./AUTONOMOUS_MODE.md)
 - **Library Builder**: See [LIBRARY_BUILDER.md](./LIBRARY_BUILDER.md)
-- **v3.0 Features**: See [ARCHITECTURE_V3_MULTI_AGENT.md](./ARCHITECTURE_V3_MULTI_AGENT.md)
+- **2.0.0-alpha.1 (multi-agent) Features**: See [ARCHITECTURE_V3_MULTI_AGENT.md](./ARCHITECTURE_V3_MULTI_AGENT.md)
 
 ## Support
 
@@ -422,4 +424,4 @@ MIT License - See LICENSE file
 
 ---
 
-**QuantCoder CLI v4.0** - From single strategy to complete library, powered by self-improving AI. 🚀
+**QuantCoder CLI 2.0.0-alpha.1** - From single strategy to complete library, powered by self-improving AI. 🚀
