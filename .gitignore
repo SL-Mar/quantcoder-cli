@@ -1,9 +1,11 @@
-# Python
+# Python bytecode and cache
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+
+# Distribution / packaging
 build/
 develop-eggs/
 dist/
@@ -20,6 +22,7 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
+*.whl
 
 # Virtual Environment
 .venv/
@@ -27,40 +30,66 @@ MANIFEST
 venv/
 ENV/
 env/
+.env/
 
-# IDE
+# IDE and editors
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.project
+.pydevproject
+.settings/
 
-# Logs
+# Logs and output artifacts
 *.log
+logs/
 quantcli.log
 article_processor.log
 
-# QuantCoder specific
+# QuantCoder specific - user data
 downloads/
 generated_code/
 articles.json
 output.html
+output.*
 
-# Configuration (contains API keys)
+# Configuration and secrets (API keys)
 .env
+.env.*
+*.env
+.envrc
 .quantcoder/
+secrets.json
+credentials.json
 
-# OS
+# OS specific
 .DS_Store
 Thumbs.db
 
-# SpaCy models
+# SpaCy models (large binary files)
 *.bin
 
-# Testing
+# Testing and coverage
 .pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
+coverage.xml
+*.cover
+.hypothesis/
+.tox/
+.nox/
 
-# Distribution
-*.whl
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Local development
+*.local
