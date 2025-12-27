@@ -44,6 +44,61 @@ pip freeze > requirements-legacy.txt
 🧠 LLM Configuration
 By default, this project uses the OpenAI gpt-4o-2024-11-20 model for generating trading code from research articles.
 
+### Using Ollama (Local LLM Backend)
+
+QuantCoder now supports Ollama as a local LLM backend, allowing you to run the tool without requiring the OpenAI SDK or API key. This is the default backend.
+
+#### Setup Ollama
+
+1. **Install Ollama**: Follow instructions at [ollama.ai](https://ollama.ai)
+
+2. **Pull a model**: 
+   ```bash
+   ollama pull llama2
+   # or another model of your choice
+   ollama pull codellama
+   ollama pull mistral
+   ```
+
+3. **Start Ollama** (if not already running):
+   ```bash
+   ollama serve
+   ```
+
+#### Configure Environment Variables
+
+Set the following environment variables to configure Ollama:
+
+```bash
+# Backend selection (default: ollama)
+export BACKEND=ollama
+
+# Ollama server URL (default: http://localhost:11434)
+export OLLAMA_BASE_URL=http://localhost:11434
+
+# Model to use (default: llama2)
+export OLLAMA_MODEL=llama2
+```
+
+Or create a `.env` file in the project root:
+
+```
+BACKEND=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama2
+```
+
+#### Alternative: Continue Using OpenAI
+
+If you prefer to use OpenAI instead of Ollama, you can configure the environment variables:
+
+```bash
+export BACKEND=openai
+export OPENAI_API_KEY=your-api-key-here
+```
+
+Note: OpenAI backend support may be added in future versions. Currently, only Ollama is supported as a pluggable backend.
+
 ## 💡 Usage
 
 To launch the CLI tool in interactive mode:

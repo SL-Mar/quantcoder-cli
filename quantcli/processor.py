@@ -23,7 +23,6 @@ import pdfplumber
 import spacy
 from collections import defaultdict
 from typing import Dict, List, Optional
-import openai
 import os
 import logging
 from dotenv import load_dotenv, find_dotenv
@@ -34,6 +33,7 @@ from pygments import lex
 from pygments.lexers import PythonLexer
 from pygments.styles import get_style_by_name
 import subprocess
+from .backend_factory import make_backend
 
 class PDFLoader:
     """Handles loading and extracting text from PDF files."""
@@ -210,17 +210,18 @@ class KeywordAnalyzer:
         return keyword_map
 
 class OpenAIHandler:
-    """Handles interactions with the OpenAI API."""
+    """Handles interactions with LLM backends via backend adapters."""
 
-    def __init__(self, model: str = "gpt-4o-2024-11-20"):
+    def __init__(self, backend=None, model: str = "gpt-4o-2024-11-20"):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.model = model
+        self.backend = backend
 
     def generate_summary(self, extracted_data: Dict[str, List[str]]) -> Optional[str]:
         """
         Generate a summary of the trading strategy and risk management based on extracted data.
         """
-        self.logger.info("Generating summary using OpenAI.")
+        self.logger.info("Generating summary using LLM backend.")
         trading_signals = '\n'.join(extracted_data.get('trading_signal', []))
         risk_management = '\n'.join(extracted_data.get('risk_management', []))
 
@@ -244,29 +245,22 @@ class OpenAIHandler:
         """
 
         try:
-            response = openai.ChatCompletion.create(
-            model=self.model,
-            messages=[
+            messages = [
                 {"role": "system", "content": "You are an algorithmic trading expert."},
                 {"role": "user", "content": prompt}
-            ],
-            max_tokens=1000,
-            temperature=0.5
-        )
-            summary = response.choices[0].message['content'].strip()
+            ]
+            summary = self.backend.chat_complete(messages, max_tokens=1000, temperature=0.5)
             self.logger.info("Summary generated successfully.")
             return summary
-        except openai.OpenAIError as e:
-            self.logger.error(f"OpenAI API error during summary generation: {e}")
         except Exception as e:
-            self.logger.error(f"Unexpected error during summary generation: {e}")
-        return None
+            self.logger.error(f"Error during summary generation: {e}")
+            return None
 
     def generate_qc_code(self, summary: str) -> Optional[str]:
         """
         Generate QuantConnect Python code based on extracted data.
         """
-        self.logger.info("Generating QuantConnect code using OpenAI.")
+        self.logger.info("Generating QuantConnect code using LLM backend.")
         #trading_signals = '\n'.join(extracted_data.get('trading_signal', []))
         #risk_management = '\n'.join(extracted_data.get('risk_management', []))
 
@@ -299,30 +293,23 @@ class OpenAIHandler:
         """
 
         try:
-            response = openai.ChatCompletion.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant specialized in generating QuantConnect algorithms in Python."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=1500,
-                temperature=0.3
-            )
-            generated_code = response.choices[0].message['content'].strip()
+            messages = [
+                {"role": "system", "content": "You are a helpful assistant specialized in generating QuantConnect algorithms in Python."},
+                {"role": "user", "content": prompt}
+            ]
+            generated_code = self.backend.chat_complete(messages, max_tokens=1500, temperature=0.3)
             # Process the generated code as needed
             self.logger.info("QuantConnect code generated successfully.")
             return generated_code
-        except openai.OpenAIError as e:
-            self.logger.error(f"OpenAI API error during code generation: {e}")
         except Exception as e:
-            self.logger.error(f"Unexpected error during code generation: {e}")
-        return None
+            self.logger.error(f"Error during code generation: {e}")
+            return None
         
     def refine_code(self, code: str) -> Optional[str]:
         """
         Ask the LLM to fix syntax errors in the generated code.
         """
-        self.logger.info("Refining generated code using OpenAI.")
+        self.logger.info("Refining generated code using LLM backend.")
         prompt = f"""
         The following QuantConnect Python code may have syntax or logical errors. Please fix them as required and provide the corrected code.
 
@@ -332,28 +319,20 @@ class OpenAIHandler:
         """
 
         try:
-            response = openai.ChatCompletion.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are an expert in QuantConnect Python algorithms."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=1500,
-                temperature=0.2,
-                n=1
-            )
-            corrected_code = response['choices'][0]['message']['content'].strip()
+            messages = [
+                {"role": "system", "content": "You are an expert in QuantConnect Python algorithms."},
+                {"role": "user", "content": prompt}
+            ]
+            corrected_code = self.backend.chat_complete(messages, max_tokens=1500, temperature=0.2)
             # Extract code block
             code_match = re.search(r'```python(.*?)```', corrected_code, re.DOTALL | re.IGNORECASE)
             if code_match:
                 corrected_code = code_match.group(1).strip()
             self.logger.info("Code refined successfully.")
             return corrected_code
-        except openai.error.OpenAIError as e:
-            self.logger.error(f"OpenAI API error during code refinement: {e}")
         except Exception as e:
-            self.logger.error(f"Unexpected error during code refinement: {e}")
-        return None
+            self.logger.error(f"Error during code refinement: {e}")
+            return None
 
 class CodeValidator:
     """Validates Python code for syntax correctness."""
@@ -570,9 +549,16 @@ class ArticleProcessor:
         self.heading_detector = HeadingDetector()
         self.section_splitter = SectionSplitter()
         self.keyword_analyzer = KeywordAnalyzer()
-        self.openai_handler = OpenAIHandler(model="gpt-4o-2024-11-20")  # Specify the model here
+        # Create backend via factory
+        try:
+            backend = make_backend()
+            self.openai_handler = OpenAIHandler(backend=backend, model="gpt-4o-2024-11-20")
+        except Exception as e:
+            self.logger.error(f"Failed to create backend: {e}")
+            self.logger.warning("ArticleProcessor initialized without backend. Operations requiring LLM will fail.")
+            self.openai_handler = None
         self.code_validator = CodeValidator()
-        self.code_refiner = CodeRefiner(self.openai_handler)
+        self.code_refiner = CodeRefiner(self.openai_handler) if self.openai_handler else None
         self.gui = GUI()
         self.max_refine_attempts = max_refine_attempts  # Maximum number of refinement attempts
 
@@ -605,37 +591,57 @@ class ArticleProcessor:
         Extract structure from PDF and generate QuantConnect code.
         """
         self.logger.info("Starting structure extraction and code generation.")
+        
+        # Check if backend is available
+        if not self.openai_handler:
+            error_msg = "LLM backend is not available. Cannot proceed with code generation."
+            self.logger.error(error_msg)
+            messagebox.showerror("Backend Error", error_msg)
+            return
+        
         extracted_data = self.extract_structure(pdf_path)
         if not extracted_data:
             self.logger.error("No data extracted for code generation.")
             return
 
         # Generate summary
-        summary = self.openai_handler.generate_summary(extracted_data)
-        if not summary:
-            self.logger.error("Failed to generate summary.")
-            summary = "Summary could not be generated."
+        try:
+            summary = self.openai_handler.generate_summary(extracted_data)
+            if not summary:
+                self.logger.error("Failed to generate summary.")
+                summary = "Summary could not be generated."
+        except Exception as e:
+            self.logger.error(f"Error generating summary: {e}")
+            summary = f"Summary could not be generated due to an error: {str(e)}"
 
         # Generate QuantConnect code with refinement attempts
-        qc_code = self.openai_handler.generate_qc_code(summary)  # Pass summary here
-        attempt = 0
-        while qc_code and not self.code_validator.validate_code(qc_code) and attempt < self.max_refine_attempts:
-            self.logger.info(f"Attempt {attempt + 1} to refine code.")
-            qc_code = self.code_refiner.refine_code(qc_code)
-            if qc_code:
-                if self.code_validator.validate_code(qc_code):
-                    self.logger.info("Refined code is valid.")
+        try:
+            qc_code = self.openai_handler.generate_qc_code(summary)  # Pass summary here
+            attempt = 0
+            while qc_code and not self.code_validator.validate_code(qc_code) and attempt < self.max_refine_attempts:
+                self.logger.info(f"Attempt {attempt + 1} to refine code.")
+                if self.code_refiner:
+                    qc_code = self.code_refiner.refine_code(qc_code)
+                    if qc_code:
+                        if self.code_validator.validate_code(qc_code):
+                            self.logger.info("Refined code is valid.")
+                            break
+                else:
+                    self.logger.warning("Code refiner not available.")
                     break
-            attempt += 1
+                attempt += 1
 
-        if not qc_code or not self.code_validator.validate_code(qc_code):
-            self.logger.error("Failed to generate valid QuantConnect code after multiple attempts.")
-            qc_code = "QuantConnect code could not be generated successfully."
+            if not qc_code or not self.code_validator.validate_code(qc_code):
+                self.logger.error("Failed to generate valid QuantConnect code after multiple attempts.")
+                qc_code = "QuantConnect code could not be generated successfully."
+        except Exception as e:
+            self.logger.error(f"Error generating QuantConnect code: {e}")
+            qc_code = f"QuantConnect code could not be generated due to an error: {str(e)}"
 
         # Display summary and code in the GUI
         self.gui.display_summary_and_code(summary, qc_code)
 
-        if qc_code != "QuantConnect code could not be generated successfully.":
+        if qc_code != "QuantConnect code could not be generated successfully." and not qc_code.startswith("QuantConnect code could not be generated due to"):
             self.logger.info("QuantConnect code generation and display completed successfully.")
         else:
             self.logger.error("Failed to generate and display QuantConnect code.")
