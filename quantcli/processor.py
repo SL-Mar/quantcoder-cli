@@ -641,7 +641,13 @@ class ArticleProcessor:
         # Display summary and code in the GUI
         self.gui.display_summary_and_code(summary, qc_code)
 
-        if qc_code != "QuantConnect code could not be generated successfully." and not qc_code.startswith("QuantConnect code could not be generated due to"):
+        # Check if generation was successful (not an error message)
+        code_generation_failed = (
+            qc_code == "QuantConnect code could not be generated successfully." or
+            qc_code.startswith("QuantConnect code could not be generated due to")
+        )
+        
+        if not code_generation_failed:
             self.logger.info("QuantConnect code generation and display completed successfully.")
         else:
             self.logger.error("Failed to generate and display QuantConnect code.")

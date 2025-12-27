@@ -84,7 +84,7 @@ class OllamaAdapter:
                 else:
                     raise ValueError(f"Unexpected choice format: {choice}")
             else:
-                raise ValueError(f"Unexpected response format from Ollama: {result}")
+                raise ValueError(f"Unexpected response format from Ollama. Expected fields: 'response', 'text', 'output', or 'choices'. Got: {list(result.keys())}")
             
             self.logger.info(f"Successfully received response from Ollama ({len(text)} chars)")
             return text.strip()

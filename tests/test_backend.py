@@ -33,6 +33,11 @@ class TestOllamaAdapter:
     
     def test_init_custom_values(self):
         """Test initialization with custom environment values."""
+        # Store and set custom values
+        env_backup = {}
+        for key in ['OLLAMA_BASE_URL', 'OLLAMA_MODEL']:
+            env_backup[key] = os.environ.get(key)
+        
         os.environ['OLLAMA_BASE_URL'] = 'http://custom:8080'
         os.environ['OLLAMA_MODEL'] = 'mistral'
         
@@ -41,11 +46,12 @@ class TestOllamaAdapter:
             assert adapter.base_url == 'http://custom:8080'
             assert adapter.model == 'mistral'
         finally:
-            # Clean up
-            if 'OLLAMA_BASE_URL' in os.environ:
-                del os.environ['OLLAMA_BASE_URL']
-            if 'OLLAMA_MODEL' in os.environ:
-                del os.environ['OLLAMA_MODEL']
+            # Restore environment
+            for key, value in env_backup.items():
+                if value is not None:
+                    os.environ[key] = value
+                elif key in os.environ:
+                    del os.environ[key]
     
     @patch('requests.post')
     def test_chat_complete_success_response_field(self, mock_post):
