@@ -1,909 +1,1219 @@
-# QuantCoder CLI - Application Architecture & Flowcharts
+# QuantCoder CLI v2.0 - Architecture Documentation (Gamma Branch)
 
-This document provides comprehensive flowcharts and diagrams describing how the QuantCoder CLI application works.
+This document provides comprehensive flowcharts and diagrams describing the architecture of QuantCoder CLI v2.0 (gamma branch).
 
 ---
 
 ## Table of Contents
 
 1. [High-Level System Architecture](#1-high-level-system-architecture)
-2. [Entry Points & CLI Commands](#2-entry-points--cli-commands)
-3. [Article Search Flow](#3-article-search-flow)
-4. [PDF Download Flow](#4-pdf-download-flow)
-5. [Article Processing Pipeline](#5-article-processing-pipeline)
-6. [Code Generation & Refinement Flow](#6-code-generation--refinement-flow)
-7. [GUI Workflow](#7-gui-workflow)
-8. [Data/Entity Relationships](#8-dataentity-relationships)
-9. [File Structure Reference](#9-file-structure-reference)
+2. [Entry Points & Execution Modes](#2-entry-points--execution-modes)
+3. [Tool System Architecture](#3-tool-system-architecture)
+4. [Multi-Agent Orchestration](#4-multi-agent-orchestration)
+5. [Autonomous Pipeline (Self-Improving)](#5-autonomous-pipeline-self-improving)
+6. [Library Builder System](#6-library-builder-system)
+7. [Chat Interface Flow](#7-chat-interface-flow)
+8. [LLM Provider Abstraction](#8-llm-provider-abstraction)
+9. [Data Flow & Entity Relationships](#9-data-flow--entity-relationships)
+10. [File Structure Reference](#10-file-structure-reference)
 
 ---
 
 ## 1. High-Level System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                           QUANTCODER CLI SYSTEM                                  │
-└─────────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                        QUANTCODER CLI v2.0 (GAMMA BRANCH)                            │
+│                     AI-Powered QuantConnect Algorithm Generator                      │
+└─────────────────────────────────────────────────────────────────────────────────────┘
 
-                              ┌──────────────┐
-                              │    USER      │
-                              └──────┬───────┘
-                                     │
-              ┌──────────────────────┼──────────────────────┐
-              │                      │                      │
-              ▼                      ▼                      ▼
-     ┌────────────────┐    ┌────────────────┐    ┌────────────────┐
-     │   CLI Mode     │    │  Interactive   │    │   GUI Mode     │
-     │  (Terminal)    │    │   Commands     │    │  (Tkinter)     │
-     └───────┬────────┘    └────────┬───────┘    └───────┬────────┘
-             │                      │                    │
-             └──────────────────────┼────────────────────┘
+                                    ┌──────────┐
+                                    │   USER   │
+                                    └────┬─────┘
+                                         │
+         ┌───────────────────────────────┼───────────────────────────────┐
+         │                               │                               │
+         ▼                               ▼                               ▼
+┌─────────────────┐           ┌─────────────────┐           ┌─────────────────┐
+│  Interactive    │           │  Programmatic   │           │    Direct       │
+│  Chat Mode      │           │  Mode (--prompt)│           │    Commands     │
+│                 │           │                 │           │  (search, etc.) │
+└────────┬────────┘           └────────┬────────┘           └────────┬────────┘
+         │                             │                             │
+         └─────────────────────────────┼─────────────────────────────┘
+                                       │
+                                       ▼
+                            ┌────────────────────┐
+                            │      cli.py        │
+                            │   (Click Group)    │
+                            │   Entry Point      │
+                            └─────────┬──────────┘
+                                      │
+              ┌───────────────────────┼───────────────────────┐
+              │                       │                       │
+              ▼                       ▼                       ▼
+    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+    │   TOOL SYSTEM   │    │  MULTI-AGENT    │    │  ADVANCED MODES │
+    │   (tools/*.py)  │    │   SYSTEM        │    │                 │
+    │                 │    │  (agents/*.py)  │    │  ┌───────────┐  │
+    │ • SearchArticles│    │                 │    │  │Autonomous │  │
+    │ • Download      │    │ • Coordinator   │    │  │Pipeline   │  │
+    │ • Summarize     │    │ • Universe      │    │  └───────────┘  │
+    │ • GenerateCode  │    │ • Alpha         │    │  ┌───────────┐  │
+    │ • Validate      │    │ • Risk          │    │  │Library    │  │
+    │ • ReadFile      │    │ • Strategy      │    │  │Builder    │  │
+    │ • WriteFile     │    │                 │    │  └───────────┘  │
+    └────────┬────────┘    └────────┬────────┘    └────────┬────────┘
+             │                      │                      │
+             └──────────────────────┼──────────────────────┘
                                     │
                                     ▼
                          ┌────────────────────┐
-                         │     cli.py         │
-                         │   Entry Point      │
-                         │  (Click Group)     │
+                         │   LLM PROVIDERS    │
+                         │   (llm/*.py)       │
+                         │                    │
+                         │ • OpenAI (GPT-4)   │
+                         │ • Anthropic        │
+                         │ • Mistral          │
+                         │ • DeepSeek         │
                          └─────────┬──────────┘
                                    │
-         ┌─────────────────────────┼─────────────────────────┐
-         │                         │                         │
-         ▼                         ▼                         ▼
-┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
-│    search.py    │      │  processor.py   │      │     gui.py      │
-│  CrossRef API   │      │ PDF Processing  │      │ Tkinter GUI     │
-│    Search       │      │ & Code Gen      │      │                 │
-└────────┬────────┘      └────────┬────────┘      └────────┬────────┘
-         │                        │                        │
-         ▼                        ▼                        ▼
-┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
-│  utils.py       │      │  External APIs  │      │   File System   │
-│ - Logging       │      │ - OpenAI API    │      │ - articles.json │
-│ - API Keys      │      │ - Unpaywall API │      │ - downloads/    │
-│ - PDF Download  │      │ - CrossRef API  │      │ - generated_code│
-└─────────────────┘      └─────────────────┘      └─────────────────┘
+                    ┌──────────────┼──────────────┐
+                    │              │              │
+                    ▼              ▼              ▼
+           ┌────────────┐  ┌────────────┐  ┌────────────┐
+           │ CrossRef   │  │ Unpaywall  │  │QuantConnect│
+           │ API        │  │ API        │  │ MCP        │
+           │ (Search)   │  │ (PDF)      │  │ (Validate) │
+           └────────────┘  └────────────┘  └────────────┘
 ```
 
-### Component Descriptions
+### Component Summary
 
-| Component | File | Responsibility |
-|-----------|------|----------------|
-| CLI Entry | `cli.py:21-62` | Click command group, routing, initialization |
-| Search | `search.py:11-55` | CrossRef API integration, article discovery |
-| Processor | `processor.py:563-642` | PDF processing, NLP analysis, code generation |
-| GUI | `gui.py:21-343` | Tkinter-based interactive interface |
-| Utilities | `utils.py:9-115` | Logging, API key management, PDF download |
+| Layer | Components | Source Files |
+|-------|------------|--------------|
+| Entry | CLI, Chat | `cli.py:40-510`, `chat.py:27-334` |
+| Tools | Search, Download, Summarize, Generate, Validate | `tools/*.py` |
+| Agents | Coordinator, Universe, Alpha, Risk, Strategy | `agents/*.py` |
+| Advanced | Autonomous Pipeline, Library Builder | `autonomous/*.py`, `library/*.py` |
+| LLM | Multi-provider abstraction | `llm/providers.py` |
+| Core | PDF Processing, Article Processor | `core/processor.py`, `core/llm.py` |
 
 ---
 
-## 2. Entry Points & CLI Commands
+## 2. Entry Points & Execution Modes
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              ENTRY POINT                                         │
-│                           quantcli/cli.py:282                                    │
-└─────────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-                         ┌────────────────────┐
-                         │   cli() function   │
-                         │    cli.py:25       │
-                         │                    │
-                         │  1. Check --version│
-                         │  2. setup_logging()│
-                         │  3. load_api_key() │
-                         └─────────┬──────────┘
-                                   │
-                                   ▼
-        ┌────────────────────────────────────────────────────────────┐
-        │                    CLI COMMANDS                             │
-        └────────────────────────────────────────────────────────────┘
-                                   │
-    ┌──────────┬──────────┬────────┼────────┬──────────┬──────────┐
-    ▼          ▼          ▼        ▼        ▼          ▼          ▼
-┌────────┐ ┌────────┐ ┌────────┐ ┌─────┐ ┌──────────┐ ┌────────┐ ┌───────────┐
-│ search │ │  list  │ │download│ │summ-│ │generate- │ │  open- │ │interactive│
-│        │ │        │ │        │ │arize│ │  code    │ │ article│ │           │
-│:73-100 │ │:103-121│ │:125-160│ │:164 │ │:202-239  │ │:243-264│ │:267-280   │
-│        │ │        │ │        │ │-198 │ │          │ │        │ │           │
-└───┬────┘ └───┬────┘ └───┬────┘ └──┬──┘ └────┬─────┘ └───┬────┘ └─────┬─────┘
-    │          │          │         │         │           │            │
-    ▼          ▼          ▼         ▼         ▼           ▼            ▼
-  search    articles   download  Article  Article      Open URL    launch_gui()
-  _crossref  .json     _pdf()   Processor Processor   webbrowser  gui.py:337
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                              ENTRY POINTS                                            │
+│                           quantcoder/cli.py                                          │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+                            ┌─────────────────────┐
+                            │  $ quantcoder       │
+                            │  or $ qc            │
+                            └──────────┬──────────┘
+                                       │
+                                       ▼
+                            ┌─────────────────────┐
+                            │    main()           │
+                            │    cli.py:45        │
+                            │                     │
+                            │ 1. setup_logging()  │
+                            │ 2. Config.load()    │
+                            │ 3. load_api_key()   │
+                            └──────────┬──────────┘
+                                       │
+            ┌──────────────────────────┼──────────────────────────┐
+            │                          │                          │
+   ┌────────▼────────┐      ┌──────────▼──────────┐    ┌──────────▼──────────┐
+   │ --prompt flag?  │      │ Subcommand given?   │    │ No args (default)   │
+   │                 │      │                     │    │                     │
+   │ ProgrammaticChat│      │ Execute subcommand  │    │ InteractiveChat     │
+   │ cli.py:81-86    │      │                     │    │ cli.py:88-90        │
+   └─────────────────┘      └──────────┬──────────┘    └─────────────────────┘
+                                       │
+    ┌──────────────────────────────────┼──────────────────────────────────┐
+    │                                  │                                  │
+    ▼                                  ▼                                  ▼
+┌──────────────┐              ┌──────────────┐              ┌──────────────────┐
+│   STANDARD   │              │  AUTONOMOUS  │              │    LIBRARY       │
+│   COMMANDS   │              │    MODE      │              │    BUILDER       │
+│              │              │              │              │                  │
+│ • search     │              │ • auto start │              │ • library build  │
+│ • download   │              │ • auto status│              │ • library status │
+│ • summarize  │              │ • auto report│              │ • library resume │
+│ • generate   │              │   cli.py:    │              │ • library export │
+│ • config     │              │   276-389    │              │   cli.py:392-506 │
+│   cli.py:    │              │              │              │                  │
+│   109-270    │              │              │              │                  │
+└──────────────┘              └──────────────┘              └──────────────────┘
 ```
 
-### Command Flow Details
+### CLI Commands Reference
 
 | Command | Function | Source | Description |
 |---------|----------|--------|-------------|
-| `search <query>` | `search()` | `cli.py:73` | Search CrossRef for articles |
-| `list` | `list()` | `cli.py:103` | Display cached articles |
-| `download <id>` | `download()` | `cli.py:125` | Download article PDF |
-| `summarize <id>` | `summarize()` | `cli.py:164` | Generate AI summary |
-| `generate-code <id>` | `generate_code_cmd()` | `cli.py:202` | Generate trading algorithm |
-| `open-article <id>` | `open_article()` | `cli.py:243` | Open article in browser |
-| `interactive` | `interactive()` | `cli.py:267` | Launch GUI mode |
+| `quantcoder` | `main()` | `cli.py:45` | Launch interactive mode |
+| `quantcoder --prompt "..."` | `ProgrammaticChat` | `cli.py:81` | Non-interactive query |
+| `quantcoder search <query>` | `search()` | `cli.py:113` | Search CrossRef API |
+| `quantcoder download <id>` | `download()` | `cli.py:141` | Download article PDF |
+| `quantcoder summarize <id>` | `summarize()` | `cli.py:162` | Generate AI summary |
+| `quantcoder generate <id>` | `generate_code()` | `cli.py:189` | Generate QC algorithm |
+| `quantcoder auto start` | `auto_start()` | `cli.py:293` | Autonomous generation |
+| `quantcoder library build` | `library_build()` | `cli.py:414` | Build strategy library |
 
 ---
 
-## 3. Article Search Flow
+## 3. Tool System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                        ARTICLE SEARCH FLOW                                       │
-│                     quantcli search "momentum trading"                           │
-└─────────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                         TOOL SYSTEM (Mistral Vibe Pattern)                           │
+│                                tools/base.py                                         │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+                                ┌───────────────┐
+                                │  Tool (ABC)   │
+                                │  base.py:27   │
+                                │               │
+                                │ + name        │
+                                │ + description │
+                                │ + execute()   │
+                                │ + is_enabled()│
+                                └───────┬───────┘
+                                        │
+                                        │ inherits
+        ┌───────────────┬───────────────┼───────────────┬───────────────┐
+        │               │               │               │               │
+        ▼               ▼               ▼               ▼               ▼
+┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐
+│SearchArticles │ │DownloadArticle│ │SummarizeArticle│ │ GenerateCode │ │ ValidateCode  │
+│   Tool        │ │    Tool       │ │     Tool      │ │    Tool      │ │    Tool       │
+│               │ │               │ │               │ │              │ │               │
+│article_tools  │ │article_tools  │ │article_tools  │ │ code_tools   │ │  code_tools   │
+│   .py         │ │   .py         │ │   .py         │ │    .py       │ │     .py       │
+└───────┬───────┘ └───────┬───────┘ └───────┬───────┘ └───────┬──────┘ └───────┬───────┘
+        │                 │                 │                 │                 │
+        ▼                 ▼                 ▼                 ▼                 ▼
+┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐
+│  CrossRef     │ │  Unpaywall    │ │ OpenAI API    │ │ OpenAI API    │ │  AST Parser   │
+│    API        │ │    API        │ │ (Summarize)   │ │ (Generate)    │ │  (Validate)   │
+└───────────────┘ └───────────────┘ └───────────────┘ └───────────────┘ └───────────────┘
+
+
+                            TOOL EXECUTION FLOW
+
+         ┌──────────────────┐
+         │   User Command   │
+         │  "search query"  │
+         └────────┬─────────┘
+                  │
+                  ▼
+         ┌──────────────────┐
+         │  Tool Selection  │
+         │  chat.py:129     │
+         └────────┬─────────┘
+                  │
+                  ▼
+         ┌──────────────────┐
+         │  tool.execute()  │
+         │   **kwargs       │
+         └────────┬─────────┘
+                  │
+                  ▼
+         ┌──────────────────┐
+         │   ToolResult     │
+         │   base.py:11     │
+         │                  │
+         │ • success: bool  │
+         │ • data: Any      │
+         │ • error: str     │
+         │ • message: str   │
+         └────────┬─────────┘
+                  │
+                  ▼
+         ┌──────────────────┐
+         │  Display Result  │
+         │  (Rich Console)  │
+         └──────────────────┘
+```
+
+### Tool Result Flow Example
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                      GENERATE CODE TOOL FLOW                                         │
+│                     tools/code_tools.py                                              │
+└─────────────────────────────────────────────────────────────────────────────────────┘
 
          ┌─────────────────┐
-         │ User Input:     │
-         │ query + --num   │
-         │   cli.py:73     │
+         │ execute(        │
+         │   article_id=1, │
+         │   max_attempts=6│
+         │ )               │
          └────────┬────────┘
                   │
                   ▼
-         ┌─────────────────┐
-         │ search_crossref │
-         │  search.py:11   │
-         └────────┬────────┘
+         ┌─────────────────────┐
+         │ Load article PDF    │
+         │ from downloads/     │
+         └────────┬────────────┘
                   │
                   ▼
-    ┌──────────────────────────┐
-    │   HTTP GET Request       │
-    │ api.crossref.org/works   │
-    │     search.py:29         │
-    │                          │
-    │  params: {               │
-    │    query: <query>,       │
-    │    rows: <num>           │
-    │  }                       │
-    └────────────┬─────────────┘
-                 │
-                 ▼
-           ┌──────────◇──────────┐
-           │  Response OK?       │
-           └───────┬─────┬───────┘
-                   │     │
-              Yes  │     │  No
-                   ▼     ▼
-    ┌──────────────────┐ ┌──────────────────┐
-    │ Parse JSON       │ │ Return empty []  │
-    │ Extract items[]  │ │   search.py:55   │
-    │  search.py:32    │ └──────────────────┘
+         ┌─────────────────────┐
+         │ ArticleProcessor    │
+         │ .extract_structure()│
+         │ core/processor.py   │
+         └────────┬────────────┘
+                  │
+                  ▼
+         ┌─────────────────────┐
+         │ LLMHandler          │
+         │ .generate_summary() │
+         │ core/llm.py         │
+         └────────┬────────────┘
+                  │
+                  ▼
+         ┌─────────────────────┐
+         │ LLMHandler          │
+         │ .generate_qc_code() │
+         └────────┬────────────┘
+                  │
+                  ▼
+    ┌─────────────────────────────────┐
+    │     VALIDATION & REFINEMENT     │
+    │            LOOP                 │
+    │                                 │
+    │  ┌────────────────────────┐     │
+    │  │ CodeValidator          │     │
+    │  │ .validate_code()       │     │
+    │  │  (AST parse check)     │     │
+    │  └───────────┬────────────┘     │
+    │              │                  │
+    │         ◇────┴────◇             │
+    │      Valid?    Invalid?         │
+    │         │          │            │
+    │         ▼          ▼            │
+    │    ┌────────┐  ┌───────────┐    │
+    │    │ Return │  │ Refine    │    │
+    │    │ Code   │  │ with LLM  │    │
+    │    └────────┘  │ (max 6x)  │    │
+    │                └─────┬─────┘    │
+    │                      │          │
+    │                      ▼          │
+    │              Loop back to       │
+    │              validation         │
+    └─────────────────────────────────┘
+                  │
+                  ▼
+         ┌─────────────────────┐
+         │   ToolResult(       │
+         │     success=True,   │
+         │     data={          │
+         │       'summary':...,│
+         │       'code':...    │
+         │     }               │
+         │   )                 │
+         └─────────────────────┘
+```
+
+---
+
+## 4. Multi-Agent Orchestration
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                         MULTI-AGENT SYSTEM                                           │
+│                      agents/coordinator_agent.py                                     │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+                          ┌──────────────────────────┐
+                          │   User Request           │
+                          │   "Create momentum       │
+                          │    strategy with RSI"    │
+                          └────────────┬─────────────┘
+                                       │
+                                       ▼
+                          ┌──────────────────────────┐
+                          │   CoordinatorAgent       │
+                          │   coordinator_agent.py:14│
+                          │                          │
+                          │   Responsibilities:      │
+                          │   • Analyze request      │
+                          │   • Create execution plan│
+                          │   • Spawn agents         │
+                          │   • Integrate results    │
+                          │   • Validate via MCP     │
+                          └────────────┬─────────────┘
+                                       │
+                                       ▼
+                          ┌──────────────────────────┐
+                          │ Step 1: Create Plan      │
+                          │ _create_execution_plan() │
+                          │   coordinator_agent.py:83│
+                          │                          │
+                          │ Uses LLM to determine:   │
+                          │ • Required components    │
+                          │ • Execution order        │
+                          │ • Key parameters         │
+                          │ • Parallel vs Sequential │
+                          └────────────┬─────────────┘
+                                       │
+                                       ▼
+                          ┌──────────────────────────┐
+                          │ Execution Plan (JSON):   │
+                          │ {                        │
+                          │  "components": {         │
+                          │    "universe": "...",    │
+                          │    "alpha": "...",       │
+                          │    "risk": "..."         │
+                          │  },                      │
+                          │  "execution_strategy":   │
+                          │    "parallel"            │
+                          │ }                        │
+                          └────────────┬─────────────┘
+                                       │
+                                       ▼
+                          ┌──────────────────────────┐
+                          │ Step 2: Execute Plan     │
+                          │ _execute_plan()          │
+                          │  coordinator_agent.py:153│
+                          └────────────┬─────────────┘
+                                       │
+        ┌──────────────────────────────┼──────────────────────────────┐
+        │                              │                              │
+        │      PARALLEL EXECUTION      │      SEQUENTIAL EXECUTION    │
+        │      (strategy="parallel")   │      (strategy="sequential") │
+        │                              │                              │
+        ▼                              │                              ▼
+┌───────────────────────────────────┐  │  ┌───────────────────────────────────┐
+│      ParallelExecutor             │  │  │         Sequential Execution       │
+│      execution/parallel_executor  │  │  │                                   │
+│                                   │  │  │  Universe ──▶ Alpha ──▶ Risk      │
+│  ┌─────────────┐ ┌─────────────┐  │  │  │     │          │         │        │
+│  │ Universe    │ │   Alpha     │  │  │  │     ▼          ▼         ▼        │
+│  │  Agent      │ │   Agent     │  │  │  │ Universe.py  Alpha.py  Risk.py   │
+│  │             │ │             │  │  │  │                                   │
+│  │ (Parallel)  │ │ (Parallel)  │  │  │  └───────────────────────────────────┘
+│  └──────┬──────┘ └──────┬──────┘  │  │
+│         │               │         │  │
+│         └───────┬───────┘         │  │
+│                 │                 │  │
+│                 ▼                 │  │
+│        ┌───────────────┐          │  │
+│        │  Risk Agent   │          │  │
+│        │  (Sequential) │          │  │
+│        └───────┬───────┘          │  │
+│                │                  │  │
+└────────────────┼──────────────────┘  │
+                 │                     │
+                 ▼                     │
+        ┌───────────────────────────────────┐
+        │       Strategy Agent              │
+        │       strategy_agent.py           │
+        │                                   │
+        │  Integrates all components into   │
+        │  Main.py                          │
+        │                                   │
+        │  • Imports Universe, Alpha, Risk  │
+        │  • Initialize() method            │
+        │  • OnData() method                │
+        │  • Wiring of components           │
+        └───────────────┬───────────────────┘
+                        │
+                        ▼
+        ┌───────────────────────────────────┐
+        │      Generated Files              │
+        │                                   │
+        │  ┌──────────┐  ┌──────────┐       │
+        │  │ Main.py  │  │ Alpha.py │       │
+        │  └──────────┘  └──────────┘       │
+        │  ┌──────────┐  ┌──────────┐       │
+        │  │Universe.py│ │ Risk.py  │       │
+        │  └──────────┘  └──────────┘       │
+        └───────────────┬───────────────────┘
+                        │
+                        ▼
+        ┌───────────────────────────────────┐
+        │ Step 3: Validate via MCP          │
+        │ _validate_and_refine()            │
+        │   coordinator_agent.py:257        │
+        │                                   │
+        │ • Send to QuantConnect MCP        │
+        │ • Check compilation               │
+        │ • If errors: use LLM to fix       │
+        │ • Retry up to 3 times             │
+        └───────────────────────────────────┘
+```
+
+### Agent Class Hierarchy
+
+```
+                              ┌──────────────────┐
+                              │   BaseAgent      │
+                              │   base.py:28     │
+                              │                  │
+                              │ + llm: Provider  │
+                              │ + config         │
+                              │ + agent_name     │
+                              │ + agent_descr    │
+                              │ + execute()      │
+                              │ + _generate_llm()│
+                              │ + _extract_code()│
+                              └────────┬─────────┘
+                                       │
+         ┌─────────────────────────────┼─────────────────────────────┐
+         │                             │                             │
+         ▼                             ▼                             ▼
+┌─────────────────┐         ┌─────────────────┐         ┌─────────────────┐
+│ CoordinatorAgent│         │  UniverseAgent  │         │   AlphaAgent    │
+│                 │         │                 │         │                 │
+│ Orchestrates    │         │ Generates       │         │ Generates       │
+│ multi-agent     │         │ Universe.py     │         │ Alpha.py        │
+│ workflow        │         │                 │         │                 │
+│                 │         │ Stock selection │         │ Trading signals │
+│                 │         │ & filtering     │         │ Entry/exit logic│
+└─────────────────┘         └─────────────────┘         └─────────────────┘
+         │
+         ├─────────────────────────────┐
+         │                             │
+         ▼                             ▼
+┌─────────────────┐         ┌─────────────────┐
+│   RiskAgent     │         │ StrategyAgent   │
+│                 │         │                 │
+│ Generates       │         │ Generates       │
+│ Risk.py         │         │ Main.py         │
+│                 │         │                 │
+│ Position sizing │         │ Integrates all  │
+│ Stop-loss logic │         │ components      │
+└─────────────────┘         └─────────────────┘
+```
+
+---
+
+## 5. Autonomous Pipeline (Self-Improving)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                    AUTONOMOUS SELF-IMPROVING PIPELINE                                │
+│                       autonomous/pipeline.py                                         │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+$ quantcoder auto start --query "momentum trading" --max-iterations 50
+
+                           ┌──────────────────────┐
+                           │  AutonomousPipeline  │
+                           │    pipeline.py:54    │
+                           │                      │
+                           │ • LearningDatabase   │
+                           │ • ErrorLearner       │
+                           │ • PerformanceLearner │
+                           │ • PromptRefiner      │
+                           └──────────┬───────────┘
+                                      │
+                                      ▼
+                           ┌──────────────────────┐
+                           │   run() Main Loop    │
+                           │    pipeline.py:82    │
+                           │                      │
+                           │ while iteration <    │
+                           │   max_iterations:    │
+                           └──────────┬───────────┘
+                                      │
+                                      ▼
+┌──────────────────────────────────────────────────────────────────────────────────────┐
+│                         SINGLE ITERATION (_run_iteration)                            │
+│                              pipeline.py:143-258                                     │
+│                                                                                      │
+│  ┌────────────────────────────────────────────────────────────────────────────────┐  │
+│  │                                                                                │  │
+│  │  STEP 1: FETCH PAPERS                                                         │  │
+│  │  ┌─────────────────┐                                                          │  │
+│  │  │ _fetch_papers() │───▶ CrossRef/arXiv API ───▶ List of Papers               │  │
+│  │  │  pipeline.py:260│                                                          │  │
+│  │  └─────────────────┘                                                          │  │
+│  │           │                                                                    │  │
+│  │           ▼                                                                    │  │
+│  │  STEP 2: APPLY LEARNED PATTERNS                                               │  │
+│  │  ┌─────────────────────────────────────────────────────────┐                  │  │
+│  │  │ PromptRefiner.get_enhanced_prompts_for_agents()         │                  │  │
+│  │  │                                                         │                  │  │
+│  │  │ • Retrieves successful patterns from database           │                  │  │
+│  │  │ • Enhances prompts with learned fixes                   │                  │  │
+│  │  │ • Applies error avoidance patterns                      │                  │  │
+│  │  └─────────────────────────────────────────────────────────┘                  │  │
+│  │           │                                                                    │  │
+│  │           ▼                                                                    │  │
+│  │  STEP 3: GENERATE STRATEGY                                                    │  │
+│  │  ┌─────────────────┐                                                          │  │
+│  │  │_generate_strategy│───▶ Multi-Agent System ───▶ Strategy Code              │  │
+│  │  │ pipeline.py:269 │                                                          │  │
+│  │  └─────────────────┘                                                          │  │
+│  │           │                                                                    │  │
+│  │           ▼                                                                    │  │
+│  │  STEP 4: VALIDATE & LEARN FROM ERRORS                                         │  │
+│  │  ┌─────────────────────────────────────────────────────────┐                  │  │
+│  │  │ _validate_and_learn()              pipeline.py:282      │                  │  │
+│  │  │                                                         │                  │  │
+│  │  │  ┌─────────────◇─────────────┐                          │                  │
+│  │  │  │    Validation Passed?     │                          │                  │  │
+│  │  │  └───────┬───────────┬───────┘                          │                  │
+│  │  │     Yes  │           │  No                              │                  │
+│  │  │          │           ▼                                  │                  │
+│  │  │          │  ┌─────────────────────────┐                 │                  │
+│  │  │          │  │ SELF-HEALING            │                 │                  │
+│  │  │          │  │ _apply_learned_fixes()  │                 │                  │
+│  │  │          │  │  pipeline.py:302        │                 │                  │
+│  │  │          │  │                         │                 │                  │
+│  │  │          │  │ • ErrorLearner.analyze  │                 │                  │
+│  │  │          │  │ • Apply suggested_fix   │                 │                  │
+│  │  │          │  │ • Re-validate           │                 │                  │
+│  │  │          │  └────────────┬────────────┘                 │                  │
+│  │  │          │               │                              │                  │
+│  │  │          └───────────────┤                              │                  │
+│  │  └──────────────────────────┼──────────────────────────────┘                  │
+│  │           │                 │                                                  │
+│  │           ▼                 ▼                                                  │
+│  │  STEP 5: BACKTEST                                                             │
+│  │  ┌─────────────────┐                                                          │  │
+│  │  │   _backtest()   │───▶ QuantConnect MCP ───▶ {sharpe, drawdown, return}    │  │
+│  │  │ pipeline.py:322 │                                                          │  │
+│  │  └─────────────────┘                                                          │  │
+│  │           │                                                                    │  │
+│  │           ▼                                                                    │  │
+│  │  STEP 6: LEARN FROM PERFORMANCE                                               │  │
+│  │  ┌─────────────────────────────────────────────────────────┐                  │  │
+│  │  │                                                         │                  │  │
+│  │  │  ┌─────────────◇─────────────┐                          │                  │  │
+│  │  │  │ Sharpe >= min_sharpe?     │                          │                  │  │
+│  │  │  └───────┬───────────┬───────┘                          │                  │  │
+│  │  │     Yes  │           │  No                              │                  │  │
+│  │  │          ▼           ▼                                  │                  │
+│  │  │  ┌───────────────┐ ┌───────────────────────┐            │                  │
+│  │  │  │ SUCCESS!      │ │ PerformanceLearner    │            │                  │
+│  │  │  │               │ │ .analyze_poor_perf()  │            │                  │
+│  │  │  │ identify_     │ │                       │            │                  │
+│  │  │  │ success_      │ │ • Identify issues     │            │                  │
+│  │  │  │ patterns()    │ │ • Store for learning  │            │                  │
+│  │  │  └───────────────┘ └───────────────────────┘            │                  │
+│  │  │                                                         │                  │  │
+│  │  └─────────────────────────────────────────────────────────┘                  │  │
+│  │           │                                                                    │  │
+│  │           ▼                                                                    │  │
+│  │  STEP 7: STORE STRATEGY                                                       │  │
+│  │  ┌─────────────────┐                                                          │  │
+│  │  │ _store_strategy │───▶ LearningDatabase + Filesystem                        │  │
+│  │  │ pipeline.py:337 │                                                          │  │
+│  │  └─────────────────┘                                                          │  │
+│  │                                                                                │  │
+│  └────────────────────────────────────────────────────────────────────────────────┘  │
+│                                      │                                               │
+│                                      ▼                                               │
+│                           ┌──────────────────────┐                                   │
+│                           │  _should_continue()  │                                   │
+│                           │   pipeline.py:368    │                                   │
+│                           │                      │                                   │
+│                           │ • Check max_iters    │                                   │
+│                           │ • User prompt (10x)  │                                   │
+│                           │ • Check paused flag  │                                   │
+│                           └──────────┬───────────┘                                   │
+│                                      │                                               │
+└──────────────────────────────────────┼───────────────────────────────────────────────┘
+                                       │
+                                       ▼
+                           ┌──────────────────────┐
+                           │ _generate_final_     │
+                           │   report()           │
+                           │  pipeline.py:399     │
+                           │                      │
+                           │ • Session stats      │
+                           │ • Common errors      │
+                           │ • Key learnings      │
+                           │ • Library summary    │
+                           └──────────────────────┘
+```
+
+### Learning System Components
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                         LEARNING SUBSYSTEM                                           │
+│                        autonomous/database.py                                        │
+│                        autonomous/learner.py                                         │
+│                        autonomous/prompt_refiner.py                                  │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────┐
+│                     LearningDatabase (SQLite)                        │
+│                        database.py                                   │
+│                                                                      │
+│  Tables:                                                             │
+│  ┌───────────────────┐  ┌───────────────────┐  ┌───────────────────┐ │
+│  │ generated_strategies│ │   error_patterns  │  │ success_patterns │ │
+│  │                   │  │                   │  │                   │ │
+│  │ • name            │  │ • error_type      │  │ • pattern         │ │
+│  │ • category        │  │ • count           │  │ • strategy_type   │ │
+│  │ • sharpe_ratio    │  │ • fixed_count     │  │ • avg_sharpe      │ │
+│  │ • max_drawdown    │  │ • suggested_fix   │  │ • usage_count     │ │
+│  │ • code_files      │  │ • success_rate    │  │                   │ │
+│  │ • paper_source    │  │                   │  │                   │ │
+│  └───────────────────┘  └───────────────────┘  └───────────────────┘ │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
+         │                          │                          │
+         │                          │                          │
+         ▼                          ▼                          ▼
+┌─────────────────┐       ┌─────────────────┐       ┌─────────────────┐
+│  ErrorLearner   │       │ PerformanceLearner│     │  PromptRefiner  │
+│   learner.py    │       │    learner.py    │       │ prompt_refiner  │
+│                 │       │                  │       │      .py        │
+│ • analyze_error │       │ • analyze_poor_  │       │                 │
+│ • get_common_   │       │   performance    │       │ • get_enhanced_ │
+│   errors        │       │ • identify_      │       │   prompts_for_  │
+│ • record_fix    │       │   success_       │       │   agents        │
+│                 │       │   patterns       │       │                 │
+└─────────────────┘       └─────────────────┘       └─────────────────┘
+```
+
+---
+
+## 6. Library Builder System
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                         LIBRARY BUILDER SYSTEM                                       │
+│                            library/builder.py                                        │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+$ quantcoder library build --comprehensive --max-hours 24
+
+                          ┌──────────────────────┐
+                          │   LibraryBuilder     │
+                          │    builder.py:31     │
+                          │                      │
+                          │ • CoverageTracker    │
+                          │ • checkpoint_file    │
+                          │ • STRATEGY_TAXONOMY  │
+                          └──────────┬───────────┘
+                                     │
+                                     ▼
+                          ┌──────────────────────┐
+                          │ _display_build_plan()│
+                          │                      │
+                          │ Shows:               │
+                          │ • Categories to build│
+                          │ • Target strategies  │
+                          │ • Estimated time     │
+                          └──────────┬───────────┘
+                                     │
+                                     ▼
+                          ┌──────────────────────┐
+                          │ Check for checkpoint │
+                          │ Resume if exists?    │
+                          └──────────┬───────────┘
+                                     │
+                                     ▼
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                         CATEGORY BUILD LOOP                                          │
+│                          builder.py:103-146                                          │
+│                                                                                      │
+│   for priority in ["high", "medium", "low"]:                                         │
+│       for category_name, category_config in priority_cats.items():                   │
+│                                                                                      │
+│   ┌───────────────────────────────────────────────────────────────────────────────┐  │
+│   │                                                                               │  │
+│   │   STRATEGY_TAXONOMY (library/taxonomy.py):                                    │  │
+│   │                                                                               │  │
+│   │   ┌─────────────────┬─────────────────┬─────────────────┬─────────────────┐   │  │
+│   │   │    MOMENTUM     │  MEAN REVERSION │    FACTOR       │   VOLATILITY    │   │  │
+│   │   │  (high priority)│ (high priority) │ (high priority) │ (medium)        │   │  │
+│   │   │                 │                 │                 │                 │   │  │
+│   │   │ min_strategies: │ min_strategies: │ min_strategies: │ min_strategies: │   │  │
+│   │   │      20         │      15         │      15         │      10         │   │  │
+│   │   │                 │                 │                 │                 │   │  │
+│   │   │ queries:        │ queries:        │ queries:        │ queries:        │   │  │
+│   │   │ - momentum      │ - mean reversion│ - value factor  │ - volatility    │   │  │
+│   │   │ - trend follow  │ - pairs trading │ - momentum      │ - VIX trading   │   │  │
+│   │   │ - crossover     │ - stat arb      │ - quality       │ - options       │   │  │
+│   │   └─────────────────┴─────────────────┴─────────────────┴─────────────────┘   │  │
+│   │                                                                               │  │
+│   │   ┌─────────────────┬─────────────────┬─────────────────┬─────────────────┐   │  │
+│   │   │   ML-BASED      │  EVENT-DRIVEN   │    SENTIMENT    │   OPTIONS       │   │  │
+│   │   │ (medium)        │ (medium)        │ (low priority)  │ (low priority)  │   │  │
+│   │   │                 │                 │                 │                 │   │  │
+│   │   │ min_strategies: │ min_strategies: │ min_strategies: │ min_strategies: │   │  │
+│   │   │      10         │      10         │       5         │       5         │   │  │
+│   │   └─────────────────┴─────────────────┴─────────────────┴─────────────────┘   │  │
+│   │                                                                               │  │
+│   └───────────────────────────────────────────────────────────────────────────────┘  │
+│                                      │                                               │
+│                                      ▼                                               │
+│   ┌───────────────────────────────────────────────────────────────────────────────┐  │
+│   │ _build_category()                  builder.py:154-217                         │  │
+│   │                                                                               │  │
+│   │  for query in category_config.queries:                                        │  │
+│   │      for i in range(attempts_per_query):                                      │  │
+│   │                                                                               │  │
+│   │          ┌──────────────────────────────────────────────┐                     │  │
+│   │          │ _generate_one_strategy()  builder.py:219    │                     │  │
+│   │          │                                              │                     │  │
+│   │          │ 1. Fetch papers                              │                     │  │
+│   │          │ 2. Get enhanced prompts                      │                     │  │
+│   │          │ 3. Generate strategy (Autonomous Pipeline)   │                     │  │
+│   │          │ 4. Validate                                  │                     │  │
+│   │          │ 5. Backtest                                  │                     │  │
+│   │          │ 6. Check Sharpe >= min_sharpe               │                     │  │
+│   │          │ 7. Save to library                          │                     │  │
+│   │          └──────────────────────────────────────────────┘                     │  │
+│   │                                                                               │  │
+│   │          ┌──────────────────────────────────────────────┐                     │  │
+│   │          │ coverage.update()                            │                     │  │
+│   │          │ Save checkpoint after each category          │                     │  │
+│   │          └──────────────────────────────────────────────┘                     │  │
+│   │                                                                               │  │
+│   └───────────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                      │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+                                     │
+                                     ▼
+                          ┌──────────────────────┐
+                          │ _generate_library_   │
+                          │   report()           │
+                          │  builder.py:316      │
+                          │                      │
+                          │ Generates:           │
+                          │ • index.json         │
+                          │ • README.md          │
+                          │ • Per-category stats │
+                          └──────────────────────┘
+                                     │
+                                     ▼
+                          ┌──────────────────────┐
+                          │  OUTPUT STRUCTURE    │
+                          │                      │
+                          │  strategies_library/ │
+                          │  ├── index.json      │
+                          │  ├── README.md       │
+                          │  ├── momentum/       │
+                          │  │   ├── Strategy1/  │
+                          │  │   │   ├── Main.py │
+                          │  │   │   ├── Alpha.py│
+                          │  │   │   └── meta.json│
+                          │  │   └── Strategy2/  │
+                          │  ├── mean_reversion/ │
+                          │  └── factor_based/   │
+                          └──────────────────────┘
+```
+
+---
+
+## 7. Chat Interface Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                           CHAT INTERFACE                                             │
+│                             chat.py                                                  │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+                     ┌──────────────────────────────────┐
+                     │                                  │
+                     │    InteractiveChat (REPL)        │
+                     │         chat.py:27               │
+                     │                                  │
+                     │  ┌────────────────────────────┐  │
+                     │  │  prompt_toolkit Features:  │  │
+                     │  │  • FileHistory             │  │
+                     │  │  • AutoSuggestFromHistory  │  │
+                     │  │  • WordCompleter           │  │
+                     │  └────────────────────────────┘  │
+                     │                                  │
+                     └──────────────┬───────────────────┘
+                                    │
+                                    ▼
+                     ┌──────────────────────────────────┐
+                     │         run() Loop               │
+                     │          chat.py:55              │
+                     │                                  │
+                     │   while True:                    │
+                     │     user_input = prompt()        │
+                     └──────────────┬───────────────────┘
+                                    │
+                                    ▼
+                     ┌────────────────◇────────────────┐
+                     │      Input Type Detection       │
+                     │        chat.py:69-95            │
+                     └───────────────┬─────────────────┘
+                                     │
+         ┌───────────────────────────┼───────────────────────────┐
+         │                           │                           │
+         ▼                           ▼                           ▼
+┌─────────────────┐       ┌─────────────────┐       ┌─────────────────┐
+│ Special Command │       │  Tool Command   │       │ Natural Language│
+│                 │       │                 │       │                 │
+│ exit, quit      │       │ search <query>  │       │ "Find articles  │
+│ help            │       │ download <id>   │       │  about trading" │
+│ clear           │       │ summarize <id>  │       │                 │
+│ config          │       │ generate <id>   │       │                 │
+└────────┬────────┘       └────────┬────────┘       └────────┬────────┘
+         │                         │                         │
+         ▼                         ▼                         ▼
+┌─────────────────┐       ┌─────────────────┐       ┌─────────────────┐
+│  Handle         │       │  execute_tool() │       │ process_natural │
+│  directly       │       │   chat.py:129   │       │ _language()     │
+│                 │       │                 │       │  chat.py:191    │
+│ - Show help     │       │ tool.execute()  │       │                 │
+│ - Clear screen  │       │ Display result  │       │ LLMHandler.chat │
+│ - Exit loop     │       │                 │       │ Maintain context│
+└─────────────────┘       └─────────────────┘       └─────────────────┘
+                                    │
+                                    ▼
+                     ┌──────────────────────────────────┐
+                     │       Rich Console Output        │
+                     │                                  │
+                     │  ┌────────────────────────────┐  │
+                     │  │  Panel (Markdown)          │  │
+                     │  │  Syntax (code highlighting)│  │
+                     │  │  Status (spinners)         │  │
+                     │  │  Table (search results)    │  │
+                     │  └────────────────────────────┘  │
+                     └──────────────────────────────────┘
+
+
+                         PROGRAMMATIC CHAT
+
+         ┌──────────────────────────────────┐
+         │                                  │
+         │    ProgrammaticChat              │
+         │         chat.py:290              │
+         │                                  │
+         │  • auto_approve = True           │
+         │  • Single process() call         │
+         │  • No interaction needed         │
+         │                                  │
+         └──────────────┬───────────────────┘
+                        │
+                        ▼
+         ┌──────────────────────────────────┐
+         │         process(prompt)          │
+         │          chat.py:307             │
+         │                                  │
+         │  1. Build messages context       │
+         │  2. Call LLMHandler.chat()       │
+         │  3. Return response string       │
+         └──────────────────────────────────┘
+```
+
+---
+
+## 8. LLM Provider Abstraction
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                       LLM PROVIDER ABSTRACTION                                       │
+│                          llm/providers.py                                            │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+                          ┌──────────────────────┐
+                          │    LLMProvider       │
+                          │    (Abstract Base)   │
+                          │                      │
+                          │ + chat(messages)     │
+                          │ + get_model_name()   │
+                          └──────────┬───────────┘
+                                     │
+        ┌────────────────────────────┼────────────────────────────┐
+        │                            │                            │
+        ▼                            ▼                            ▼
+┌───────────────┐         ┌───────────────┐         ┌───────────────┐
+│ OpenAIProvider│         │AnthropicProvider│       │ MistralProvider│
+│               │         │               │         │               │
+│ Models:       │         │ Models:       │         │ Models:       │
+│ • gpt-4o      │         │ • claude-3    │         │ • mistral-    │
+│ • gpt-4       │         │ • claude-3.5  │         │   large       │
+│ • gpt-3.5     │         │               │         │ • codestral   │
+└───────────────┘         └───────────────┘         └───────────────┘
+        │                            │                            │
+        │                            │                            │
+        └────────────────────────────┼────────────────────────────┘
+                                     │
+                                     ▼
+                          ┌──────────────────────┐
+                          │     LLMFactory       │
+                          │                      │
+                          │ + create(provider,   │
+                          │         api_key)     │
+                          │                      │
+                          │ + get_recommended_   │
+                          │   for_task(task)     │
+                          │                      │
+                          │ Task recommendations:│
+                          │ • "coding" → Mistral │
+                          │ • "reasoning" →      │
+                          │     Anthropic        │
+                          │ • "risk" → OpenAI    │
+                          │ • "general" → OpenAI │
+                          └──────────────────────┘
+
+
+                         TASK-BASED LLM SELECTION
+                    (coordinator_agent.py:164-173)
+
+         ┌──────────────────────────────────────────────────────┐
+         │                                                      │
+         │  # Different LLMs for different agent tasks          │
+         │                                                      │
+         │  code_llm = LLMFactory.create(                       │
+         │      LLMFactory.get_recommended_for_task("coding"),  │  ──▶ Mistral/Codestral
+         │      api_key                                         │
+         │  )                                                   │
+         │                                                      │
+         │  risk_llm = LLMFactory.create(                       │
+         │      LLMFactory.get_recommended_for_task("risk"),    │  ──▶ OpenAI GPT-4
+         │      api_key                                         │
+         │  )                                                   │
+         │                                                      │
+         └──────────────────────────────────────────────────────┘
+```
+
+---
+
+## 9. Data Flow & Entity Relationships
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                          DATA FLOW OVERVIEW                                          │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+
+    ┌──────────────────┐
+    │    CrossRef      │
+    │      API         │
     └────────┬─────────┘
              │
              ▼
-    ┌──────────────────────────┐
-    │ For each item, extract:  │
-    │  - id (index)            │
-    │  - title                 │
-    │  - authors               │
-    │  - published date        │
-    │  - URL                   │
-    │  - DOI                   │
-    │  - abstract              │
-    │    search.py:34-50       │
-    └────────────┬─────────────┘
-                 │
-                 ▼
-    ┌──────────────────────────┐
-    │  Return articles list    │
-    │     search.py:52         │
-    └────────────┬─────────────┘
-                 │
-                 ▼
-    ┌──────────────────────────┐
-    │ Save to articles.json    │
-    │     cli.py:89-90         │
-    └────────────┬─────────────┘
-                 │
-                 ▼
-    ┌──────────────────────────┐
-    │ Display results to user  │
-    │     cli.py:91-94         │
-    └────────────┬─────────────┘
-                 │
-                 ▼
-           ┌──────────◇──────────┐
-           │ Save to HTML?       │
-           │    cli.py:97        │
-           └───────┬─────┬───────┘
-                   │     │
-              Yes  │     │  No
-                   ▼     ▼
-    ┌──────────────────┐ ┌──────────────────┐
-    │ save_to_html()   │ │      Done        │
-    │ search.py:57-108 │ └──────────────────┘
-    │ Opens browser    │
-    └──────────────────┘
-```
-
----
-
-## 4. PDF Download Flow
-
-```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                           PDF DOWNLOAD FLOW                                      │
-│                         quantcli download <id>                                   │
-└─────────────────────────────────────────────────────────────────────────────────┘
-
-         ┌─────────────────┐
-         │  User Input:    │
-         │  article_id     │
-         │   cli.py:125    │
-         └────────┬────────┘
-                  │
-                  ▼
-         ┌────────────────────┐
-         │ Load articles.json │
-         │    cli.py:138-139  │
-         └────────┬───────────┘
-                  │
-                  ▼
-           ┌──────────◇──────────┐
-           │ Article exists?     │
-           │   cli.py:140-142    │
-           └───────┬─────┬───────┘
-                   │     │
-              Yes  │     │  No
-                   │     ▼
-                   │  ┌──────────────────┐
-                   │  │ "Article not     │
-                   │  │  found" error    │
-                   │  └──────────────────┘
-                   ▼
-         ┌─────────────────────┐
-         │ Get article details │
-         │ URL + DOI           │
-         │   cli.py:144-151    │
-         └────────┬────────────┘
-                  │
-                  ▼
-         ┌─────────────────────┐
-         │   download_pdf()    │
-         │    utils.py:70      │
-         └────────┬────────────┘
-                  │
-                  ▼
-         ┌─────────────────────┐
-         │  HTTP GET article   │
-         │  URL directly       │
-         │   utils.py:89       │
-         └────────┬────────────┘
-                  │
-                  ▼
-           ┌──────────◇──────────┐
-           │ Content-Type:       │
-           │ application/pdf?    │
-           │   utils.py:92       │
-           └───────┬─────┬───────┘
-                   │     │
-              Yes  │     │  No
-                   ▼     ▼
-    ┌──────────────────┐ ┌──────────────────────────┐
-    │ Save PDF to      │ │ Try Unpaywall API        │
-    │ downloads/       │ │ get_pdf_url_via_unpaywall│
-    │ article_<id>.pdf │ │   utils.py:99-102        │
-    │  utils.py:93-96  │ └────────────┬─────────────┘
-    └────────┬─────────┘              │
-             │                        ▼
-             │              ┌──────────◇──────────┐
-             │              │ PDF URL found?      │
-             │              │   utils.py:103      │
-             │              └───────┬─────┬───────┘
-             │                 Yes  │     │  No
-             │                      ▼     ▼
-             │       ┌──────────────────┐ ┌──────────────────┐
-             │       │ Download from    │ │ Return False     │
-             │       │ Unpaywall URL    │ │ Offer manual     │
-             │       │  utils.py:104-109│ │ browser open     │
-             │       └────────┬─────────┘ │  cli.py:156-160  │
-             │                │           └──────────────────┘
-             └────────────────┼───────────────────┐
-                              │                   │
-                              ▼                   │
-                   ┌────────────────────┐         │
-                   │ Return True        │◀────────┘
-                   │ "PDF downloaded"   │
-                   │   cli.py:154       │
-                   └────────────────────┘
-```
-
-### Unpaywall API Integration
-
-```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                        UNPAYWALL API LOOKUP                                      │
-│                       utils.py:40-68                                             │
-└─────────────────────────────────────────────────────────────────────────────────┘
-
-         ┌─────────────────┐
-         │     DOI         │
-         └────────┬────────┘
-                  │
-                  ▼
-         ┌────────────────────────────┐
-         │  GET api.unpaywall.org/v2 │
-         │       /{doi}               │
-         │  params: { email }         │
-         │     utils.py:53-58         │
-         └────────────┬───────────────┘
-                      │
-                      ▼
-               ┌──────────◇──────────┐
-               │ is_oa = true AND    │
-               │ best_oa_location    │
-               │ .url_for_pdf exists?│
-               │   utils.py:61       │
-               └───────┬─────┬───────┘
-                  Yes  │     │  No
-                       ▼     ▼
-        ┌──────────────────┐ ┌──────────────────┐
-        │ Return PDF URL   │ │ Return None      │
-        │  utils.py:62     │ │  utils.py:65     │
-        └──────────────────┘ └──────────────────┘
-```
-
----
-
-## 5. Article Processing Pipeline
-
-```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                    ARTICLE PROCESSING PIPELINE                                   │
-│                 ArticleProcessor.extract_structure()                             │
-│                        processor.py:579-601                                      │
-└─────────────────────────────────────────────────────────────────────────────────┘
-
-┌───────────────┐
-│   PDF File    │
-│  (Input)      │
-└───────┬───────┘
-        │
-        ▼
-┌───────────────────────────────────────┐
-│         1. PDFLoader                  │
-│         processor.py:38-62            │
-│                                       │
-│  ┌─────────────────────────────────┐  │
-│  │ pdfplumber.open(pdf_path)       │  │
-│  │ For each page:                  │  │
-│  │   text += page.extract_text()   │  │
-│  └─────────────────────────────────┘  │
-│                                       │
-│  Output: raw_text (string)            │
-└───────────────┬───────────────────────┘
-                │
-                ▼
-┌───────────────────────────────────────┐
-│      2. TextPreprocessor              │
-│         processor.py:64-94            │
-│                                       │
-│  ┌─────────────────────────────────┐  │
-│  │ Remove URLs                     │  │
-│  │ Remove "Electronic copy..." text│  │
-│  │ Remove standalone numbers       │  │
-│  │ Normalize multiple newlines     │  │
-│  │ Remove header/footer patterns   │  │
-│  └─────────────────────────────────┘  │
-│                                       │
-│  Output: preprocessed_text            │
-└───────────────┬───────────────────────┘
-                │
-                ▼
-┌───────────────────────────────────────┐
-│      3. HeadingDetector               │
-│         processor.py:96-124           │
-│                                       │
-│  ┌─────────────────────────────────┐  │
-│  │ spacy.load("en_core_web_sm")    │  │
-│  │ For each sentence:              │  │
-│  │   If 2-10 words AND title-cased │  │
-│  │     → Mark as heading           │  │
-│  └─────────────────────────────────┘  │
-│                                       │
-│  Output: headings[] (list)            │
-└───────────────┬───────────────────────┘
-                │
-                ▼
-┌───────────────────────────────────────┐
-│      4. SectionSplitter               │
-│         processor.py:126-150          │
-│                                       │
-│  ┌─────────────────────────────────┐  │
-│  │ For each line:                  │  │
-│  │   If line in headings:          │  │
-│  │     current_section = line      │  │
-│  │   Else:                         │  │
-│  │     sections[current] += line   │  │
-│  └─────────────────────────────────┘  │
-│                                       │
-│  Output: sections{} (dict)            │
-└───────────────┬───────────────────────┘
-                │
-                ▼
-┌───────────────────────────────────────┐
-│      5. KeywordAnalyzer               │
-│         processor.py:152-210          │
-│                                       │
-│  ┌─────────────────────────────────┐  │
-│  │ Trading Signal Keywords:        │  │
-│  │   buy, sell, signal, trend,     │  │
-│  │   sma, momentum, rsi, macd...   │  │
-│  │                                 │  │
-│  │ Risk Management Keywords:       │  │
-│  │   drawdown, volatility, risk,   │  │
-│  │   stop-loss, position sizing... │  │
-│  │                                 │  │
-│  │ Filter out irrelevant patterns  │  │
-│  │ Categorize each sentence        │  │
-│  └─────────────────────────────────┘  │
-│                                       │
-│  Output: {                            │
-│    'trading_signal': [...],           │
-│    'risk_management': [...]           │
-│  }                                    │
-└───────────────┬───────────────────────┘
-                │
-                ▼
-┌───────────────────────────────────────┐
-│         EXTRACTED DATA                │
-│                                       │
-│  {                                    │
-│    'trading_signal': [                │
-│       "Buy when RSI < 30...",         │
-│       "Use 50-day SMA crossover..."   │
-│    ],                                 │
-│    'risk_management': [               │
-│       "Set stop-loss at 10% ATR...",  │
-│       "Limit position to 1% risk..."  │
-│    ]                                  │
-│  }                                    │
-└───────────────────────────────────────┘
-```
-
----
-
-## 6. Code Generation & Refinement Flow
-
-```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                     CODE GENERATION FLOW                                         │
-│               ArticleProcessor.extract_structure_and_generate_code()             │
-│                          processor.py:603-642                                    │
-└─────────────────────────────────────────────────────────────────────────────────┘
-
-┌───────────────┐
-│ Extracted     │
-│ Data (dict)   │
-└───────┬───────┘
-        │
-        ▼
-┌───────────────────────────────────────┐
-│    1. GENERATE SUMMARY                │
-│       OpenAIHandler.generate_summary  │
-│          processor.py:219-263         │
-└───────────────┬───────────────────────┘
-                │
-                ▼
-┌───────────────────────────────────────────────────────────────────┐
-│                     OpenAI API Call                               │
-│                                                                   │
-│  Model: gpt-4o-2024-11-20                                         │
-│  System: "You are an algorithmic trading expert."                 │
-│                                                                   │
-│  Prompt Template (processor.py:227-244):                          │
-│  ┌─────────────────────────────────────────────────────────────┐  │
-│  │ "Provide a clear and concise summary of the following       │  │
-│  │  trading strategy and its associated risk management rules. │  │
-│  │                                                             │  │
-│  │  ### Trading Strategy Overview:                             │  │
-│  │  {trading_signals}                                          │  │
-│  │                                                             │  │
-│  │  ### Risk Management Rules:                                 │  │
-│  │  {risk_management}                                          │  │
-│  │                                                             │  │
-│  │  Summarize the details in a practical format."              │  │
-│  └─────────────────────────────────────────────────────────────┘  │
-│                                                                   │
-│  max_tokens: 1000, temperature: 0.5                               │
-└───────────────────────────────┬───────────────────────────────────┘
-                                │
-                                ▼
-                     ┌────────────────────┐
-                     │      SUMMARY       │
-                     │   (300 words max)  │
-                     └──────────┬─────────┘
-                                │
-                                ▼
-┌───────────────────────────────────────┐
-│    2. GENERATE CODE                   │
-│       OpenAIHandler.generate_qc_code  │
-│          processor.py:265-319         │
-└───────────────┬───────────────────────┘
-                │
-                ▼
-┌───────────────────────────────────────────────────────────────────┐
-│                     OpenAI API Call                               │
-│                                                                   │
-│  Model: gpt-4o-2024-11-20                                         │
-│  System: "You are a helpful assistant specialized in             │
-│           generating QuantConnect algorithms in Python."         │
-│                                                                   │
-│  Prompt Template (processor.py:273-299):                          │
-│  ┌─────────────────────────────────────────────────────────────┐  │
-│  │ "Convert the following trading strategy into a complete,    │  │
-│  │  error-free QuantConnect Python algorithm.                  │  │
-│  │                                                             │  │
-│  │  ### Trading Strategy Summary: {summary}                    │  │
-│  │                                                             │  │
-│  │  ### Requirements:                                          │  │
-│  │  1. Initialize Method - dates, cash, universe, indicators   │  │
-│  │  2. OnData Method - buy/sell logic                          │  │
-│  │  3. Risk Management - position sizing, stop-loss            │  │
-│  │  4. Ensure Compliance - QuantConnect methods only"          │  │
-│  └─────────────────────────────────────────────────────────────┘  │
-│                                                                   │
-│  max_tokens: 1500, temperature: 0.3                               │
-└───────────────────────────────┬───────────────────────────────────┘
-                                │
-                                ▼
-                     ┌────────────────────┐
-                     │   GENERATED CODE   │
-                     │   (Python)         │
-                     └──────────┬─────────┘
-                                │
-                                ▼
-┌───────────────────────────────────────┐
-│    3. VALIDATE CODE                   │
-│       CodeValidator.validate_code     │
-│          processor.py:358-378         │
-│                                       │
-│  ┌─────────────────────────────────┐  │
-│  │ ast.parse(code)                 │  │
-│  │ Check for SyntaxError           │  │
-│  └─────────────────────────────────┘  │
-└───────────────┬───────────────────────┘
-                │
-                ▼
-         ┌──────────◇──────────┐
-         │   Code Valid?       │
-         │ processor.py:622    │
-         └───────┬─────┬───────┘
-            Yes  │     │  No
-                 │     ▼
-                 │  ┌──────────────────────────────────────┐
-                 │  │     4. REFINE CODE (Loop)            │
-                 │  │     CodeRefiner.refine_code          │
-                 │  │        processor.py:380-392          │
-                 │  │                                      │
-                 │  │  ┌────────────────────────────────┐  │
-                 │  │  │ attempt = 0                    │  │
-                 │  │  │ while !valid && attempt < 6:  │  │
-                 │  │  │   code = openai.refine_code() │  │
-                 │  │  │   valid = validate(code)      │  │
-                 │  │  │   attempt++                   │  │
-                 │  │  └────────────────────────────────┘  │
-                 │  │                                      │
-                 │  │  OpenAI Prompt (processor.py:326-332)│
-                 │  │  "The following code may have syntax │
-                 │  │   or logical errors. Please fix..."  │
-                 │  └──────────────────────────────────────┘
-                 │                    │
-                 │                    ▼
-                 │         ┌──────────◇──────────┐
-                 │         │ Max attempts (6)?   │
-                 │         │ processor.py:622    │
-                 │         └───────┬─────┬───────┘
-                 │                 │     │
-                 │            No   │     │  Yes
-                 │                 │     ▼
-                 │                 │  ┌──────────────────┐
-                 │                 │  │ "Code could not  │
-                 │                 │  │  be generated"   │
-                 │                 │  │ processor.py:633 │
-                 │                 │  └──────────────────┘
-                 ▼                 │
-         ┌────────────────────┐    │
-         │   VALID CODE       │◀───┘
-         │                    │
-         │  ┌──────────────┐  │
-         │  │ Display in   │  │
-         │  │ GUI or save  │  │
-         │  │ to file      │  │
-         │  └──────────────┘  │
-         └────────────────────┘
-```
-
----
-
-## 7. GUI Workflow
-
-```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                            GUI WORKFLOW                                          │
-│                       quantcli interactive                                       │
-│                          gui.py:337-343                                          │
-└─────────────────────────────────────────────────────────────────────────────────┘
-
-         ┌─────────────────┐
-         │  launch_gui()   │
-         │  gui.py:337     │
-         └────────┬────────┘
-                  │
-                  ▼
-         ┌─────────────────────────┐
-         │   QuantCLIGUI.__init__  │
-         │      gui.py:22-111      │
-         │                         │
-         │  Create main window:    │
-         │  - Search Frame         │
-         │  - Results Treeview     │
-         │  - Action Buttons       │
-         └────────┬────────────────┘
-                  │
-                  ▼
-         ┌─────────────────────────┐
-         │   Tkinter Main Loop     │
-         │      gui.py:343         │
-         └────────┬────────────────┘
-                  │
-                  ▼
-    ┌─────────────────────────────────────────────────┐
-    │              GUI ACTIONS                         │
-    └─────────────────────────────────────────────────┘
-              │           │           │
-              ▼           ▼           ▼
-    ┌─────────────┐ ┌──────────┐ ┌──────────────┐
-    │   Search    │ │ Summarize│ │ Generate     │
-    │   Button    │ │  Button  │ │ Code Button  │
-    │ gui.py:113  │ │gui.py:164│ │ gui.py:198   │
-    └──────┬──────┘ └────┬─────┘ └──────┬───────┘
-           │             │              │
-           ▼             ▼              ▼
-┌────────────────┐ ┌───────────────┐ ┌────────────────┐
-│perform_search()│ │summarize_     │ │ generate_code()│
-│  gui.py:113    │ │  article()    │ │   gui.py:198   │
-│                │ │ gui.py:164    │ │                │
-│ 1. Get query   │ │               │ │ 1. Select .txt │
-│ 2. Call search_│ │ 1. Select PDF │ │    summary file│
-│    crossref()  │ │ 2. ArticlePro-│ │ 2. Read summary│
-│ 3. Update      │ │    cessor()   │ │ 3. generate_qc_│
-│    Treeview    │ │ 3. extract_   │ │    code()      │
-│ 4. Store       │ │    structure()│ │ 4. validate &  │
-│    articles[]  │ │ 4. generate_  │ │    refine loop │
-└────────────────┘ │    summary()  │ │ 5. display_    │
-                   │ 5. Save .txt  │ │    code()      │
-                   │ 6. display_   │ └────────────────┘
-                   │    summary()  │
-                   └───────────────┘
-```
-
-### GUI Window Layout
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ Quant Coder v0.3 - SL Mar 2024                           [─][□][×]│
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│            Quantitative research from articles                  │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │ Search Query: [________________] Number of Results: [5] │    │
-│  └─────────────────────────────────────────────────────────┘    │
-│                                                                 │
-│                       [ Search ]                                │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │ Double-click an article to open it in your web browser. │    │
-│  ├────────┬────────────────────────────────┬───────────────┤    │
-│  │ Index  │ Title                          │ Authors       │    │
-│  ├────────┼────────────────────────────────┼───────────────┤    │
-│  │ 0      │ Momentum Trading Strategies... │ J. Smith      │    │
-│  │ 1      │ Mean Reversion in Stock...     │ A. Johnson    │    │
-│  │ 2      │ Algorithmic Trading with...    │ M. Williams   │    │
-│  └────────┴────────────────────────────────┴───────────────┘    │
-│                                                                 │
-│  [ Open Article ]  [ Summarize Article ]  [ Generate Code ]     │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 8. Data/Entity Relationships
-
-```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                        DATA/ENTITY RELATIONSHIPS                                 │
-└─────────────────────────────────────────────────────────────────────────────────┘
+    ┌──────────────────┐           ┌──────────────────┐
+    │    ARTICLE       │           │    PDF FILE      │
+    │                  │──────────▶│                  │
+    │ • title          │  download │ downloads/       │
+    │ • authors        │           │ article_N.pdf    │
+    │ • DOI            │           └────────┬─────────┘
+    │ • URL            │                    │
+    │ • abstract       │                    │ extract
+    └──────────────────┘                    ▼
+                              ┌──────────────────────────┐
+                              │    EXTRACTED DATA        │
+                              │                          │
+                              │ {                        │
+                              │   'trading_signal': [...],│
+                              │   'risk_management': [...]│
+                              │ }                        │
+                              └────────────┬─────────────┘
+                                           │
+                                           │ LLM
+                                           ▼
+                              ┌──────────────────────────┐
+                              │       SUMMARY            │
+                              │                          │
+                              │  Plain text strategy     │
+                              │  description             │
+                              └────────────┬─────────────┘
+                                           │
+                                           │ Multi-Agent
+                                           ▼
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │                        GENERATED STRATEGY                                │
+    │                                                                         │
+    │  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐            │
+    │  │    Main.py     │  │   Alpha.py     │  │  Universe.py   │            │
+    │  │                │  │                │  │                │            │
+    │  │ QCAlgorithm    │  │ Alpha signals  │  │ Stock filter   │            │
+    │  │ Initialize()   │  │ Entry/exit     │  │ Selection      │            │
+    │  │ OnData()       │  │ indicators     │  │ criteria       │            │
+    │  └────────────────┘  └────────────────┘  └────────────────┘            │
+    │                                                                         │
+    │  ┌────────────────┐  ┌────────────────┐                                │
+    │  │    Risk.py     │  │  metadata.json │                                │
+    │  │                │  │                │                                │
+    │  │ Position sizing│  │ • sharpe_ratio │                                │
+    │  │ Stop-loss      │  │ • max_drawdown │                                │
+    │  │ Risk limits    │  │ • paper_source │                                │
+    │  └────────────────┘  └────────────────┘                                │
+    │                                                                         │
+    └─────────────────────────────────────────────────────────────────────────┘
+                                           │
+                                           │ store
+                                           ▼
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │                       LEARNING DATABASE (SQLite)                         │
+    │                                                                         │
+    │  ┌────────────────────┐  ┌────────────────────┐  ┌──────────────────┐  │
+    │  │generated_strategies│  │   error_patterns   │  │ success_patterns │  │
+    │  │                    │  │                    │  │                  │  │
+    │  │ • name             │  │ • error_type       │  │ • pattern        │  │
+    │  │ • category         │  │ • count            │  │ • strategy_type  │  │
+    │  │ • sharpe_ratio     │  │ • fixed_count      │  │ • avg_sharpe     │  │
+    │  │ • success          │  │ • suggested_fix    │  │                  │  │
+    │  └────────────────────┘  └────────────────────┘  └──────────────────┘  │
+    │                                                                         │
+    └─────────────────────────────────────────────────────────────────────────┘
 
 
-                    ┌─────────────────────────────────┐
-                    │         CrossRef API            │
-                    │     (External Service)          │
-                    └──────────────┬──────────────────┘
-                                   │
-                                   │ HTTP Response
-                                   ▼
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              ARTICLE                                             │
-│                         (articles.json)                                          │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│  {                                                                              │
-│    "id": "1",                    ──────▶  Index for user reference              │
-│    "title": "...",               ──────▶  Article title                         │
-│    "authors": "John Doe, ...",   ──────▶  Comma-separated author names          │
-│    "published": 2024,            ──────▶  Publication year                      │
-│    "URL": "https://doi.org/...", ──────▶  Link to article page                  │
-│    "DOI": "10.1234/...",         ──────▶  Used for Unpaywall lookup             │
-│    "abstract": "..."             ──────▶  Article abstract                      │
-│  }                                                                              │
-└─────────────────────────────────────────────────────────────────────────────────┘
-                                   │
-                                   │ Download
-                                   ▼
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              PDF FILE                                            │
-│                       downloads/article_<id>.pdf                                 │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│  Binary PDF content from publisher or Unpaywall                                 │
-└─────────────────────────────────────────────────────────────────────────────────┘
-                                   │
-                                   │ Process (PDFLoader, TextPreprocessor,
-                                   │          HeadingDetector, SectionSplitter,
-                                   │          KeywordAnalyzer)
-                                   ▼
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                          EXTRACTED DATA                                          │
-│                         (In-memory dict)                                         │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│  {                                                                              │
-│    "trading_signal": [           ──────▶  Sentences about trading signals       │
-│      "Buy when RSI crosses...",                                                 │
-│      "Use 50-day SMA..."                                                        │
-│    ],                                                                           │
-│    "risk_management": [          ──────▶  Sentences about risk management       │
-│      "Set stop-loss at 10%...",                                                 │
-│      "Position size = 1% risk..."                                               │
-│    ]                                                                            │
-│  }                                                                              │
-└─────────────────────────────────────────────────────────────────────────────────┘
-                                   │
-                                   │ OpenAI API (generate_summary)
-                                   ▼
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              SUMMARY                                             │
-│                    downloads/article_<id>_summary.txt                            │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│  Plain text summary of trading strategy (≤300 words)                            │
-│                                                                                 │
-│  "The strategy uses a momentum-based approach combining RSI and SMA             │
-│   indicators. Entry signals occur when RSI crosses above 30 while price         │
-│   is above the 50-day moving average..."                                        │
-└─────────────────────────────────────────────────────────────────────────────────┘
-                                   │
-                                   │ OpenAI API (generate_qc_code)
-                                   ▼
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                         GENERATED CODE                                           │
-│                    generated_code/algorithm_<id>.py                              │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│  from AlgorithmImports import *                                                 │
-│                                                                                 │
-│  class MomentumStrategy(QCAlgorithm):                                           │
-│      def Initialize(self):                                                      │
-│          self.SetStartDate(2020, 1, 1)                                          │
-│          self.SetEndDate(2024, 1, 1)                                            │
-│          self.SetCash(100000)                                                   │
-│          self.symbol = self.AddEquity("SPY", Resolution.Daily).Symbol           │
-│          self.rsi = self.RSI(self.symbol, 14)                                   │
-│          self.sma = self.SMA(self.symbol, 50)                                   │
-│                                                                                 │
-│      def OnData(self, data):                                                    │
-│          if not self.rsi.IsReady or not self.sma.IsReady:                       │
-│              return                                                             │
-│          # Trading logic...                                                     │
-└─────────────────────────────────────────────────────────────────────────────────┘
-
-
-                           RELATIONSHIP DIAGRAM
+                       ENTITY RELATIONSHIPS
 
     ┌──────────┐       ┌──────────┐       ┌──────────┐       ┌──────────┐
     │ CrossRef │──1:N──│ Article  │──1:1──│   PDF    │──1:1──│ Extracted│
-    │   API    │       │  (.json) │       │  (.pdf)  │       │   Data   │
+    │   API    │       │          │       │          │       │   Data   │
     └──────────┘       └──────────┘       └──────────┘       └────┬─────┘
                                                                   │
                                                              1:1  │
                                                                   ▼
-    ┌──────────┐                                            ┌──────────┐
-    │  OpenAI  │◀─────────────────────────────────────────▶│  Summary │
-    │   API    │                                            │  (.txt)  │
-    └────┬─────┘                                            └────┬─────┘
-         │                                                       │
-         │                                                  1:1  │
-         │                                                       ▼
-         │                                                 ┌──────────┐
-         └────────────────────────────────────────────────▶│Generated │
-                                                           │Code (.py)│
-                                                           └──────────┘
+                                                            ┌──────────┐
+                                                            │  Summary │
+                                                            └────┬─────┘
+                                                                 │
+                                                            1:N  │
+                                                                 ▼
+    ┌──────────┐                                     ┌───────────────────┐
+    │   LLM    │◀────────────────────────────────────│Generated Strategy │
+    │ Providers│                                     │  (Multi-file)     │
+    └──────────┘                                     └─────────┬─────────┘
+                                                               │
+                                                          1:1  │
+                                                               ▼
+                                                    ┌────────────────────┐
+                                                    │  Learning Database │
+                                                    │  (Feedback Loop)   │
+                                                    └────────────────────┘
 ```
 
 ---
 
-## 9. File Structure Reference
+## 10. File Structure Reference
 
 ```
-quantcoder-cli/
-├── quantcli/
-│   ├── __init__.py           # Package initialization
-│   ├── cli.py                # CLI entry point & commands (283 lines)
-│   │   ├── cli()             # Line 25 - Main Click group
-│   │   ├── search()          # Line 73 - Search command
-│   │   ├── list()            # Line 103 - List command
-│   │   ├── download()        # Line 125 - Download command
-│   │   ├── summarize()       # Line 164 - Summarize command
-│   │   ├── generate_code_cmd()# Line 202 - Generate code command
-│   │   ├── open_article()    # Line 243 - Open article command
-│   │   └── interactive()     # Line 267 - Launch GUI
+quantcoder-cli/                               # Root directory
+├── quantcoder/                                # Main package (6,919 lines)
 │   │
-│   ├── processor.py          # PDF processing & code gen (642 lines)
-│   │   ├── PDFLoader         # Line 38 - PDF text extraction
-│   │   ├── TextPreprocessor  # Line 64 - Text cleaning
-│   │   ├── HeadingDetector   # Line 96 - NLP heading detection
-│   │   ├── SectionSplitter   # Line 126 - Section splitting
-│   │   ├── KeywordAnalyzer   # Line 152 - Trading signal extraction
-│   │   ├── OpenAIHandler     # Line 212 - LLM interactions
-│   │   ├── CodeValidator     # Line 358 - AST syntax validation
-│   │   ├── CodeRefiner       # Line 380 - Code error fixing
-│   │   ├── GUI               # Line 394 - Result display window
-│   │   └── ArticleProcessor  # Line 563 - Main orchestrator
+│   ├── cli.py                                 # CLI entry point (510 lines)
+│   │   ├── main()                             # Line 45 - Click group
+│   │   ├── search()                           # Line 113
+│   │   ├── download()                         # Line 141
+│   │   ├── summarize()                        # Line 162
+│   │   ├── generate_code()                    # Line 189
+│   │   ├── auto_start()                       # Line 293
+│   │   └── library_build()                    # Line 414
 │   │
-│   ├── search.py             # CrossRef API integration (109 lines)
-│   │   ├── search_crossref() # Line 11 - API search
-│   │   └── save_to_html()    # Line 57 - HTML export
+│   ├── chat.py                                # Chat interfaces (334 lines)
+│   │   ├── InteractiveChat                    # Line 27
+│   │   │   ├── run()                          # Line 55
+│   │   │   ├── process_input()                # Line 96
+│   │   │   ├── execute_tool()                 # Line 129
+│   │   │   └── process_natural_language()     # Line 191
+│   │   └── ProgrammaticChat                   # Line 290
 │   │
-│   ├── gui.py                # Tkinter GUI (344 lines)
-│   │   ├── QuantCLIGUI       # Line 21 - Main GUI class
-│   │   │   ├── perform_search()     # Line 113
-│   │   │   ├── summarize_article()  # Line 164
-│   │   │   ├── generate_code()      # Line 198
-│   │   │   └── display_code()       # Line 246
-│   │   └── launch_gui()      # Line 337 - GUI launcher
+│   ├── config.py                              # Configuration management
+│   │   ├── Config                             # Main config class
+│   │   ├── ModelConfig                        # LLM settings
+│   │   ├── UIConfig                           # Terminal UI
+│   │   └── ToolsConfig                        # Tool settings
 │   │
-│   └── utils.py              # Utilities (115 lines)
-│       ├── setup_logging()   # Line 9 - Configure logging
-│       ├── load_api_key()    # Line 25 - Load OpenAI key
-│       ├── get_pdf_url_via_unpaywall()  # Line 40
-│       └── download_pdf()    # Line 70 - Download PDF file
+│   ├── agents/                                # Multi-agent system
+│   │   ├── base.py                            # BaseAgent (118 lines)
+│   │   │   ├── AgentResult                    # Line 10
+│   │   │   └── BaseAgent                      # Line 28
+│   │   ├── coordinator_agent.py               # Orchestrator (338 lines)
+│   │   │   ├── CoordinatorAgent               # Line 14
+│   │   │   ├── _create_execution_plan()       # Line 83
+│   │   │   ├── _execute_plan()                # Line 153
+│   │   │   └── _validate_and_refine()         # Line 257
+│   │   ├── universe_agent.py                  # Universe.py generation
+│   │   ├── alpha_agent.py                     # Alpha.py generation
+│   │   ├── risk_agent.py                      # Risk.py generation
+│   │   └── strategy_agent.py                  # Main.py integration
+│   │
+│   ├── autonomous/                            # Self-improving pipeline
+│   │   ├── pipeline.py                        # AutonomousPipeline (486 lines)
+│   │   │   ├── AutoStats                      # Line 26
+│   │   │   ├── AutonomousPipeline             # Line 54
+│   │   │   ├── run()                          # Line 82
+│   │   │   ├── _run_iteration()               # Line 143
+│   │   │   └── _generate_final_report()       # Line 399
+│   │   ├── database.py                        # LearningDatabase (SQLite)
+│   │   ├── learner.py                         # ErrorLearner, PerformanceLearner
+│   │   └── prompt_refiner.py                  # Dynamic prompt enhancement
+│   │
+│   ├── library/                               # Library builder
+│   │   ├── builder.py                         # LibraryBuilder (493 lines)
+│   │   │   ├── LibraryBuilder                 # Line 31
+│   │   │   ├── build()                        # Line 55
+│   │   │   ├── _build_category()              # Line 154
+│   │   │   └── _generate_one_strategy()       # Line 219
+│   │   ├── taxonomy.py                        # STRATEGY_TAXONOMY (13+ categories)
+│   │   └── coverage.py                        # CoverageTracker, checkpointing
+│   │
+│   ├── tools/                                 # Tool system
+│   │   ├── base.py                            # Tool, ToolResult (73 lines)
+│   │   ├── article_tools.py                   # SearchArticles, Download, Summarize
+│   │   ├── code_tools.py                      # GenerateCode, ValidateCode
+│   │   └── file_tools.py                      # ReadFile, WriteFile
+│   │
+│   ├── llm/                                   # LLM abstraction
+│   │   └── providers.py                       # LLMProvider, LLMFactory
+│   │                                          # (OpenAI, Anthropic, Mistral, DeepSeek)
+│   │
+│   ├── core/                                  # Core processing
+│   │   ├── processor.py                       # ArticleProcessor, PDF pipeline
+│   │   └── llm.py                             # LLMHandler (OpenAI)
+│   │
+│   ├── execution/                             # Parallel execution
+│   │   └── parallel_executor.py               # ParallelExecutor, AgentTask
+│   │
+│   ├── mcp/                                   # QuantConnect integration
+│   │   └── quantconnect_mcp.py                # MCP client for validation
+│   │
+│   └── codegen/                               # Multi-file generation
+│       └── multi_file.py                      # Main, Alpha, Universe, Risk
 │
-├── downloads/                # Downloaded PDFs and summaries
-│   ├── article_1.pdf
-│   └── article_1_summary.txt
-│
-├── generated_code/           # Generated trading algorithms
-│   └── algorithm_1.py
-│
-├── articles.json             # Cached search results
-├── output.html               # HTML search results view
-├── quantcli.log              # Application log file
-├── setup.py                  # Package configuration
-├── requirements-legacy.txt   # Dependencies (OpenAI v0.28)
-└── README.md                 # Project documentation
+├── tests/                                     # Test suite
+├── docs/                                      # Documentation
+├── pyproject.toml                             # Dependencies & config
+├── requirements.txt                           # Current dependencies
+└── README.md                                  # Project documentation
 ```
 
 ---
 
 ## Summary
 
-QuantCoder CLI transforms academic research articles into executable QuantConnect trading algorithms through a multi-stage pipeline:
+The **gamma branch** of QuantCoder CLI v2.0 represents a sophisticated multi-agent architecture designed for autonomous, self-improving strategy generation:
 
-1. **Search**: Query CrossRef API for relevant trading research
-2. **Download**: Fetch PDFs via direct links or Unpaywall
-3. **Process**: Extract text, detect structure, identify trading signals
-4. **Summarize**: Use GPT-4 to create strategy summaries
-5. **Generate**: Convert summaries to QuantConnect Python code
-6. **Validate**: Check syntax and refine until valid
+### Key Architectural Features
 
-The application supports both command-line and GUI interfaces, with all operations logged for debugging.
+| Feature | Description | Source |
+|---------|-------------|--------|
+| **Tool System** | Pluggable tools with consistent execute() interface | `tools/base.py` |
+| **Multi-Agent** | Coordinator orchestrates Universe, Alpha, Risk, Strategy agents | `agents/*.py` |
+| **Parallel Execution** | AsyncIO + ThreadPool for concurrent agent execution | `execution/parallel_executor.py` |
+| **Autonomous Pipeline** | Self-improving loop with error learning | `autonomous/pipeline.py` |
+| **Library Builder** | Systematic multi-category strategy generation | `library/builder.py` |
+| **LLM Abstraction** | Multi-provider support (OpenAI, Anthropic, Mistral) | `llm/providers.py` |
+| **Learning System** | SQLite database tracks errors, fixes, success patterns | `autonomous/database.py` |
+| **MCP Integration** | QuantConnect validation and backtesting | `mcp/quantconnect_mcp.py` |
+
+### Execution Modes
+
+1. **Interactive** - REPL with command completion and history
+2. **Programmatic** - Single-shot queries via `--prompt`
+3. **Direct Commands** - Traditional CLI (search, download, generate)
+4. **Autonomous** - Self-improving continuous generation
+5. **Library Builder** - Comprehensive multi-category strategy library
+
+### Design Patterns Used
+
+- **Factory Pattern** - LLMFactory for provider creation
+- **Strategy Pattern** - BaseAgent, Tool abstractions
+- **Coordinator Pattern** - CoordinatorAgent orchestration
+- **Repository Pattern** - LearningDatabase for persistence
+- **Builder Pattern** - LibraryBuilder for complex construction
+- **Pipeline Pattern** - AutonomousPipeline for iterative refinement
