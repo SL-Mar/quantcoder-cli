@@ -6,7 +6,7 @@ long_description = readme_path.read_text(encoding="utf-8") if readme_path.exists
 
 setup(
     name="quantcli",
-    version="0.3",
+    version="0.4.0",
     packages=find_packages(),
     python_requires=">=3.8",
     install_requires=[
@@ -26,7 +26,7 @@ setup(
     },
     author="SL-MAR",
     author_email="smr.laignel@gmail.com",
-    description="A CLI tool for generating QuantConnect algorithms from research articles.",
+    description="A CLI tool for generating and evolving QuantConnect algorithms from research articles using AlphaEvolve-inspired optimization.",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/SL_Mar/QuantCoder",
