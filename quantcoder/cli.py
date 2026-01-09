@@ -506,5 +506,329 @@ def library_export(format, output):
         console.print(f"[red]Error exporting library: {e}[/red]")
 
 
+# ============================================================================
+# EVOLUTION MODE COMMANDS (AlphaEvolve-inspired)
+# ============================================================================
+
+EVOLUTIONS_DIR = "data/evolutions"
+GENERATED_CODE_DIR = "generated_code"
+
+
+@main.group()
+def evolve():
+    """
+    AlphaEvolve-inspired strategy evolution.
+
+    Evolve trading algorithms through LLM-generated variations,
+    evaluated via QuantConnect backtests.
+    """
+    pass
+
+
+@evolve.command(name='start')
+@click.argument('article_id', type=int, required=False)
+@click.option('--code', type=click.Path(exists=True), help='Path to algorithm file to evolve')
+@click.option('--resume', 'resume_id', help='Resume a previous evolution by ID')
+@click.option('--gens', 'max_generations', default=10, help='Maximum generations to run')
+@click.option('--variants', 'variants_per_gen', default=5, help='Variants per generation')
+@click.option('--elite', 'elite_size', default=3, help='Elite pool size')
+@click.option('--patience', default=3, help='Stop after N generations without improvement')
+@click.option('--qc-user', envvar='QC_USER_ID', help='QuantConnect user ID')
+@click.option('--qc-token', envvar='QC_API_TOKEN', help='QuantConnect API token')
+@click.option('--qc-project', envvar='QC_PROJECT_ID', type=int, help='QuantConnect project ID')
+@click.pass_context
+def evolve_start(ctx, article_id, code, resume_id, max_generations, variants_per_gen,
+                 elite_size, patience, qc_user, qc_token, qc_project):
+    """
+    Evolve a trading algorithm using AlphaEvolve-inspired optimization.
+
+    This command takes a generated algorithm and evolves it through multiple
+    generations of LLM-generated variations, evaluated via QuantConnect backtests.
+
+    ARTICLE_ID: The article number to evolve (must have generated code first)
+
+    Unlike traditional parameter optimization, this explores STRUCTURAL variations:
+    - Indicator changes (SMA -> EMA, add RSI, etc.)
+    - Risk management modifications
+    - Entry/exit logic changes
+    - Universe selection tweaks
+
+    Examples:
+        quantcoder evolve start 1                    # Evolve article 1's algorithm
+        quantcoder evolve start 1 --gens 5          # Run for 5 generations
+        quantcoder evolve start --code algo.py      # Evolve from file
+        quantcoder evolve start --resume abc123     # Resume evolution abc123
+    """
+    import asyncio
+    import os
+    import json
+    from pathlib import Path
+    from quantcoder.evolver import EvolutionEngine, EvolutionConfig
+
+    # Validate QuantConnect credentials
+    if not all([qc_user, qc_token, qc_project]):
+        console.print("[red]Error: QuantConnect credentials required.[/red]")
+        console.print("")
+        console.print("[yellow]Set via environment variables:[/yellow]")
+        console.print("  export QC_USER_ID=your_user_id")
+        console.print("  export QC_API_TOKEN=your_api_token")
+        console.print("  export QC_PROJECT_ID=your_project_id")
+        console.print("")
+        console.print("[yellow]Or use command options:[/yellow]")
+        console.print("  quantcoder evolve start 1 --qc-user ID --qc-token TOKEN --qc-project PROJECT")
+        ctx.exit(1)
+
+    # Handle resume mode
+    if resume_id:
+        console.print(f"[cyan]Resuming evolution: {resume_id}[/cyan]")
+        baseline_code = None
+        source_paper = None
+    elif code:
+        # Load from file
+        code_path = Path(code)
+        with open(code_path, 'r') as f:
+            baseline_code = f.read()
+        source_paper = str(code_path)
+    elif article_id:
+        # Load the generated code for this article
+        code_path = Path(GENERATED_CODE_DIR) / f"algorithm_{article_id}.py"
+        if not code_path.exists():
+            console.print(f"[red]Error: No generated code found for article {article_id}.[/red]")
+            console.print(f"[yellow]Run 'quantcoder generate {article_id}' first.[/yellow]")
+            ctx.exit(1)
+
+        with open(code_path, 'r') as f:
+            baseline_code = f.read()
+
+        # Get article info for reference
+        source_paper = f"article_{article_id}"
+        articles_file = Path("articles.json")
+        if articles_file.exists():
+            with open(articles_file, 'r') as f:
+                articles = json.load(f)
+            if 0 < article_id <= len(articles):
+                source_paper = articles[article_id - 1].get('title', source_paper)
+    else:
+        console.print("[red]Error: Provide ARTICLE_ID, --code, or --resume[/red]")
+        ctx.exit(1)
+
+    # Create evolution config
+    config = EvolutionConfig(
+        qc_user_id=qc_user,
+        qc_api_token=qc_token,
+        qc_project_id=qc_project,
+        max_generations=max_generations,
+        variants_per_generation=variants_per_gen,
+        elite_pool_size=elite_size,
+        convergence_patience=patience
+    )
+
+    # Display configuration
+    console.print("")
+    console.print(Panel.fit(
+        f"[bold]Max generations:[/bold] {max_generations}\n"
+        f"[bold]Variants/gen:[/bold] {variants_per_gen}\n"
+        f"[bold]Elite pool size:[/bold] {elite_size}\n"
+        f"[bold]Convergence patience:[/bold] {patience}",
+        title="[bold cyan]AlphaEvolve Strategy Optimization[/bold cyan]",
+        border_style="cyan"
+    ))
+    console.print("")
+
+    async def run_evolution():
+        engine = EvolutionEngine(config)
+
+        # Set up progress callback
+        def on_generation_complete(state, gen):
+            best = state.elite_pool.get_best()
+            if best and best.fitness:
+                console.print(f"\n[green]Generation {gen} complete.[/green] Best fitness: {best.fitness:.4f}")
+
+        engine.on_generation_complete = on_generation_complete
+
+        # Run evolution
+        if resume_id:
+            result = await engine.evolve(baseline_code="", source_paper="", resume_id=resume_id)
+        else:
+            result = await engine.evolve(baseline_code, source_paper)
+
+        return result, engine
+
+    try:
+        result, engine = asyncio.run(run_evolution())
+
+        # Report results
+        console.print("")
+        console.print(Panel.fit(
+            result.get_summary(),
+            title="[bold green]EVOLUTION COMPLETE[/bold green]",
+            border_style="green"
+        ))
+
+        # Export best variant
+        best = engine.get_best_variant()
+        if best:
+            output_path = Path(GENERATED_CODE_DIR) / f"evolved_{result.evolution_id}.py"
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            engine.export_best_code(str(output_path))
+            console.print(f"\n[green]Best algorithm saved to:[/green] {output_path}")
+
+        console.print(f"\n[cyan]Evolution ID:[/cyan] {result.evolution_id}")
+        console.print(f"[dim]To resume: quantcoder evolve start --resume {result.evolution_id}[/dim]")
+
+    except Exception as e:
+        console.print(f"[red]Error: Evolution failed - {e}[/red]")
+        ctx.exit(1)
+
+
+@evolve.command(name='list')
+def evolve_list():
+    """
+    List all saved evolution runs.
+
+    Shows evolution IDs, status, and best fitness for each saved evolution.
+    """
+    import os
+    import json
+    from pathlib import Path
+
+    evolutions_dir = Path(EVOLUTIONS_DIR)
+
+    if not evolutions_dir.exists():
+        console.print("[yellow]No evolutions found.[/yellow]")
+        return
+
+    evolution_files = list(evolutions_dir.glob("*.json"))
+
+    if not evolution_files:
+        console.print("[yellow]No evolutions found.[/yellow]")
+        return
+
+    console.print("\n[bold cyan]Saved Evolutions[/bold cyan]")
+    console.print("-" * 60)
+
+    for filepath in sorted(evolution_files):
+        try:
+            with open(filepath, 'r') as f:
+                data = json.load(f)
+
+            evo_id = data.get('evolution_id', 'unknown')
+            status = data.get('status', 'unknown')
+            generation = data.get('current_generation', 0)
+            elite = data.get('elite_pool', {}).get('variants', [])
+            best_fitness = elite[0].get('fitness', 'N/A') if elite else 'N/A'
+
+            status_color = {
+                'completed': 'green',
+                'running': 'yellow',
+                'failed': 'red'
+            }.get(status, 'white')
+
+            console.print(
+                f"  [cyan]{evo_id}[/cyan]: "
+                f"Gen {generation}, "
+                f"Status: [{status_color}]{status}[/{status_color}], "
+                f"Best: {best_fitness}"
+            )
+        except Exception as e:
+            console.print(f"  [red]{filepath.name}: Error reading - {e}[/red]")
+
+    console.print("-" * 60)
+    console.print("[dim]Resume with: quantcoder evolve start --resume <id>[/dim]")
+
+
+@evolve.command(name='show')
+@click.argument('evolution_id')
+def evolve_show(evolution_id):
+    """
+    Show details of a specific evolution.
+
+    EVOLUTION_ID: The evolution ID to show
+    """
+    import json
+    from pathlib import Path
+
+    filepath = Path(EVOLUTIONS_DIR) / f"{evolution_id}.json"
+
+    if not filepath.exists():
+        console.print(f"[red]Evolution {evolution_id} not found.[/red]")
+        return
+
+    with open(filepath, 'r') as f:
+        data = json.load(f)
+
+    # Summary
+    console.print(Panel.fit(
+        f"[bold]Evolution ID:[/bold] {data.get('evolution_id')}\n"
+        f"[bold]Status:[/bold] {data.get('status')}\n"
+        f"[bold]Generation:[/bold] {data.get('current_generation')}\n"
+        f"[bold]Total Variants:[/bold] {len(data.get('all_variants', {}))}\n"
+        f"[bold]Source:[/bold] {data.get('source_paper', 'N/A')}",
+        title=f"[bold cyan]Evolution {evolution_id}[/bold cyan]",
+        border_style="cyan"
+    ))
+
+    # Elite pool
+    elite = data.get('elite_pool', {}).get('variants', [])
+    if elite:
+        console.print("\n[bold]Elite Pool:[/bold]")
+        for i, variant in enumerate(elite, 1):
+            metrics = variant.get('metrics', {})
+            console.print(
+                f"  {i}. [cyan]{variant['id']}[/cyan] (Gen {variant['generation']}): "
+                f"Fitness={variant.get('fitness', 'N/A'):.4f if variant.get('fitness') else 'N/A'}"
+            )
+            if metrics:
+                console.print(
+                    f"     Sharpe={metrics.get('sharpe_ratio', 0):.2f}, "
+                    f"Return={metrics.get('total_return', 0):.1%}, "
+                    f"MaxDD={metrics.get('max_drawdown', 0):.1%}"
+                )
+
+
+@evolve.command(name='export')
+@click.argument('evolution_id')
+@click.option('--output', type=click.Path(), help='Output file path')
+def evolve_export(evolution_id, output):
+    """
+    Export the best algorithm from an evolution.
+
+    EVOLUTION_ID: The evolution ID to export from
+    """
+    import json
+    from pathlib import Path
+
+    filepath = Path(EVOLUTIONS_DIR) / f"{evolution_id}.json"
+
+    if not filepath.exists():
+        console.print(f"[red]Evolution {evolution_id} not found.[/red]")
+        return
+
+    with open(filepath, 'r') as f:
+        data = json.load(f)
+
+    elite = data.get('elite_pool', {}).get('variants', [])
+    if not elite:
+        console.print("[red]No elite variants found in this evolution.[/red]")
+        return
+
+    best = elite[0]
+    output_path = Path(output) if output else Path(GENERATED_CODE_DIR) / f"evolved_{evolution_id}.py"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(output_path, 'w') as f:
+        f.write(f"# Evolution: {evolution_id}\n")
+        f.write(f"# Variant: {best['id']} (Generation {best['generation']})\n")
+        f.write(f"# Fitness: {best.get('fitness', 'N/A')}\n")
+        if best.get('metrics'):
+            f.write(f"# Sharpe: {best['metrics'].get('sharpe_ratio', 0):.2f}\n")
+            f.write(f"# Max Drawdown: {best['metrics'].get('max_drawdown', 0):.1%}\n")
+        f.write(f"# Description: {best.get('mutation_description', 'N/A')}\n")
+        f.write("#\n")
+        f.write(best.get('code', ''))
+
+    console.print(f"[green]Exported best variant to:[/green] {output_path}")
+
+
 if __name__ == '__main__':
     main()
