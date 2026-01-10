@@ -258,26 +258,170 @@ class AutonomousPipeline:
         return success
 
     async def _fetch_papers(self, query: str, limit: int = 5) -> List[Dict]:
-        """Fetch research papers."""
+        """Fetch and process research papers using CrossRef and NLP pipeline."""
         if self.demo_mode:
             return self._mock_papers(query, limit)
 
-        # TODO: Implement real arXiv/CrossRef fetching
-        # For now, return mock data
-        return self._mock_papers(query, limit)
+        try:
+            from quantcoder.tools.article_tools import SearchArticlesTool, DownloadArticleTool
+            from quantcoder.core.processor import ArticleProcessor
+            from pathlib import Path
+
+            # Search for papers using CrossRef
+            search_tool = SearchArticlesTool(self.config)
+            search_result = search_tool.execute(query=query, max_results=limit)
+
+            if not search_result.success or not search_result.data:
+                console.print(f"[yellow]No papers found for query: {query}[/yellow]")
+                return []
+
+            papers = []
+            download_tool = DownloadArticleTool(self.config)
+            processor = ArticleProcessor(self.config)
+
+            for idx, article in enumerate(search_result.data, 1):
+                try:
+                    # Attempt to download PDF
+                    download_result = download_tool.execute(article_id=idx)
+
+                    if download_result.success:
+                        pdf_path = download_result.data
+
+                        # Process with NLP pipeline
+                        extracted_data = processor.extract_structure(pdf_path)
+
+                        # Generate summary from extracted data
+                        summary = None
+                        if extracted_data:
+                            summary = processor.generate_summary(extracted_data)
+
+                        paper = {
+                            'title': article.get('title', 'Unknown Title'),
+                            'url': article.get('URL', ''),
+                            'doi': article.get('DOI', ''),
+                            'authors': article.get('authors', []),
+                            'abstract': summary or '',
+                            'extracted_data': extracted_data,
+                            'pdf_path': pdf_path
+                        }
+                        papers.append(paper)
+                        console.print(f"[green]✓ Processed: {article.get('title', '')[:60]}...[/green]")
+                    else:
+                        # Couldn't download, but still add with metadata
+                        paper = {
+                            'title': article.get('title', 'Unknown Title'),
+                            'url': article.get('URL', ''),
+                            'doi': article.get('DOI', ''),
+                            'authors': article.get('authors', []),
+                            'abstract': f"Strategy based on: {article.get('title', '')}",
+                            'extracted_data': {},
+                            'pdf_path': None
+                        }
+                        papers.append(paper)
+
+                except Exception as e:
+                    console.print(f"[yellow]Could not process article {idx}: {e}[/yellow]")
+                    continue
+
+            return papers
+
+        except ImportError as e:
+            console.print(f"[red]Import error in paper fetching: {e}[/red]")
+            return self._mock_papers(query, limit)
+        except Exception as e:
+            console.print(f"[red]Error fetching papers: {e}[/red]")
+            return []
 
     async def _generate_strategy(
         self,
         paper: Dict,
         enhanced_prompts: Dict[str, str]
     ) -> Optional[Dict]:
-        """Generate strategy code."""
+        """Generate strategy code using multi-agent system."""
         if self.demo_mode:
             return self._mock_strategy(paper)
 
-        # TODO: Integrate with real coordinator agent
-        # For now, return mock strategy
-        return self._mock_strategy(paper)
+        try:
+            from quantcoder.agents.coordinator_agent import CoordinatorAgent
+            from quantcoder.llm import LLMFactory
+
+            # Create LLM for coordination
+            llm = LLMFactory.create(
+                LLMFactory.get_recommended_for_task("coordination"),
+                self.config.api_key if self.config else ""
+            )
+
+            # Initialize coordinator agent
+            coordinator = CoordinatorAgent(llm, self.config)
+
+            # Build strategy summary from paper and enhanced prompts
+            strategy_summary = self._build_strategy_summary(paper, enhanced_prompts)
+
+            # Execute multi-agent workflow
+            result = await coordinator.execute(
+                user_request=paper.get('title', 'Generate trading strategy'),
+                strategy_summary=strategy_summary,
+                mcp_client=None  # TODO: Pass MCP client when available
+            )
+
+            if result.success:
+                # Transform coordinator result to expected format
+                return {
+                    'name': self._generate_strategy_name(paper),
+                    'code': result.code,
+                    'code_files': result.data.get('files', {}),
+                    'query': paper.get('title', ''),
+                    'errors': 0,
+                    'refinements': 0
+                }
+            else:
+                console.print(f"[yellow]Coordinator failed: {result.error}[/yellow]")
+                return None
+
+        except ImportError as e:
+            console.print(f"[red]Import error: {e}[/red]")
+            return None
+        except Exception as e:
+            console.print(f"[red]Strategy generation error: {e}[/red]")
+            return None
+
+    def _build_strategy_summary(self, paper: Dict, enhanced_prompts: Dict[str, str]) -> str:
+        """Build strategy summary from paper, NLP-extracted data, and enhanced prompts."""
+        parts = []
+
+        # Add paper abstract/summary
+        if paper.get('abstract'):
+            parts.append(f"Research Summary:\n{paper['abstract']}")
+
+        # Add NLP-extracted trading signals and risk management
+        extracted_data = paper.get('extracted_data', {})
+        if extracted_data:
+            if extracted_data.get('trading_signal'):
+                signals = extracted_data['trading_signal'][:10]  # Top 10 signals
+                parts.append(f"Trading Signals (NLP-extracted):\n" + "\n".join(f"- {s}" for s in signals))
+
+            if extracted_data.get('risk_management'):
+                risks = extracted_data['risk_management'][:10]  # Top 10 risk rules
+                parts.append(f"Risk Management (NLP-extracted):\n" + "\n".join(f"- {r}" for r in risks))
+
+        # Add enhanced prompts context
+        if enhanced_prompts.get('strategy_context'):
+            parts.append(f"Strategy Context:\n{enhanced_prompts['strategy_context']}")
+
+        if enhanced_prompts.get('learned_patterns'):
+            parts.append(f"Learned Patterns:\n{enhanced_prompts['learned_patterns']}")
+
+        return "\n\n".join(parts) if parts else paper.get('title', '')
+
+    def _generate_strategy_name(self, paper: Dict) -> str:
+        """Generate a unique strategy name from paper."""
+        from datetime import datetime
+        title = paper.get('title', 'Strategy')
+        # Extract key words from title
+        words = title.split()[:3]
+        base_name = ''.join(w.capitalize() for w in words if w.isalpha())
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        return f"{base_name}_{timestamp}"
 
     async def _validate_and_learn(
         self,
