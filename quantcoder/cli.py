@@ -188,12 +188,21 @@ def summarize(ctx, article_id):
 @click.pass_context
 def generate_code(ctx, article_id, max_attempts):
     """
-    Generate QuantConnect code from an article.
+    Generate QuantConnect code from an article using BaselinePipeline.
+
+    The pipeline runs:
+      1. NLP extraction from PDF
+      2. Multi-agent code generation (CoordinatorAgent)
+      3. Self-improvement loop with error fixing
+      4. MCP backtest validation
 
     Example: quantcoder generate 1
     """
     config = ctx.obj['config']
     tool = GenerateCodeTool(config)
+
+    console.print(f"[cyan]Starting BaselinePipeline for article {article_id}...[/cyan]")
+    console.print("[dim]Pipeline: NLP → CoordinatorAgent → Self-Improvement → Backtest[/dim]\n")
 
     with console.status(f"Generating code for article {article_id}..."):
         result = tool.execute(article_id=article_id, max_refine_attempts=max_attempts)
@@ -201,28 +210,56 @@ def generate_code(ctx, article_id, max_attempts):
     if result.success:
         console.print(f"[green]✓[/green] {result.message}\n")
 
-        # Display summary
-        if result.data.get('summary'):
+        # Display strategy info with backtest metrics
+        data = result.data
+        strategy_name = data.get('strategy_name', 'Unknown')
+        paper_title = data.get('paper_title', 'Unknown')
+        sharpe = data.get('sharpe_ratio', 0)
+        max_dd = data.get('max_drawdown', 0)
+        errors_fixed = data.get('errors_fixed', 0)
+        code_files = data.get('code_files', {})
+
+        # Strategy summary panel
+        summary_text = f"""**Strategy:** {strategy_name}
+**Source Paper:** {paper_title}
+
+**Backtest Results:**
+- Sharpe Ratio: {sharpe:.2f}
+- Max Drawdown: {max_dd:.1%}
+- Errors Fixed: {errors_fixed}
+
+**Generated Files:** {', '.join(code_files.keys())}
+**Output Path:** {data.get('path', 'N/A')}"""
+
+        console.print(Panel(
+            Markdown(summary_text),
+            title="[bold]Strategy Summary[/bold]",
+            border_style="blue"
+        ))
+
+        # Display main code
+        from rich.syntax import Syntax
+        code = data.get('code', '')
+        if code:
+            code_display = Syntax(
+                code,
+                "python",
+                theme="monokai",
+                line_numbers=True
+            )
+            console.print("\n")
             console.print(Panel(
-                Markdown(result.data['summary']),
-                title="Strategy Summary",
-                border_style="blue"
+                code_display,
+                title="Main.py",
+                border_style="green"
             ))
 
-        # Display code
-        from rich.syntax import Syntax
-        code_display = Syntax(
-            result.data['code'],
-            "python",
-            theme="monokai",
-            line_numbers=True
-        )
-        console.print("\n")
-        console.print(Panel(
-            code_display,
-            title="Generated Code",
-            border_style="green"
-        ))
+        # Show other files summary
+        if len(code_files) > 1:
+            console.print("\n[dim]Additional files generated:[/dim]")
+            for filename in code_files.keys():
+                if filename != "Main.py":
+                    console.print(f"  • {filename}")
     else:
         console.print(f"[red]✗[/red] {result.error}")
 
@@ -276,30 +313,45 @@ def version():
 @main.group()
 def auto():
     """
-    Autonomous self-improving mode for strategy generation.
+    Autonomous library generation mode.
 
-    This mode runs continuously, learning from errors and improving over time.
+    Generates a library of N strategies by looping the baseline pipeline
+    with quant-perspective prompt variation. Each iteration:
+
+      1. Runs BaselinePipeline (NLP → CoordinatorAgent → backtest)
+      2. Analyzes results with QuantPerspectiveRefiner
+      3. Varies prompts based on performance (indicators, asset classes, etc.)
+
+    Example:
+        quantcoder auto start --query "momentum trading" --count 10
     """
     pass
 
 
 @auto.command(name='start')
 @click.option('--query', required=True, help='Strategy query (e.g., "momentum trading")')
-@click.option('--max-iterations', default=50, help='Maximum iterations to run')
+@click.option('--count', default=10, help='Number of strategies to generate (default: 10)')
 @click.option('--min-sharpe', default=0.5, type=float, help='Minimum Sharpe ratio threshold')
-@click.option('--output', type=click.Path(), help='Output directory for strategies')
+@click.option('--output', type=click.Path(), help='Output directory for strategy library')
 @click.option('--demo', is_flag=True, help='Run in demo mode (no real API calls)')
 @click.pass_context
-def auto_start(ctx, query, max_iterations, min_sharpe, output, demo):
+def auto_start(ctx, query, count, min_sharpe, output, demo):
     """
-    Start autonomous strategy generation.
+    Start autonomous library generation.
+
+    Generates a library of N strategies by:
+      1. Running BaselinePipeline for each strategy
+      2. Analyzing results with QuantPerspectiveRefiner
+      3. Varying prompts based on quant analysis
+      4. Expanding research across indicators, asset classes, timeframes
 
     Example:
-        quantcoder auto start --query "momentum trading" --max-iterations 50
+        quantcoder auto start --query "momentum trading" --count 10
+        quantcoder auto start --query "mean reversion" --count 5 --min-sharpe 0.8
     """
     import asyncio
     from pathlib import Path
-    from quantcoder.autonomous import AutonomousPipeline
+    from quantcoder.pipeline import AutoMode
 
     config = ctx.obj['config']
 
@@ -308,20 +360,20 @@ def auto_start(ctx, query, max_iterations, min_sharpe, output, demo):
 
     output_dir = Path(output) if output else None
 
-    pipeline = AutonomousPipeline(
+    auto_mode = AutoMode(
         config=config,
         demo_mode=demo
     )
 
     try:
-        asyncio.run(pipeline.run(
+        asyncio.run(auto_mode.run(
             query=query,
-            max_iterations=max_iterations,
+            count=count,
             min_sharpe=min_sharpe,
             output_dir=output_dir
         ))
     except KeyboardInterrupt:
-        console.print("\n[yellow]Autonomous mode stopped by user[/yellow]")
+        console.print("\n[yellow]Auto mode stopped by user[/yellow]")
 
 
 @auto.command(name='status')
@@ -390,17 +442,24 @@ def auto_report(format):
 
 
 # ============================================================================
-# LIBRARY BUILDER MODE COMMANDS
+# LIBRARY BUILDER MODE COMMANDS (DEPRECATED - Use 'auto start' instead)
 # ============================================================================
 
 @main.group()
 def library():
     """
-    Library builder mode - Build comprehensive strategy library from scratch.
+    [DEPRECATED] Library builder mode - Use 'quantcoder auto start' instead.
 
-    This mode systematically generates strategies across all major categories.
+    The library command is deprecated. Use the new auto mode which provides:
+    - BaselinePipeline with self-improvement loop
+    - QuantPerspectiveRefiner for quant-driven prompt variation
+    - Better backtest integration
+
+    Example:
+        quantcoder auto start --query "momentum trading" --count 10
     """
-    pass
+    console.print("[yellow]⚠ DEPRECATED: 'library' commands are deprecated.[/yellow]")
+    console.print("[yellow]  Use 'quantcoder auto start --query <query> --count N' instead.[/yellow]\n")
 
 
 @library.command(name='build')
@@ -528,6 +587,7 @@ def evolve():
 @evolve.command(name='start')
 @click.argument('article_id', type=int, required=False)
 @click.option('--code', type=click.Path(exists=True), help='Path to algorithm file to evolve')
+@click.option('--library', 'library_path', type=click.Path(exists=True), help='Path to strategy library directory')
 @click.option('--resume', 'resume_id', help='Resume a previous evolution by ID')
 @click.option('--gens', 'max_generations', default=10, help='Maximum generations to run')
 @click.option('--variants', 'variants_per_gen', default=5, help='Variants per generation')
@@ -537,13 +597,14 @@ def evolve():
 @click.option('--qc-token', envvar='QC_API_TOKEN', help='QuantConnect API token')
 @click.option('--qc-project', envvar='QC_PROJECT_ID', type=int, help='QuantConnect project ID')
 @click.pass_context
-def evolve_start(ctx, article_id, code, resume_id, max_generations, variants_per_gen,
+def evolve_start(ctx, article_id, code, library_path, resume_id, max_generations, variants_per_gen,
                  elite_size, patience, qc_user, qc_token, qc_project):
     """
-    Evolve a trading algorithm using AlphaEvolve-inspired optimization.
+    Evolve trading algorithms using AlphaEvolve-inspired genetic optimization.
 
-    This command takes a generated algorithm and evolves it through multiple
-    generations of LLM-generated variations, evaluated via QuantConnect backtests.
+    This command takes a generated algorithm (or entire library) and evolves it
+    through multiple generations of LLM-generated variations, evaluated via
+    QuantConnect backtests.
 
     ARTICLE_ID: The article number to evolve (must have generated code first)
 
@@ -553,10 +614,16 @@ def evolve_start(ctx, article_id, code, resume_id, max_generations, variants_per
     - Entry/exit logic changes
     - Universe selection tweaks
 
+    Input sources (mutually exclusive):
+      ARTICLE_ID  - Evolve strategy generated from article
+      --code      - Evolve from single algorithm file
+      --library   - Evolve all strategies in a library directory
+
     Examples:
         quantcoder evolve start 1                    # Evolve article 1's algorithm
         quantcoder evolve start 1 --gens 5          # Run for 5 generations
         quantcoder evolve start --code algo.py      # Evolve from file
+        quantcoder evolve start --library ./strategies  # Evolve entire library
         quantcoder evolve start --resume abc123     # Resume evolution abc123
     """
     import asyncio
@@ -578,17 +645,62 @@ def evolve_start(ctx, article_id, code, resume_id, max_generations, variants_per
         console.print("  quantcoder evolve start 1 --qc-user ID --qc-token TOKEN --qc-project PROJECT")
         ctx.exit(1)
 
+    # Collect strategies to evolve (list of (code, source_name) tuples)
+    strategies_to_evolve = []
+
     # Handle resume mode
     if resume_id:
         console.print(f"[cyan]Resuming evolution: {resume_id}[/cyan]")
-        baseline_code = None
-        source_paper = None
+        strategies_to_evolve = [(None, None)]  # Special case for resume
+    elif library_path:
+        # Load all strategies from library directory
+        lib_dir = Path(library_path)
+        console.print(f"[cyan]Loading strategies from library: {lib_dir}[/cyan]")
+
+        # Find strategy directories (each should have Main.py)
+        strategy_dirs = []
+        for item in lib_dir.iterdir():
+            if item.is_dir():
+                main_py = item / "Main.py"
+                if main_py.exists():
+                    strategy_dirs.append(item)
+
+        if not strategy_dirs:
+            # Check for single .py files in the directory
+            py_files = list(lib_dir.glob("*.py"))
+            if py_files:
+                for py_file in py_files:
+                    with open(py_file, 'r') as f:
+                        code = f.read()
+                    strategies_to_evolve.append((code, py_file.stem))
+            else:
+                console.print(f"[red]Error: No strategies found in {lib_dir}[/red]")
+                console.print("[yellow]Library should contain strategy directories with Main.py[/yellow]")
+                ctx.exit(1)
+        else:
+            for strategy_dir in sorted(strategy_dirs):
+                main_py = strategy_dir / "Main.py"
+                with open(main_py, 'r') as f:
+                    code = f.read()
+
+                # Try to load metadata for source info
+                metadata_file = strategy_dir / "metadata.json"
+                if metadata_file.exists():
+                    with open(metadata_file, 'r') as f:
+                        metadata = json.load(f)
+                    source_name = metadata.get('paper_title', strategy_dir.name)
+                else:
+                    source_name = strategy_dir.name
+
+                strategies_to_evolve.append((code, source_name))
+
+        console.print(f"[green]Found {len(strategies_to_evolve)} strategies to evolve[/green]\n")
     elif code:
         # Load from file
         code_path = Path(code)
         with open(code_path, 'r') as f:
             baseline_code = f.read()
-        source_paper = str(code_path)
+        strategies_to_evolve = [(baseline_code, str(code_path))]
     elif article_id:
         # Load the generated code for this article
         code_path = Path(GENERATED_CODE_DIR) / f"algorithm_{article_id}.py"
@@ -608,12 +720,14 @@ def evolve_start(ctx, article_id, code, resume_id, max_generations, variants_per
                 articles = json.load(f)
             if 0 < article_id <= len(articles):
                 source_paper = articles[article_id - 1].get('title', source_paper)
+
+        strategies_to_evolve = [(baseline_code, source_paper)]
     else:
-        console.print("[red]Error: Provide ARTICLE_ID, --code, or --resume[/red]")
+        console.print("[red]Error: Provide ARTICLE_ID, --code, --library, or --resume[/red]")
         ctx.exit(1)
 
     # Create evolution config
-    config = EvolutionConfig(
+    evo_config = EvolutionConfig(
         qc_user_id=qc_user,
         qc_api_token=qc_token,
         qc_project_id=qc_project,
@@ -626,6 +740,7 @@ def evolve_start(ctx, article_id, code, resume_id, max_generations, variants_per
     # Display configuration
     console.print("")
     console.print(Panel.fit(
+        f"[bold]Strategies to evolve:[/bold] {len(strategies_to_evolve)}\n"
         f"[bold]Max generations:[/bold] {max_generations}\n"
         f"[bold]Variants/gen:[/bold] {variants_per_gen}\n"
         f"[bold]Elite pool size:[/bold] {elite_size}\n"
@@ -635,46 +750,81 @@ def evolve_start(ctx, article_id, code, resume_id, max_generations, variants_per
     ))
     console.print("")
 
-    async def run_evolution():
-        engine = EvolutionEngine(config)
+    async def run_single_evolution(baseline_code, source_paper, resume=None):
+        """Run evolution for a single strategy."""
+        engine = EvolutionEngine(evo_config)
 
         # Set up progress callback
         def on_generation_complete(state, gen):
             best = state.elite_pool.get_best()
             if best and best.fitness:
-                console.print(f"\n[green]Generation {gen} complete.[/green] Best fitness: {best.fitness:.4f}")
+                console.print(f"  [green]Generation {gen} complete.[/green] Best fitness: {best.fitness:.4f}")
 
         engine.on_generation_complete = on_generation_complete
 
         # Run evolution
-        if resume_id:
-            result = await engine.evolve(baseline_code="", source_paper="", resume_id=resume_id)
+        if resume:
+            result = await engine.evolve(baseline_code="", source_paper="", resume_id=resume)
         else:
             result = await engine.evolve(baseline_code, source_paper)
 
         return result, engine
 
+    async def run_all_evolutions():
+        """Run evolution for all strategies in the list."""
+        results = []
+
+        for i, (strategy_code, source_name) in enumerate(strategies_to_evolve, 1):
+            if strategy_code is None and source_name is None:
+                # Resume mode
+                console.print(f"[cyan]Resuming evolution {resume_id}...[/cyan]")
+                result, engine = await run_single_evolution(None, None, resume=resume_id)
+                results.append((result, engine, "resumed"))
+            else:
+                console.print(f"\n[cyan]({i}/{len(strategies_to_evolve)}) Evolving: {source_name}[/cyan]")
+                result, engine = await run_single_evolution(strategy_code, source_name)
+                results.append((result, engine, source_name))
+
+        return results
+
     try:
-        result, engine = asyncio.run(run_evolution())
+        all_results = asyncio.run(run_all_evolutions())
 
-        # Report results
-        console.print("")
-        console.print(Panel.fit(
-            result.get_summary(),
-            title="[bold green]EVOLUTION COMPLETE[/bold green]",
-            border_style="green"
-        ))
+        # Report results for all evolved strategies
+        console.print("\n" + "=" * 60)
+        console.print("[bold green]EVOLUTION COMPLETE[/bold green]")
+        console.print("=" * 60)
 
-        # Export best variant
-        best = engine.get_best_variant()
-        if best:
-            output_path = Path(GENERATED_CODE_DIR) / f"evolved_{result.evolution_id}.py"
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            engine.export_best_code(str(output_path))
-            console.print(f"\n[green]Best algorithm saved to:[/green] {output_path}")
+        for result, engine, source_name in all_results:
+            console.print(f"\n[bold]{source_name}:[/bold]")
+            console.print(Panel.fit(
+                result.get_summary(),
+                title=f"Results",
+                border_style="green"
+            ))
 
-        console.print(f"\n[cyan]Evolution ID:[/cyan] {result.evolution_id}")
-        console.print(f"[dim]To resume: quantcoder evolve start --resume {result.evolution_id}[/dim]")
+            # Export best variant
+            best = engine.get_best_variant()
+            if best:
+                # Create output filename based on source
+                safe_name = "".join(c if c.isalnum() or c in '-_' else '_' for c in source_name[:30])
+                output_path = Path(GENERATED_CODE_DIR) / f"evolved_{safe_name}_{result.evolution_id}.py"
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                engine.export_best_code(str(output_path))
+                console.print(f"[green]Best algorithm saved to:[/green] {output_path}")
+
+            console.print(f"[cyan]Evolution ID:[/cyan] {result.evolution_id}")
+            console.print(f"[dim]To resume: quantcoder evolve start --resume {result.evolution_id}[/dim]")
+
+        # Summary for library mode
+        if len(all_results) > 1:
+            console.print("\n[bold cyan]Library Evolution Summary:[/bold cyan]")
+            console.print(f"  Total strategies evolved: {len(all_results)}")
+            best_fitness = max(
+                (r[1].get_best_variant().fitness for r in all_results if r[1].get_best_variant()),
+                default=0
+            )
+            console.print(f"  Best overall fitness: {best_fitness:.4f}" if best_fitness else "")
 
     except Exception as e:
         console.print(f"[red]Error: Evolution failed - {e}[/red]")

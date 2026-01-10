@@ -1,12 +1,20 @@
 """Tools for code generation and validation."""
 
 import ast
+import asyncio
 from pathlib import Path
 from .base import Tool, ToolResult
 
 
 class GenerateCodeTool(Tool):
-    """Tool for generating QuantConnect code from article summaries."""
+    """Tool for generating QuantConnect code from article summaries.
+
+    Uses the BaselinePipeline which provides:
+      - NLP extraction from PDF
+      - Multi-agent code generation (CoordinatorAgent)
+      - Self-improvement loop (ErrorLearner)
+      - MCP validation and backtesting
+    """
 
     @property
     def name(self) -> str:
@@ -18,21 +26,19 @@ class GenerateCodeTool(Tool):
 
     def execute(self, article_id: int, max_refine_attempts: int = 6) -> ToolResult:
         """
-        Generate QuantConnect code from an article.
+        Generate QuantConnect code from an article using full pipeline.
 
         Args:
             article_id: Article ID from search results (1-indexed)
             max_refine_attempts: Maximum attempts to refine code
 
         Returns:
-            ToolResult with generated code
+            ToolResult with generated code and backtest metrics
         """
-        from ..core.processor import ArticleProcessor
-
         self.logger.info(f"Generating code for article {article_id}")
 
         try:
-            # Find the article file
+            # Check if article exists
             filepath = Path(self.config.tools.downloads_dir) / f"article_{article_id}.pdf"
 
             if not filepath.exists():
@@ -41,36 +47,57 @@ class GenerateCodeTool(Tool):
                     error=f"Article not downloaded. Please download article {article_id} first."
                 )
 
-            # Process the article
-            processor = ArticleProcessor(self.config, max_refine_attempts=max_refine_attempts)
-            results = processor.extract_structure_and_generate_code(str(filepath))
+            # Use BaselinePipeline for full workflow
+            from quantcoder.pipeline import BaselinePipeline
 
-            summary = results.get("summary")
-            code = results.get("code")
+            pipeline = BaselinePipeline(
+                config=self.config,
+                max_fix_attempts=max_refine_attempts,
+                demo_mode=False
+            )
 
-            if not code or code == "QuantConnect code could not be generated successfully.":
+            # Run pipeline synchronously (wrap async)
+            result = asyncio.run(pipeline.run_from_article_id(article_id))
+
+            if not result.success:
                 return ToolResult(
                     success=False,
-                    error="Failed to generate valid QuantConnect code",
-                    data={"summary": summary}
+                    error=result.error_message or "Failed to generate valid QuantConnect code"
                 )
 
-            # Save code
+            # Save code files
             code_dir = Path(self.config.tools.generated_code_dir)
             code_dir.mkdir(parents=True, exist_ok=True)
 
-            code_path = code_dir / f"algorithm_{article_id}.py"
-            with open(code_path, 'w', encoding='utf-8') as f:
-                f.write(code)
+            strategy_dir = code_dir / result.name
+            strategy_dir.mkdir(parents=True, exist_ok=True)
+
+            # Write all code files
+            main_code = ""
+            for filename, content in result.code_files.items():
+                filepath = strategy_dir / filename
+                filepath.write_text(content)
+                if filename == "Main.py":
+                    main_code = content
+
+            # Also save as single file for backwards compatibility
+            single_file = code_dir / f"algorithm_{article_id}.py"
+            single_file.write_text(main_code or next(iter(result.code_files.values()), ""))
 
             return ToolResult(
                 success=True,
                 data={
-                    "code": code,
-                    "summary": summary,
-                    "path": str(code_path)
+                    "code": main_code,
+                    "code_files": result.code_files,
+                    "strategy_name": result.name,
+                    "path": str(strategy_dir),
+                    "paper_title": result.paper_title,
+                    "backtest_metrics": result.backtest_metrics,
+                    "sharpe_ratio": result.sharpe_ratio,
+                    "max_drawdown": result.max_drawdown,
+                    "errors_fixed": result.errors_fixed
                 },
-                message=f"Code generated and saved to {code_path}"
+                message=f"Strategy '{result.name}' generated (Sharpe: {result.sharpe_ratio:.2f})"
             )
 
         except Exception as e:
