@@ -1,17 +1,95 @@
-# Python virtual environments
+# Python bytecode and cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Distribution / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.whl
+
+# Virtual Environment
+.venv/
 .venv-legacy/
 venv/
+ENV/
+env/
+.env/
 
-# Bytecode files
-__pycache__/
-*.pyc
+# IDE and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
 
-# Environment variables
-.env
-
-# Logs and output
+# Logs and output artifacts
 *.log
+logs/
+quantcli.log
+article_processor.log
+
+# QuantCoder specific - user data
+downloads/
+generated_code/
+articles.json
+output.html
 output.*
 
-# Packaging metadata
-*.egg-info/
+# Configuration and secrets (API keys)
+.env
+.env.*
+*.env
+.envrc
+.quantcoder/
+secrets.json
+credentials.json
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# SpaCy models (large binary files)
+*.bin
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+.hypothesis/
+.tox/
+.nox/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Local development
+*.local
