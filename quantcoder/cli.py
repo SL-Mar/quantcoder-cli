@@ -17,6 +17,7 @@ from .tools import (
     SummarizeArticleTool,
     GenerateCodeTool,
     ValidateCodeTool,
+    BacktestTool,
 )
 
 console = Console()
@@ -223,6 +224,94 @@ def generate_code(ctx, article_id, max_attempts):
             title="Generated Code",
             border_style="green"
         ))
+    else:
+        console.print(f"[red]✗[/red] {result.error}")
+
+
+@main.command(name='validate')
+@click.argument('file_path', type=click.Path(exists=True))
+@click.option('--local-only', is_flag=True, help='Only run local syntax check, skip QuantConnect')
+@click.pass_context
+def validate_code_cmd(ctx, file_path, local_only):
+    """
+    Validate algorithm code locally and on QuantConnect.
+
+    Example:
+        quantcoder validate generated_code/algorithm_1.py
+        quantcoder validate my_algo.py --local-only
+    """
+    config = ctx.obj['config']
+    tool = ValidateCodeTool(config)
+
+    # Read the file
+    with open(file_path, 'r') as f:
+        code = f.read()
+
+    with console.status(f"Validating {file_path}..."):
+        result = tool.execute(code=code, use_quantconnect=not local_only)
+
+    if result.success:
+        console.print(f"[green]✓[/green] {result.message}")
+        if result.data and result.data.get('warnings'):
+            console.print("[yellow]Warnings:[/yellow]")
+            for w in result.data['warnings']:
+                console.print(f"  • {w}")
+    else:
+        console.print(f"[red]✗[/red] {result.error}")
+        if result.data and result.data.get('errors'):
+            console.print("[red]Errors:[/red]")
+            for err in result.data['errors'][:10]:
+                console.print(f"  • {err}")
+
+
+@main.command(name='backtest')
+@click.argument('file_path', type=click.Path(exists=True))
+@click.option('--start', default='2020-01-01', help='Backtest start date (YYYY-MM-DD)')
+@click.option('--end', default='2024-01-01', help='Backtest end date (YYYY-MM-DD)')
+@click.option('--name', help='Name for the backtest')
+@click.pass_context
+def backtest_cmd(ctx, file_path, start, end, name):
+    """
+    Run backtest on QuantConnect.
+
+    Requires QUANTCONNECT_API_KEY and QUANTCONNECT_USER_ID in ~/.quantcoder/.env
+
+    Example:
+        quantcoder backtest generated_code/algorithm_1.py
+        quantcoder backtest my_algo.py --start 2022-01-01 --end 2024-01-01
+    """
+    config = ctx.obj['config']
+
+    # Check credentials first
+    if not config.has_quantconnect_credentials():
+        console.print("[red]Error: QuantConnect credentials not configured[/red]")
+        console.print(f"[yellow]Please set QUANTCONNECT_API_KEY and QUANTCONNECT_USER_ID in {config.home_dir / '.env'}[/yellow]")
+        return
+
+    tool = BacktestTool(config)
+
+    with console.status(f"Running backtest on {file_path} ({start} to {end})..."):
+        result = tool.execute(file_path=file_path, start_date=start, end_date=end, name=name)
+
+    if result.success:
+        console.print(f"[green]✓[/green] {result.message}\n")
+
+        # Display results table
+        from rich.table import Table
+        table = Table(title="Backtest Results")
+        table.add_column("Metric", style="cyan")
+        table.add_column("Value", style="green")
+
+        table.add_row("Backtest ID", str(result.data.get('backtest_id', 'N/A')))
+        table.add_row("Sharpe Ratio", f"{result.data.get('sharpe_ratio', 0):.2f}")
+        table.add_row("Total Return", str(result.data.get('total_return', 'N/A')))
+
+        # Add statistics
+        stats = result.data.get('statistics', {})
+        for key, value in list(stats.items())[:8]:
+            table.add_row(key, str(value))
+
+        console.print(table)
     else:
         console.print(f"[red]✗[/red] {result.error}")
 
