@@ -255,7 +255,7 @@ class LLMFactory:
 
     PROVIDERS = {
         "anthropic": AnthropicProvider,
-        "mistral": Mistral Provider,
+        "mistral": MistralProvider,
         "deepseek": DeepSeekProvider,
         "openai": OpenAIProvider,
     }
