@@ -1,4 +1,4 @@
-# QuantCoder CLI v3.0 Requirements
+# QuantCoder CLI v2.1.0 Requirements
 # Multi-Agent System with MCP Support
 
 # Core Dependencies
