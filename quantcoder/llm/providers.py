@@ -1,5 +1,6 @@
 """LLM provider abstraction for multiple backends."""
 
+import os
 import logging
 from abc import ABC, abstractmethod
 from typing import List, Dict, Optional, AsyncIterator
@@ -250,14 +251,99 @@ class OpenAIProvider(LLMProvider):
         return "openai"
 
 
+class OllamaProvider(LLMProvider):
+    """Ollama provider - Local LLM support without API keys."""
+
+    def __init__(
+        self,
+        api_key: str = "",  # Not used, kept for interface compatibility
+        model: str = "llama3.2",
+        base_url: str = None
+    ):
+        """
+        Initialize Ollama provider.
+
+        Args:
+            api_key: Not used (kept for interface compatibility)
+            model: Model identifier (default: llama3.2)
+            base_url: Ollama server URL (default: http://localhost:11434)
+        """
+        self.model = model
+        self.base_url = base_url or os.environ.get(
+            'OLLAMA_BASE_URL', 'http://localhost:11434'
+        )
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.info(f"Initialized OllamaProvider: {self.base_url}, model={self.model}")
+
+    async def chat(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = 0.7,
+        max_tokens: int = 2000,
+        **kwargs
+    ) -> str:
+        """Generate chat completion with Ollama."""
+        try:
+            import aiohttp
+        except ImportError:
+            raise ImportError("aiohttp package not installed. Run: pip install aiohttp")
+
+        url = f"{self.base_url}/api/chat"
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "stream": False,
+            "options": {
+                "temperature": temperature,
+                "num_predict": max_tokens
+            }
+        }
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=300)) as response:
+                    response.raise_for_status()
+                    result = await response.json()
+
+                    # Extract response text
+                    if 'message' in result and 'content' in result['message']:
+                        text = result['message']['content']
+                    elif 'response' in result:
+                        text = result['response']
+                    else:
+                        raise ValueError(f"Unexpected response format: {list(result.keys())}")
+
+                    self.logger.info(f"Ollama response received ({len(text)} chars)")
+                    return text.strip()
+
+        except aiohttp.ClientConnectorError as e:
+            error_msg = f"Failed to connect to Ollama at {self.base_url}. Is Ollama running? Error: {e}"
+            self.logger.error(error_msg)
+            raise ConnectionError(error_msg) from e
+        except aiohttp.ClientResponseError as e:
+            error_msg = f"Ollama API error: {e.status} - {e.message}"
+            self.logger.error(error_msg)
+            raise
+        except Exception as e:
+            self.logger.error(f"Ollama error: {e}")
+            raise
+
+    def get_model_name(self) -> str:
+        return self.model
+
+    def get_provider_name(self) -> str:
+        return "ollama"
+
+
 class LLMFactory:
     """Factory for creating LLM providers."""
 
     PROVIDERS = {
         "anthropic": AnthropicProvider,
-        "mistral": Mistral Provider,
+        "mistral": MistralProvider,
         "deepseek": DeepSeekProvider,
         "openai": OpenAIProvider,
+        "ollama": OllamaProvider,
     }
 
     DEFAULT_MODELS = {
@@ -265,6 +351,7 @@ class LLMFactory:
         "mistral": "devstral-2-123b",
         "deepseek": "deepseek-chat",
         "openai": "gpt-4o-2024-11-20",
+        "ollama": "llama3.2",
     }
 
     @classmethod
@@ -278,8 +365,8 @@ class LLMFactory:
         Create LLM provider instance.
 
         Args:
-            provider: Provider name (anthropic, mistral, deepseek, openai)
-            api_key: API key for the provider
+            provider: Provider name (anthropic, mistral, deepseek, openai, ollama)
+            api_key: API key for the provider (not required for ollama)
             model: Optional model identifier (uses default if not specified)
 
         Returns:
@@ -287,7 +374,7 @@ class LLMFactory:
 
         Example:
             >>> llm = LLMFactory.create("anthropic", api_key="sk-...")
-            >>> llm = LLMFactory.create("mistral", api_key="...", model="devstral-2-123b")
+            >>> llm = LLMFactory.create("ollama", api_key="", model="llama3.2")
         """
         provider = provider.lower()
 
@@ -319,6 +406,7 @@ class LLMFactory:
             "general": "deepseek",     # Cost-effective for general tasks
             "coordination": "anthropic",  # Sonnet for orchestration
             "risk": "anthropic",       # Sonnet for nuanced risk decisions
+            "local": "ollama",         # Local LLM, no API key required
         }
 
         return recommendations.get(task_type, "anthropic")
