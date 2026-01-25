@@ -1,80 +1,113 @@
-# QuantCoder (CLI Version)
+# QuantCoder 2.0.0-alpha.1
+
+[![Version](https://img.shields.io/badge/version-2.0.0--alpha.1-orange)](https://github.com/SL-Mar/quantcoder-cli)
+[![Branch](https://img.shields.io/badge/branch-gamma-purple)](https://github.com/SL-Mar/quantcoder-cli/tree/gamma)
+[![Package](https://img.shields.io/badge/package-quantcoder-blue)](.)
+
+> **AI-powered CLI for generating QuantConnect trading algorithms from research articles**
+
+⚠️ **This is the GAMMA branch (2.0.0-alpha.1)** - Cutting edge with autonomous mode & library builder
+
+**Looking for stable version?** → [QuantCoder 1.0 (main branch)](https://github.com/SL-Mar/quantcoder-cli/tree/main)
+**Want improved legacy?** → [QuantCoder 1.1 (beta branch)](https://github.com/SL-Mar/quantcoder-cli/tree/beta)
+
+📖 **[Version Comparison Guide](docs/VERSION_COMPARISON.md)** | **[Branch Map](docs/BRANCH_VERSION_MAP.md)**
+
+---
 
 QuantCoder is a command-line tool that allows users to generate QuantConnect trading algorithms from research articles using natural language processing and large language models (LLMs). It was initiated in November 2023 and based on a cognitive architecture inspired by the article ["Dual Agent Chatbots and Expert Systems Design"](https://towardsdev.com/dual-agent-chatbots-and-expert-systems-design-25e2cba434e9)
 
 The initial version successfully coded a blended momentum and mean-reversion strategy as described in ["Outperforming the Market (1000% in 10 years)"](https://medium.com/coinmonks/how-to-outperform-the-market-fe151b944c77?sk=7066045abe12d5cf88c7edc80ec2679c), which received over 10,000 impressions on LinkedIn.
 
-As of November 2025, it is under refactoring with readiness expected in February 2026. 
+## 🌟 Version 2.0 - Complete Refactoring
+
+**Refactored in December 2025** - Inspired by [Mistral's Vibe CLI](https://github.com/mistralai/mistral-vibe) architecture.
+
+### New Features:
+- 🤖 **Interactive Chat Interface** with conversational AI
+- 🛠️ **Tool-Based Architecture** for modularity and extensibility
+- ⚙️ **Configuration System** with TOML support
+- 🎨 **Modern Terminal UI** with Rich library
+- 📝 **Programmable Mode** via `--prompt` flag
+- 💾 **Persistent Context** and conversation history
+
+👉 **[See full v2.0 documentation →](README_v2.md)** 
 
 ---
 
-## 🚀 First-Time Installation
+## 🚀 Installation (v2.0)
 
-> ✅ Requires **Python 3.8 or later**
+> ✅ Requires **Python 3.10 or later**
 
-### 🛠 Setup Instructions
+### Quick Start
 
 ```bash
-# Clone the repository and switch to the legacy branch
-git clone https://github.com/SL-Mar/QuantCoder.git
-cd QuantCoder
-git checkout quantcoder-legacy
+# Clone the repository
+git clone https://github.com/SL-Mar/quantcoder-cli.git
+cd quantcoder-cli
 
-# Create and activate a virtual environment
-python -m venv .venv-legacy
+# Create and activate virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-# On Windows:
-.\.venv-legacy\Scripts\activate
-# On macOS/Linux:
-source .venv-legacy/bin/activate
-
-# Install dependencies and the CLI
+# Install the package
 pip install -e .
+
+# Download SpaCy model
 python -m spacy download en_core_web_sm
-pip install openai==0.28
 ```
 
-You may also freeze dependencies:
+### First Run
 
 ```bash
-pip freeze > requirements-legacy.txt
+# Launch interactive mode
+quantcoder
+
+# Or use the short alias
+qc
 ```
 
----
-🧠 LLM Configuration
-By default, this project uses the OpenAI gpt-4o-2024-11-20 model for generating trading code from research articles.
-
-## 💡 Usage
-
-To launch the CLI tool in interactive mode:
-
-```bash
-python -m quantcli.cli interactive
-```
-
-Or if `quantcli` is recognized as a command:
-
-```bash
-quantcli interactive
-```
+On first run, you'll be prompted for your OpenAI API key.
 
 ---
 
-## ⚠️ OpenAI SDK Compatibility
+## 💡 Usage (v2.0)
 
-This legacy version uses the **OpenAI SDK v0.28**. Newer versions (`>=1.0.0`) are **not supported**.
-
-If you encounter this error:
-
-```
-You tried to access openai.ChatCompletion, but this is no longer supported...
-```
-
-Fix it by running:
+### Interactive Mode
 
 ```bash
-pip install openai==0.28
+quantcoder> search "momentum trading strategies"
+quantcoder> download 1
+quantcoder> summarize 1
+quantcoder> generate 1
 ```
+
+### Direct Commands
+
+```bash
+quantcoder search "algorithmic trading" --num 5
+quantcoder download 1
+quantcoder summarize 1
+quantcoder generate 1
+```
+
+### Programmatic Mode
+
+```bash
+quantcoder --prompt "Find articles about mean reversion"
+```
+
+---
+
+## 📚 Legacy Version (v0.3)
+
+For the original version with OpenAI SDK v0.28:
+
+```bash
+git checkout quantcoder-legacy
+```
+
+See legacy documentation for setup instructions.
 
 ---
 
