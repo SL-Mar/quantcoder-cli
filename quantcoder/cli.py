@@ -186,12 +186,17 @@ def summarize(ctx, article_id):
 @main.command(name='generate')
 @click.argument('article_id', type=int)
 @click.option('--max-attempts', default=6, help='Maximum refinement attempts')
+@click.option('--open-in-editor', is_flag=True, help='Open generated code in editor (default: Zed)')
+@click.option('--editor', default=None, help='Editor to use (overrides config, e.g., zed, code, vim)')
 @click.pass_context
-def generate_code(ctx, article_id, max_attempts):
+def generate_code(ctx, article_id, max_attempts, open_in_editor, editor):
     """
     Generate QuantConnect code from an article.
 
-    Example: quantcoder generate 1
+    Example:
+        quantcoder generate 1
+        quantcoder generate 1 --open-in-editor
+        quantcoder generate 1 --open-in-editor --editor code
     """
     config = ctx.obj['config']
     tool = GenerateCodeTool(config)
@@ -224,6 +229,18 @@ def generate_code(ctx, article_id, max_attempts):
             title="Generated Code",
             border_style="green"
         ))
+
+        # Open in editor if requested
+        if open_in_editor:
+            from .editor import open_in_editor as launch_editor, get_editor_display_name
+            editor_cmd = editor or config.ui.editor
+            editor_name = get_editor_display_name(editor_cmd)
+            code_path = result.data.get('path')
+            if code_path:
+                if launch_editor(code_path, editor_cmd):
+                    console.print(f"[cyan]Opened in {editor_name}[/cyan]")
+                else:
+                    console.print(f"[yellow]Could not open in {editor_name}. Is it installed?[/yellow]")
     else:
         console.print(f"[red]✗[/red] {result.error}")
 

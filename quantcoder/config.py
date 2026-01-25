@@ -30,6 +30,7 @@ class UIConfig:
     theme: str = "monokai"
     auto_approve: bool = False
     show_token_usage: bool = True
+    editor: str = "zed"  # Editor for --open-in-editor flag (zed, code, vim, etc.)
 
 
 @dataclass
@@ -112,6 +113,7 @@ class Config:
                 "theme": self.ui.theme,
                 "auto_approve": self.ui.auto_approve,
                 "show_token_usage": self.ui.show_token_usage,
+                "editor": self.ui.editor,
             },
             "tools": {
                 "enabled_tools": self.tools.enabled_tools,
