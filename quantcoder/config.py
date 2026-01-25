@@ -152,6 +152,39 @@ class Config:
         self.api_key = api_key
         return api_key
 
+    def load_quantconnect_credentials(self) -> tuple[str, str]:
+        """Load QuantConnect API credentials from environment."""
+        from dotenv import load_dotenv
+
+        env_path = self.home_dir / ".env"
+        if env_path.exists():
+            load_dotenv(env_path)
+
+        api_key = os.getenv("QUANTCONNECT_API_KEY")
+        user_id = os.getenv("QUANTCONNECT_USER_ID")
+
+        if not api_key or not user_id:
+            raise EnvironmentError(
+                "QuantConnect credentials not found. Please set QUANTCONNECT_API_KEY "
+                f"and QUANTCONNECT_USER_ID in your environment or {env_path}"
+            )
+
+        self.quantconnect_api_key = api_key
+        self.quantconnect_user_id = user_id
+        return api_key, user_id
+
+    def has_quantconnect_credentials(self) -> bool:
+        """Check if QuantConnect credentials are available."""
+        from dotenv import load_dotenv
+
+        env_path = self.home_dir / ".env"
+        if env_path.exists():
+            load_dotenv(env_path)
+
+        api_key = os.getenv("QUANTCONNECT_API_KEY")
+        user_id = os.getenv("QUANTCONNECT_USER_ID")
+        return bool(api_key and user_id)
+
     def save_api_key(self, api_key: str):
         """Save API key to .env file."""
         env_path = self.home_dir / ".env"

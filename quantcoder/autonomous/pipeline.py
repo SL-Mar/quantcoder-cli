@@ -296,8 +296,35 @@ class AutonomousPipeline:
                 }
             return {'valid': True, 'error_count': 0, 'errors': []}
 
-        # TODO: Implement real validation
-        return {'valid': True, 'error_count': 0, 'errors': []}
+        # Use real validation via MCP
+        from quantcoder.tools import ValidateCodeTool
+
+        code = strategy.get('code', '')
+        if not code and strategy.get('code_files'):
+            code = strategy['code_files'].get('Main.py', '')
+
+        tool = ValidateCodeTool(self.config)
+        result = tool.execute(code=code, use_quantconnect=True)
+
+        if result.success:
+            return {'valid': True, 'error_count': 0, 'errors': [], 'attempts': 0}
+        else:
+            errors = []
+            if result.data and result.data.get('errors'):
+                errors = result.data['errors']
+            elif result.error:
+                errors = [result.error]
+
+            # Learn from the error
+            for error in errors:
+                self.error_learner.analyze_error(error, code)
+
+            return {
+                'valid': False,
+                'error_count': len(errors),
+                'errors': errors,
+                'attempts': 1
+            }
 
     async def _apply_learned_fixes(
         self,
@@ -331,8 +358,37 @@ class AutonomousPipeline:
                 'total_return': random.uniform(-0.2, 0.8)
             }
 
-        # TODO: Implement real backtesting via MCP
-        return {'sharpe_ratio': 0.0, 'max_drawdown': 0.0, 'total_return': 0.0}
+        # Check if QuantConnect credentials are available
+        if not self.config.has_quantconnect_credentials():
+            console.print("[yellow]QuantConnect credentials not configured, skipping real backtest[/yellow]")
+            return {'sharpe_ratio': 0.0, 'max_drawdown': 0.0, 'total_return': 0.0}
+
+        # Use real backtesting via MCP
+        from quantcoder.tools import BacktestTool
+
+        code = strategy.get('code', '')
+        if not code and strategy.get('code_files'):
+            code = strategy['code_files'].get('Main.py', '')
+
+        tool = BacktestTool(self.config)
+        result = tool.execute(
+            code=code,
+            start_date="2020-01-01",
+            end_date="2024-01-01",
+            name=strategy.get('name')
+        )
+
+        if result.success and result.data:
+            return {
+                'sharpe_ratio': result.data.get('sharpe_ratio', 0.0),
+                'max_drawdown': result.data.get('statistics', {}).get('Max Drawdown', 0.0),
+                'total_return': result.data.get('total_return', 0.0),
+                'backtest_id': result.data.get('backtest_id'),
+                'statistics': result.data.get('statistics', {})
+            }
+        else:
+            console.print(f"[yellow]Backtest failed: {result.error}[/yellow]")
+            return {'sharpe_ratio': 0.0, 'max_drawdown': 0.0, 'total_return': 0.0}
 
     def _store_strategy(
         self,

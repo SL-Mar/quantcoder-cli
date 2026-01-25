@@ -2,7 +2,7 @@
 
 from .base import Tool, ToolResult
 from .article_tools import SearchArticlesTool, DownloadArticleTool, SummarizeArticleTool
-from .code_tools import GenerateCodeTool, ValidateCodeTool
+from .code_tools import GenerateCodeTool, ValidateCodeTool, BacktestTool
 from .file_tools import ReadFileTool, WriteFileTool
 
 __all__ = [
@@ -13,6 +13,7 @@ __all__ = [
     "SummarizeArticleTool",
     "GenerateCodeTool",
     "ValidateCodeTool",
+    "BacktestTool",
     "ReadFileTool",
     "WriteFileTool",
 ]
