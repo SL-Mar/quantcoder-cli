@@ -132,7 +132,7 @@ Create a plan for generating the QuantConnect algorithm."""
         import json
         try:
             plan = json.loads(response)
-        except:
+        except json.JSONDecodeError:
             # Fallback to default plan
             plan = {
                 "components": {
