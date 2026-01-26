@@ -40,6 +40,9 @@ dependencies = [
     "prompt-toolkit>=3.0.43",
     "toml>=0.10.2",
     "InquirerPy>=0.3.4",
+    # Security: minimum versions for transitive dependencies
+    "cryptography>=43.0.1",  # CVE-2023-50782, CVE-2024-0727
+    "setuptools>=78.1.1",    # CVE-2024-6345, PYSEC-2025-49
 ]
 
 [project.optional-dependencies]

@@ -20,8 +20,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Copy only dependency files first (for caching)
 COPY pyproject.toml requirements.txt ./
 
-# Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
+# Install Python dependencies with secure build tools
+RUN pip install --no-cache-dir --upgrade pip>=25.3 setuptools>=78.1.1 wheel>=0.46.2 && \
     pip install --no-cache-dir -e . && \
     pip install --no-cache-dir pytest pytest-asyncio
 
