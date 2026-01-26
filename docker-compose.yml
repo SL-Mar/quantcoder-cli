@@ -1,0 +1,63 @@
+# QuantCoder CLI - Docker Compose Configuration
+# Usage: docker-compose run quantcoder <command>
+
+version: '3.8'
+
+services:
+  quantcoder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: quantcoder-cli:2.0.0
+    container_name: quantcoder
+
+    # Environment variables for API keys
+    # Create a .env file with your API keys or set them here
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY:-}
+      - QUANTCONNECT_API_KEY=${QUANTCONNECT_API_KEY:-}
+      - QUANTCONNECT_USER_ID=${QUANTCONNECT_USER_ID:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+
+    # Volume mounts for persistence
+    volumes:
+      - quantcoder-config:/home/quantcoder/.quantcoder
+      - quantcoder-downloads:/home/quantcoder/downloads
+      - quantcoder-code:/home/quantcoder/generated_code
+      - quantcoder-data:/home/quantcoder/data
+
+    # Interactive mode support
+    stdin_open: true
+    tty: true
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+
+  # Optional: Local Ollama service for offline LLM
+  ollama:
+    image: ollama/ollama:latest
+    container_name: quantcoder-ollama
+    profiles:
+      - with-ollama
+    volumes:
+      - ollama-models:/root/.ollama
+    ports:
+      - "11434:11434"
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+
+volumes:
+  quantcoder-config:
+  quantcoder-downloads:
+  quantcoder-code:
+  quantcoder-data:
+  ollama-models:

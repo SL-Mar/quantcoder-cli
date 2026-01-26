@@ -1,4 +1,4 @@
-# QuantCoder CLI v2.1.0 Requirements
+# QuantCoder CLI v2.0.0 Requirements
 # Multi-Agent System with MCP Support
 
 # Core Dependencies
@@ -20,7 +20,12 @@ openai>=1.0.0      # GPT-4o / DeepSeek
 
 # Async & Parallel Execution
 aiohttp>=3.9.0
-asyncio>=3.4.3
+
+# Security: Minimum versions for transitive dependencies
+# These address known CVEs in older versions
+cryptography>=43.0.1  # CVE-2023-50782, CVE-2024-0727, PYSEC-2024-225, GHSA-h4gh-qq45-vh27
+setuptools>=78.1.1    # CVE-2024-6345, PYSEC-2025-49
+wheel>=0.46.2         # CVE-2026-24049
 
 # Optional: MCP SDK (when available)
 # mcp>=0.1.0
