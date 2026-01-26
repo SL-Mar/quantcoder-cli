@@ -2,7 +2,7 @@
 
 [![Version](https://img.shields.io/badge/version-2.1.0-green)](https://github.com/SL-Mar/quantcoder-cli)
 [![Python](https://img.shields.io/badge/python-3.10+-blue)](https://python.org)
-[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
 > **AI-powered CLI for generating QuantConnect trading algorithms from research articles**
 
@@ -114,6 +114,6 @@ The folder 'Strategies and publications' contains articles and trading strategie
 
 ## 📜 License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the Apache License 2.0. See the [LICENSE](LICENSE) file for details.
 
 
