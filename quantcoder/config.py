@@ -30,6 +30,7 @@ class UIConfig:
     theme: str = "monokai"
     auto_approve: bool = False
     show_token_usage: bool = True
+    editor: str = "zed"  # Editor for --open-in-editor flag (zed, code, vim, etc.)
 
 
 @dataclass
@@ -112,6 +113,7 @@ class Config:
                 "theme": self.ui.theme,
                 "auto_approve": self.ui.auto_approve,
                 "show_token_usage": self.ui.show_token_usage,
+                "editor": self.ui.editor,
             },
             "tools": {
                 "enabled_tools": self.tools.enabled_tools,
@@ -151,6 +153,39 @@ class Config:
 
         self.api_key = api_key
         return api_key
+
+    def load_quantconnect_credentials(self) -> tuple[str, str]:
+        """Load QuantConnect API credentials from environment."""
+        from dotenv import load_dotenv
+
+        env_path = self.home_dir / ".env"
+        if env_path.exists():
+            load_dotenv(env_path)
+
+        api_key = os.getenv("QUANTCONNECT_API_KEY")
+        user_id = os.getenv("QUANTCONNECT_USER_ID")
+
+        if not api_key or not user_id:
+            raise EnvironmentError(
+                "QuantConnect credentials not found. Please set QUANTCONNECT_API_KEY "
+                f"and QUANTCONNECT_USER_ID in your environment or {env_path}"
+            )
+
+        self.quantconnect_api_key = api_key
+        self.quantconnect_user_id = user_id
+        return api_key, user_id
+
+    def has_quantconnect_credentials(self) -> bool:
+        """Check if QuantConnect credentials are available."""
+        from dotenv import load_dotenv
+
+        env_path = self.home_dir / ".env"
+        if env_path.exists():
+            load_dotenv(env_path)
+
+        api_key = os.getenv("QUANTCONNECT_API_KEY")
+        user_id = os.getenv("QUANTCONNECT_USER_ID")
+        return bool(api_key and user_id)
 
     def save_api_key(self, api_key: str):
         """Save API key to .env file."""

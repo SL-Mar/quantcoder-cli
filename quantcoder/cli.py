@@ -17,6 +17,7 @@ from .tools import (
     SummarizeArticleTool,
     GenerateCodeTool,
     ValidateCodeTool,
+    BacktestTool,
 )
 
 console = Console()
@@ -185,12 +186,17 @@ def summarize(ctx, article_id):
 @main.command(name='generate')
 @click.argument('article_id', type=int)
 @click.option('--max-attempts', default=6, help='Maximum refinement attempts')
+@click.option('--open-in-editor', is_flag=True, help='Open generated code in editor (default: Zed)')
+@click.option('--editor', default=None, help='Editor to use (overrides config, e.g., zed, code, vim)')
 @click.pass_context
-def generate_code(ctx, article_id, max_attempts):
+def generate_code(ctx, article_id, max_attempts, open_in_editor, editor):
     """
     Generate QuantConnect code from an article.
 
-    Example: quantcoder generate 1
+    Example:
+        quantcoder generate 1
+        quantcoder generate 1 --open-in-editor
+        quantcoder generate 1 --open-in-editor --editor code
     """
     config = ctx.obj['config']
     tool = GenerateCodeTool(config)
@@ -223,6 +229,106 @@ def generate_code(ctx, article_id, max_attempts):
             title="Generated Code",
             border_style="green"
         ))
+
+        # Open in editor if requested
+        if open_in_editor:
+            from .editor import open_in_editor as launch_editor, get_editor_display_name
+            editor_cmd = editor or config.ui.editor
+            editor_name = get_editor_display_name(editor_cmd)
+            code_path = result.data.get('path')
+            if code_path:
+                if launch_editor(code_path, editor_cmd):
+                    console.print(f"[cyan]Opened in {editor_name}[/cyan]")
+                else:
+                    console.print(f"[yellow]Could not open in {editor_name}. Is it installed?[/yellow]")
+    else:
+        console.print(f"[red]✗[/red] {result.error}")
+
+
+@main.command(name='validate')
+@click.argument('file_path', type=click.Path(exists=True))
+@click.option('--local-only', is_flag=True, help='Only run local syntax check, skip QuantConnect')
+@click.pass_context
+def validate_code_cmd(ctx, file_path, local_only):
+    """
+    Validate algorithm code locally and on QuantConnect.
+
+    Example:
+        quantcoder validate generated_code/algorithm_1.py
+        quantcoder validate my_algo.py --local-only
+    """
+    config = ctx.obj['config']
+    tool = ValidateCodeTool(config)
+
+    # Read the file
+    with open(file_path, 'r') as f:
+        code = f.read()
+
+    with console.status(f"Validating {file_path}..."):
+        result = tool.execute(code=code, use_quantconnect=not local_only)
+
+    if result.success:
+        console.print(f"[green]✓[/green] {result.message}")
+        if result.data and result.data.get('warnings'):
+            console.print("[yellow]Warnings:[/yellow]")
+            for w in result.data['warnings']:
+                console.print(f"  • {w}")
+    else:
+        console.print(f"[red]✗[/red] {result.error}")
+        if result.data and result.data.get('errors'):
+            console.print("[red]Errors:[/red]")
+            for err in result.data['errors'][:10]:
+                console.print(f"  • {err}")
+
+
+@main.command(name='backtest')
+@click.argument('file_path', type=click.Path(exists=True))
+@click.option('--start', default='2020-01-01', help='Backtest start date (YYYY-MM-DD)')
+@click.option('--end', default='2024-01-01', help='Backtest end date (YYYY-MM-DD)')
+@click.option('--name', help='Name for the backtest')
+@click.pass_context
+def backtest_cmd(ctx, file_path, start, end, name):
+    """
+    Run backtest on QuantConnect.
+
+    Requires QUANTCONNECT_API_KEY and QUANTCONNECT_USER_ID in ~/.quantcoder/.env
+
+    Example:
+        quantcoder backtest generated_code/algorithm_1.py
+        quantcoder backtest my_algo.py --start 2022-01-01 --end 2024-01-01
+    """
+    config = ctx.obj['config']
+
+    # Check credentials first
+    if not config.has_quantconnect_credentials():
+        console.print("[red]Error: QuantConnect credentials not configured[/red]")
+        console.print(f"[yellow]Please set QUANTCONNECT_API_KEY and QUANTCONNECT_USER_ID in {config.home_dir / '.env'}[/yellow]")
+        return
+
+    tool = BacktestTool(config)
+
+    with console.status(f"Running backtest on {file_path} ({start} to {end})..."):
+        result = tool.execute(file_path=file_path, start_date=start, end_date=end, name=name)
+
+    if result.success:
+        console.print(f"[green]✓[/green] {result.message}\n")
+
+        # Display results table
+        from rich.table import Table
+        table = Table(title="Backtest Results")
+        table.add_column("Metric", style="cyan")
+        table.add_column("Value", style="green")
+
+        table.add_row("Backtest ID", str(result.data.get('backtest_id', 'N/A')))
+        table.add_row("Sharpe Ratio", f"{result.data.get('sharpe_ratio', 0):.2f}")
+        table.add_row("Total Return", str(result.data.get('total_return', 'N/A')))
+
+        # Add statistics
+        stats = result.data.get('statistics', {})
+        for key, value in list(stats.items())[:8]:
+            table.add_row(key, str(value))
+
+        console.print(table)
     else:
         console.print(f"[red]✗[/red] {result.error}")
 
@@ -504,6 +610,330 @@ def library_export(format, output):
         asyncio.run(builder.export(format=format, output_file=output_path))
     except Exception as e:
         console.print(f"[red]Error exporting library: {e}[/red]")
+
+
+# ============================================================================
+# EVOLUTION MODE COMMANDS (AlphaEvolve-inspired)
+# ============================================================================
+
+EVOLUTIONS_DIR = "data/evolutions"
+GENERATED_CODE_DIR = "generated_code"
+
+
+@main.group()
+def evolve():
+    """
+    AlphaEvolve-inspired strategy evolution.
+
+    Evolve trading algorithms through LLM-generated variations,
+    evaluated via QuantConnect backtests.
+    """
+    pass
+
+
+@evolve.command(name='start')
+@click.argument('article_id', type=int, required=False)
+@click.option('--code', type=click.Path(exists=True), help='Path to algorithm file to evolve')
+@click.option('--resume', 'resume_id', help='Resume a previous evolution by ID')
+@click.option('--gens', 'max_generations', default=10, help='Maximum generations to run')
+@click.option('--variants', 'variants_per_gen', default=5, help='Variants per generation')
+@click.option('--elite', 'elite_size', default=3, help='Elite pool size')
+@click.option('--patience', default=3, help='Stop after N generations without improvement')
+@click.option('--qc-user', envvar='QC_USER_ID', help='QuantConnect user ID')
+@click.option('--qc-token', envvar='QC_API_TOKEN', help='QuantConnect API token')
+@click.option('--qc-project', envvar='QC_PROJECT_ID', type=int, help='QuantConnect project ID')
+@click.pass_context
+def evolve_start(ctx, article_id, code, resume_id, max_generations, variants_per_gen,
+                 elite_size, patience, qc_user, qc_token, qc_project):
+    """
+    Evolve a trading algorithm using AlphaEvolve-inspired optimization.
+
+    This command takes a generated algorithm and evolves it through multiple
+    generations of LLM-generated variations, evaluated via QuantConnect backtests.
+
+    ARTICLE_ID: The article number to evolve (must have generated code first)
+
+    Unlike traditional parameter optimization, this explores STRUCTURAL variations:
+    - Indicator changes (SMA -> EMA, add RSI, etc.)
+    - Risk management modifications
+    - Entry/exit logic changes
+    - Universe selection tweaks
+
+    Examples:
+        quantcoder evolve start 1                    # Evolve article 1's algorithm
+        quantcoder evolve start 1 --gens 5          # Run for 5 generations
+        quantcoder evolve start --code algo.py      # Evolve from file
+        quantcoder evolve start --resume abc123     # Resume evolution abc123
+    """
+    import asyncio
+    import os
+    import json
+    from pathlib import Path
+    from quantcoder.evolver import EvolutionEngine, EvolutionConfig
+
+    # Validate QuantConnect credentials
+    if not all([qc_user, qc_token, qc_project]):
+        console.print("[red]Error: QuantConnect credentials required.[/red]")
+        console.print("")
+        console.print("[yellow]Set via environment variables:[/yellow]")
+        console.print("  export QC_USER_ID=your_user_id")
+        console.print("  export QC_API_TOKEN=your_api_token")
+        console.print("  export QC_PROJECT_ID=your_project_id")
+        console.print("")
+        console.print("[yellow]Or use command options:[/yellow]")
+        console.print("  quantcoder evolve start 1 --qc-user ID --qc-token TOKEN --qc-project PROJECT")
+        ctx.exit(1)
+
+    # Handle resume mode
+    if resume_id:
+        console.print(f"[cyan]Resuming evolution: {resume_id}[/cyan]")
+        baseline_code = None
+        source_paper = None
+    elif code:
+        # Load from file
+        code_path = Path(code)
+        with open(code_path, 'r') as f:
+            baseline_code = f.read()
+        source_paper = str(code_path)
+    elif article_id:
+        # Load the generated code for this article
+        code_path = Path(GENERATED_CODE_DIR) / f"algorithm_{article_id}.py"
+        if not code_path.exists():
+            console.print(f"[red]Error: No generated code found for article {article_id}.[/red]")
+            console.print(f"[yellow]Run 'quantcoder generate {article_id}' first.[/yellow]")
+            ctx.exit(1)
+
+        with open(code_path, 'r') as f:
+            baseline_code = f.read()
+
+        # Get article info for reference
+        source_paper = f"article_{article_id}"
+        articles_file = Path("articles.json")
+        if articles_file.exists():
+            with open(articles_file, 'r') as f:
+                articles = json.load(f)
+            if 0 < article_id <= len(articles):
+                source_paper = articles[article_id - 1].get('title', source_paper)
+    else:
+        console.print("[red]Error: Provide ARTICLE_ID, --code, or --resume[/red]")
+        ctx.exit(1)
+
+    # Create evolution config
+    config = EvolutionConfig(
+        qc_user_id=qc_user,
+        qc_api_token=qc_token,
+        qc_project_id=qc_project,
+        max_generations=max_generations,
+        variants_per_generation=variants_per_gen,
+        elite_pool_size=elite_size,
+        convergence_patience=patience
+    )
+
+    # Display configuration
+    console.print("")
+    console.print(Panel.fit(
+        f"[bold]Max generations:[/bold] {max_generations}\n"
+        f"[bold]Variants/gen:[/bold] {variants_per_gen}\n"
+        f"[bold]Elite pool size:[/bold] {elite_size}\n"
+        f"[bold]Convergence patience:[/bold] {patience}",
+        title="[bold cyan]AlphaEvolve Strategy Optimization[/bold cyan]",
+        border_style="cyan"
+    ))
+    console.print("")
+
+    async def run_evolution():
+        engine = EvolutionEngine(config)
+
+        # Set up progress callback
+        def on_generation_complete(state, gen):
+            best = state.elite_pool.get_best()
+            if best and best.fitness:
+                console.print(f"\n[green]Generation {gen} complete.[/green] Best fitness: {best.fitness:.4f}")
+
+        engine.on_generation_complete = on_generation_complete
+
+        # Run evolution
+        if resume_id:
+            result = await engine.evolve(baseline_code="", source_paper="", resume_id=resume_id)
+        else:
+            result = await engine.evolve(baseline_code, source_paper)
+
+        return result, engine
+
+    try:
+        result, engine = asyncio.run(run_evolution())
+
+        # Report results
+        console.print("")
+        console.print(Panel.fit(
+            result.get_summary(),
+            title="[bold green]EVOLUTION COMPLETE[/bold green]",
+            border_style="green"
+        ))
+
+        # Export best variant
+        best = engine.get_best_variant()
+        if best:
+            output_path = Path(GENERATED_CODE_DIR) / f"evolved_{result.evolution_id}.py"
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            engine.export_best_code(str(output_path))
+            console.print(f"\n[green]Best algorithm saved to:[/green] {output_path}")
+
+        console.print(f"\n[cyan]Evolution ID:[/cyan] {result.evolution_id}")
+        console.print(f"[dim]To resume: quantcoder evolve start --resume {result.evolution_id}[/dim]")
+
+    except Exception as e:
+        console.print(f"[red]Error: Evolution failed - {e}[/red]")
+        ctx.exit(1)
+
+
+@evolve.command(name='list')
+def evolve_list():
+    """
+    List all saved evolution runs.
+
+    Shows evolution IDs, status, and best fitness for each saved evolution.
+    """
+    import os
+    import json
+    from pathlib import Path
+
+    evolutions_dir = Path(EVOLUTIONS_DIR)
+
+    if not evolutions_dir.exists():
+        console.print("[yellow]No evolutions found.[/yellow]")
+        return
+
+    evolution_files = list(evolutions_dir.glob("*.json"))
+
+    if not evolution_files:
+        console.print("[yellow]No evolutions found.[/yellow]")
+        return
+
+    console.print("\n[bold cyan]Saved Evolutions[/bold cyan]")
+    console.print("-" * 60)
+
+    for filepath in sorted(evolution_files):
+        try:
+            with open(filepath, 'r') as f:
+                data = json.load(f)
+
+            evo_id = data.get('evolution_id', 'unknown')
+            status = data.get('status', 'unknown')
+            generation = data.get('current_generation', 0)
+            elite = data.get('elite_pool', {}).get('variants', [])
+            best_fitness = elite[0].get('fitness', 'N/A') if elite else 'N/A'
+
+            status_color = {
+                'completed': 'green',
+                'running': 'yellow',
+                'failed': 'red'
+            }.get(status, 'white')
+
+            console.print(
+                f"  [cyan]{evo_id}[/cyan]: "
+                f"Gen {generation}, "
+                f"Status: [{status_color}]{status}[/{status_color}], "
+                f"Best: {best_fitness}"
+            )
+        except Exception as e:
+            console.print(f"  [red]{filepath.name}: Error reading - {e}[/red]")
+
+    console.print("-" * 60)
+    console.print("[dim]Resume with: quantcoder evolve start --resume <id>[/dim]")
+
+
+@evolve.command(name='show')
+@click.argument('evolution_id')
+def evolve_show(evolution_id):
+    """
+    Show details of a specific evolution.
+
+    EVOLUTION_ID: The evolution ID to show
+    """
+    import json
+    from pathlib import Path
+
+    filepath = Path(EVOLUTIONS_DIR) / f"{evolution_id}.json"
+
+    if not filepath.exists():
+        console.print(f"[red]Evolution {evolution_id} not found.[/red]")
+        return
+
+    with open(filepath, 'r') as f:
+        data = json.load(f)
+
+    # Summary
+    console.print(Panel.fit(
+        f"[bold]Evolution ID:[/bold] {data.get('evolution_id')}\n"
+        f"[bold]Status:[/bold] {data.get('status')}\n"
+        f"[bold]Generation:[/bold] {data.get('current_generation')}\n"
+        f"[bold]Total Variants:[/bold] {len(data.get('all_variants', {}))}\n"
+        f"[bold]Source:[/bold] {data.get('source_paper', 'N/A')}",
+        title=f"[bold cyan]Evolution {evolution_id}[/bold cyan]",
+        border_style="cyan"
+    ))
+
+    # Elite pool
+    elite = data.get('elite_pool', {}).get('variants', [])
+    if elite:
+        console.print("\n[bold]Elite Pool:[/bold]")
+        for i, variant in enumerate(elite, 1):
+            metrics = variant.get('metrics', {})
+            console.print(
+                f"  {i}. [cyan]{variant['id']}[/cyan] (Gen {variant['generation']}): "
+                f"Fitness={variant.get('fitness', 'N/A'):.4f if variant.get('fitness') else 'N/A'}"
+            )
+            if metrics:
+                console.print(
+                    f"     Sharpe={metrics.get('sharpe_ratio', 0):.2f}, "
+                    f"Return={metrics.get('total_return', 0):.1%}, "
+                    f"MaxDD={metrics.get('max_drawdown', 0):.1%}"
+                )
+
+
+@evolve.command(name='export')
+@click.argument('evolution_id')
+@click.option('--output', type=click.Path(), help='Output file path')
+def evolve_export(evolution_id, output):
+    """
+    Export the best algorithm from an evolution.
+
+    EVOLUTION_ID: The evolution ID to export from
+    """
+    import json
+    from pathlib import Path
+
+    filepath = Path(EVOLUTIONS_DIR) / f"{evolution_id}.json"
+
+    if not filepath.exists():
+        console.print(f"[red]Evolution {evolution_id} not found.[/red]")
+        return
+
+    with open(filepath, 'r') as f:
+        data = json.load(f)
+
+    elite = data.get('elite_pool', {}).get('variants', [])
+    if not elite:
+        console.print("[red]No elite variants found in this evolution.[/red]")
+        return
+
+    best = elite[0]
+    output_path = Path(output) if output else Path(GENERATED_CODE_DIR) / f"evolved_{evolution_id}.py"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(output_path, 'w') as f:
+        f.write(f"# Evolution: {evolution_id}\n")
+        f.write(f"# Variant: {best['id']} (Generation {best['generation']})\n")
+        f.write(f"# Fitness: {best.get('fitness', 'N/A')}\n")
+        if best.get('metrics'):
+            f.write(f"# Sharpe: {best['metrics'].get('sharpe_ratio', 0):.2f}\n")
+            f.write(f"# Max Drawdown: {best['metrics'].get('max_drawdown', 0):.1%}\n")
+        f.write(f"# Description: {best.get('mutation_description', 'N/A')}\n")
+        f.write("#\n")
+        f.write(best.get('code', ''))
+
+    console.print(f"[green]Exported best variant to:[/green] {output_path}")
 
 
 if __name__ == '__main__':

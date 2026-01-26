@@ -16,6 +16,8 @@ from .tools import (
     DownloadArticleTool,
     SummarizeArticleTool,
     GenerateCodeTool,
+    ValidateCodeTool,
+    BacktestTool,
     ReadFileTool,
     WriteFileTool,
 )
@@ -41,6 +43,8 @@ class InteractiveChat:
             'download': DownloadArticleTool(config),
             'summarize': SummarizeArticleTool(config),
             'generate': GenerateCodeTool(config),
+            'validate': ValidateCodeTool(config),
+            'backtest': BacktestTool(config),
             'read': ReadFileTool(config),
             'write': WriteFileTool(config),
         }
@@ -48,7 +52,7 @@ class InteractiveChat:
         # Command completions
         self.completer = WordCompleter(
             ['help', 'exit', 'quit', 'search', 'download', 'summarize',
-             'generate', 'config', 'clear', 'history'],
+             'generate', 'validate', 'backtest', 'config', 'clear', 'history'],
             ignore_case=True
         )
 
@@ -122,6 +126,45 @@ class InteractiveChat:
             except ValueError:
                 console.print("[red]Error: Please provide a valid article ID[/red]")
 
+        elif user_input.startswith('backtest '):
+            # Parse: backtest <file> [--start YYYY-MM-DD] [--end YYYY-MM-DD]
+            parts = user_input[9:].strip().split()
+            if not parts:
+                console.print("[red]Error: Please provide a file path[/red]")
+                return
+
+            file_path = parts[0]
+            start_date = "2020-01-01"
+            end_date = "2024-01-01"
+
+            # Parse optional date arguments
+            for i, part in enumerate(parts[1:], 1):
+                if part == "--start" and i + 1 < len(parts):
+                    start_date = parts[i + 1]
+                elif part == "--end" and i + 1 < len(parts):
+                    end_date = parts[i + 1]
+
+            self.execute_tool('backtest', file_path=file_path, start_date=start_date, end_date=end_date)
+
+        elif user_input.startswith('validate '):
+            file_path = user_input[9:].strip()
+            if not file_path:
+                console.print("[red]Error: Please provide a file path[/red]")
+                return
+
+            # Read the file and validate
+            from pathlib import Path
+            path = Path(file_path)
+            if not path.exists():
+                path = Path(self.config.tools.generated_code_dir) / file_path
+            if not path.exists():
+                console.print(f"[red]Error: File not found: {file_path}[/red]")
+                return
+
+            with open(path, 'r') as f:
+                code = f.read()
+            self.execute_tool('validate', code=code)
+
         else:
             # For natural language queries, use the LLM to interpret
             self.process_natural_language(user_input)
@@ -185,8 +228,40 @@ class InteractiveChat:
                     border_style="green"
                 ))
 
+            elif tool_name == 'backtest' and result.data:
+                from rich.table import Table
+                table = Table(title="Backtest Results")
+                table.add_column("Metric", style="cyan")
+                table.add_column("Value", style="green")
+
+                table.add_row("Sharpe Ratio", f"{result.data.get('sharpe_ratio', 'N/A'):.2f}" if result.data.get('sharpe_ratio') else "N/A")
+                table.add_row("Total Return", f"{result.data.get('total_return', 'N/A')}")
+                table.add_row("Backtest ID", str(result.data.get('backtest_id', 'N/A')))
+
+                # Add more stats if available
+                stats = result.data.get('statistics', {})
+                for key, value in list(stats.items())[:5]:
+                    table.add_row(key, str(value))
+
+                console.print(table)
+
+            elif tool_name == 'validate' and result.data:
+                stage = result.data.get('stage', 'local')
+                if stage == 'quantconnect':
+                    console.print(f"[green]✓ Compiled on QuantConnect[/green]")
+                    if result.data.get('warnings'):
+                        console.print("[yellow]Warnings:[/yellow]")
+                        for w in result.data['warnings']:
+                            console.print(f"  • {w}")
+
         else:
             console.print(f"[red]✗[/red] {result.error}")
+            # Show additional error details if available
+            if hasattr(result, 'data') and result.data:
+                if result.data.get('errors'):
+                    console.print("[red]Errors:[/red]")
+                    for err in result.data['errors'][:5]:
+                        console.print(f"  • {err}")
 
     def process_natural_language(self, user_input: str):
         """Process natural language input using LLM."""
@@ -246,6 +321,8 @@ class InteractiveChat:
 - `download <id>` - Download article PDF
 - `summarize <id>` - Summarize article strategy
 - `generate <id>` - Generate QuantConnect code
+- `validate <file>` - Validate code on QuantConnect
+- `backtest <file> [--start YYYY-MM-DD] [--end YYYY-MM-DD]` - Run backtest
 - `config` - Show configuration
 - `clear` - Clear screen
 - `help` - Show this help
@@ -254,14 +331,23 @@ class InteractiveChat:
 ## Natural Language:
 You can also ask questions in natural language, such as:
 - "Find articles about momentum trading"
-- "How do I generate code from an article?"
-- "What's the difference between mean reversion and momentum?"
+- "Backtest algorithm_1.py and tell me the Sharpe ratio"
+- "Why is my strategy underperforming?"
 
 ## Workflow:
 1. Search for articles: `search "algorithmic trading"`
 2. Download an article: `download 1`
 3. Summarize the strategy: `summarize 1`
 4. Generate code: `generate 1`
+5. Validate on QuantConnect: `validate algorithm_1.py`
+6. Run backtest: `backtest algorithm_1.py --start 2020-01-01 --end 2024-01-01`
+
+## QuantConnect Setup:
+Set credentials in ~/.quantcoder/.env:
+```
+QUANTCONNECT_API_KEY=your_api_key
+QUANTCONNECT_USER_ID=your_user_id
+```
 """
 
         console.print(Panel(
@@ -300,6 +386,8 @@ class ProgrammaticChat:
             'download': DownloadArticleTool(config),
             'summarize': SummarizeArticleTool(config),
             'generate': GenerateCodeTool(config),
+            'validate': ValidateCodeTool(config),
+            'backtest': BacktestTool(config),
             'read': ReadFileTool(config),
             'write': WriteFileTool(config),
         }
