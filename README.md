@@ -1,7 +1,8 @@
 # QuantCoder 2.0.0-alpha.1
 
-[![Version](https://img.shields.io/badge/version-2.0.0--alpha.1-orange)](https://github.com/SL-Mar/quantcoder-cli)
+[![Version](https://img.shields.io/badge/version-2.1.0--alpha.1-orange)](https://github.com/SL-Mar/quantcoder-cli)
 [![Branch](https://img.shields.io/badge/branch-gamma-purple)](https://github.com/SL-Mar/quantcoder-cli/tree/gamma)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 [![Package](https://img.shields.io/badge/package-quantcoder-blue)](.)
 
 > **AI-powered CLI for generating QuantConnect trading algorithms from research articles**
@@ -119,6 +120,16 @@ The folder 'Strategies and publications' contains articles and trading strategie
 
 ## 📜 License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the Apache License 2.0. See the [LICENSE](LICENSE) file for details.
+
+```
+Copyright 2024 Sebastien M. LAIGNEL
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+```
 
 
