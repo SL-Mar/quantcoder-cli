@@ -126,6 +126,33 @@ class SectionSplitter:
         return sections
 
 
+class CodeValidator:
+    """Validates Python code syntax."""
+
+    def __init__(self):
+        self.logger = logging.getLogger(self.__class__.__name__)
+
+    def validate_code(self, code: str) -> bool:
+        """
+        Validate Python code syntax.
+
+        Args:
+            code: Python code string to validate
+
+        Returns:
+            True if code is syntactically valid, False otherwise
+        """
+        try:
+            ast.parse(code)
+            return True
+        except SyntaxError as e:
+            self.logger.debug(f"Syntax error in code: {e}")
+            return False
+        except Exception as e:
+            self.logger.error(f"Validation error: {e}")
+            return False
+
+
 class KeywordAnalyzer:
     """Analyzes text sections to categorize sentences based on keywords."""
 
