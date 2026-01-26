@@ -1,0 +1,52 @@
+# QuantCoder CLI Code Owners
+# These owners will be requested for review on PRs that modify their areas.
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything
+* @SL-Mar
+
+# Core CLI and configuration
+/quantcoder/cli.py @SL-Mar
+/quantcoder/config.py @SL-Mar
+/quantcoder/chat.py @SL-Mar
+
+# Tool system
+/quantcoder/tools/ @SL-Mar
+
+# Multi-agent system
+/quantcoder/agents/ @SL-Mar
+
+# LLM providers and integration
+/quantcoder/llm/ @SL-Mar
+/quantcoder/core/ @SL-Mar
+
+# Autonomous learning pipeline
+/quantcoder/autonomous/ @SL-Mar
+
+# Strategy library builder
+/quantcoder/library/ @SL-Mar
+
+# Evolution engine (AlphaEvolve)
+/quantcoder/evolver/ @SL-Mar
+
+# QuantConnect MCP integration
+/quantcoder/mcp/ @SL-Mar
+
+# Execution and parallelization
+/quantcoder/execution/ @SL-Mar
+
+# Tests
+/tests/ @SL-Mar
+
+# Documentation
+/docs/ @SL-Mar
+*.md @SL-Mar
+
+# CI/CD and deployment
+/.github/ @SL-Mar
+/Dockerfile @SL-Mar
+/docker-compose.yml @SL-Mar
+
+# Configuration files
+/pyproject.toml @SL-Mar
+/requirements.txt @SL-Mar

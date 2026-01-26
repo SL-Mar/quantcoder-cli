@@ -2,7 +2,8 @@
 
 import os
 import json
-import requests
+import asyncio
+import aiohttp
 import webbrowser
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -63,7 +64,17 @@ class SearchArticlesTool(Tool):
             return ToolResult(success=False, error=str(e))
 
     def _search_crossref(self, query: str, rows: int = 5) -> List[Dict]:
-        """Search CrossRef API for articles."""
+        """Search CrossRef API for articles (sync wrapper)."""
+        try:
+            return asyncio.get_event_loop().run_until_complete(
+                self._search_crossref_async(query, rows)
+            )
+        except RuntimeError:
+            # No event loop running, create a new one
+            return asyncio.run(self._search_crossref_async(query, rows))
+
+    async def _search_crossref_async(self, query: str, rows: int = 5) -> List[Dict]:
+        """Search CrossRef API for articles using async aiohttp."""
         api_url = "https://api.crossref.org/works"
         params = {
             "query": query,
@@ -75,25 +86,30 @@ class SearchArticlesTool(Tool):
         }
 
         try:
-            response = requests.get(api_url, params=params, headers=headers, timeout=10)
-            response.raise_for_status()
-            data = response.json()
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(api_url, params=params, headers=headers) as response:
+                    response.raise_for_status()
+                    data = await response.json()
 
-            articles = []
-            for item in data.get('message', {}).get('items', []):
-                article = {
-                    'title': item.get('title', ['No title'])[0],
-                    'authors': self._format_authors(item.get('author', [])),
-                    'published': self._format_date(item.get('published-print')),
-                    'DOI': item.get('DOI', ''),
-                    'URL': item.get('URL', '')
-                }
-                articles.append(article)
+                    articles = []
+                    for item in data.get('message', {}).get('items', []):
+                        article = {
+                            'title': item.get('title', ['No title'])[0],
+                            'authors': self._format_authors(item.get('author', [])),
+                            'published': self._format_date(item.get('published-print')),
+                            'DOI': item.get('DOI', ''),
+                            'URL': item.get('URL', '')
+                        }
+                        articles.append(article)
 
-            return articles
+                    return articles
 
-        except requests.exceptions.RequestException as e:
+        except aiohttp.ClientError as e:
             self.logger.error(f"CrossRef API request failed: {e}")
+            return []
+        except asyncio.TimeoutError:
+            self.logger.error("CrossRef API request timed out")
             return []
 
     def _format_authors(self, authors: List[Dict]) -> str:
@@ -209,22 +225,46 @@ class DownloadArticleTool(Tool):
             return ToolResult(success=False, error=str(e))
 
     def _download_pdf(self, url: str, save_path: Path, doi: Optional[str] = None) -> bool:
-        """Attempt to download PDF from URL."""
+        """Attempt to download PDF from URL (sync wrapper)."""
+        try:
+            return asyncio.get_event_loop().run_until_complete(
+                self._download_pdf_async(url, save_path, doi)
+            )
+        except RuntimeError:
+            # No event loop running, create a new one
+            return asyncio.run(self._download_pdf_async(url, save_path, doi))
+
+    async def _download_pdf_async(self, url: str, save_path: Path, doi: Optional[str] = None) -> bool:
+        """Attempt to download PDF from URL using async aiohttp."""
         headers = {
             "User-Agent": "QuantCoder/2.0 (mailto:smr.laignel@gmail.com)"
         }
 
         try:
-            response = requests.get(url, headers=headers, allow_redirects=True, timeout=30)
-            response.raise_for_status()
+            # First check Content-Type with HEAD request to avoid downloading non-PDFs
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                # Check content type before downloading
+                async with session.head(url, headers=headers, allow_redirects=True) as head_response:
+                    content_type = head_response.headers.get('Content-Type', '')
+                    if 'application/pdf' not in content_type:
+                        self.logger.debug(f"URL does not point to PDF (Content-Type: {content_type})")
+                        return False
 
-            if 'application/pdf' in response.headers.get('Content-Type', ''):
-                with open(save_path, 'wb') as f:
-                    f.write(response.content)
-                return True
+                # Download the PDF
+                async with session.get(url, headers=headers, allow_redirects=True) as response:
+                    response.raise_for_status()
 
-        except requests.exceptions.RequestException as e:
+                    if 'application/pdf' in response.headers.get('Content-Type', ''):
+                        content = await response.read()
+                        with open(save_path, 'wb') as f:
+                            f.write(content)
+                        return True
+
+        except aiohttp.ClientError as e:
             self.logger.error(f"Failed to download PDF: {e}")
+        except asyncio.TimeoutError:
+            self.logger.error("PDF download timed out")
 
         return False
 

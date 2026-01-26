@@ -58,6 +58,7 @@ output.*
 # Configuration and secrets (API keys)
 .env
 .env.*
+!.env.example
 *.env
 .envrc
 .quantcoder/
