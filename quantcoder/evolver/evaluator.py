@@ -5,15 +5,16 @@ QuantConnect Evaluator
 Handles backtesting of algorithm variants via QuantConnect API.
 Parses results and calculates fitness scores.
 
-Adapted for QuantCoder v2.0 with async support.
+Adapted for QuantCoder v2.0 with async support and aiohttp.
 """
 
 import logging
 import asyncio
+import base64
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
 
-import requests
+import aiohttp
 
 from .config import EvolutionConfig
 
@@ -67,9 +68,11 @@ class QCEvaluator:
                 "Set qc_user_id and qc_api_token in config."
             )
 
-    def _get_auth(self) -> tuple:
-        """Get auth tuple for requests."""
-        return (self.config.qc_user_id, self.config.qc_api_token)
+    def _get_auth_header(self) -> str:
+        """Get Basic Auth header for aiohttp."""
+        credentials = f"{self.config.qc_user_id}:{self.config.qc_api_token}"
+        encoded = base64.b64encode(credentials.encode()).decode()
+        return f"Basic {encoded}"
 
     async def _api_request(
         self,
@@ -77,31 +80,29 @@ class QCEvaluator:
         endpoint: str,
         data: Optional[dict] = None
     ) -> Optional[dict]:
-        """Make authenticated API request to QuantConnect."""
+        """Make authenticated API request to QuantConnect using aiohttp."""
         url = f"{self.API_BASE}/{endpoint}"
+        headers = {"Authorization": self._get_auth_header()}
 
         try:
-            # Run sync request in thread pool to not block
-            loop = asyncio.get_event_loop()
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                if method == "GET":
+                    async with session.get(url, headers=headers) as response:
+                        response.raise_for_status()
+                        return await response.json()
+                elif method == "POST":
+                    async with session.post(url, headers=headers, json=data) as response:
+                        response.raise_for_status()
+                        return await response.json()
+                else:
+                    raise ValueError(f"Unsupported method: {method}")
 
-            if method == "GET":
-                response = await loop.run_in_executor(
-                    None,
-                    lambda: requests.get(url, auth=self._get_auth(), timeout=30)
-                )
-            elif method == "POST":
-                response = await loop.run_in_executor(
-                    None,
-                    lambda: requests.post(url, auth=self._get_auth(), json=data, timeout=30)
-                )
-            else:
-                raise ValueError(f"Unsupported method: {method}")
-
-            response.raise_for_status()
-            return response.json()
-
-        except requests.RequestException as e:
+        except aiohttp.ClientError as e:
             self.logger.error(f"API request failed: {e}")
+            return None
+        except asyncio.TimeoutError:
+            self.logger.error(f"API request timed out: {endpoint}")
             return None
 
     async def create_project(self, name: str) -> Optional[int]:
@@ -297,23 +298,57 @@ class QCEvaluator:
 
         return result
 
-    async def evaluate_batch(self, variants: list) -> Dict[str, Optional[BacktestResult]]:
+    async def evaluate_batch(
+        self,
+        variants: list,
+        parallel: bool = True,
+        max_concurrent: int = 3
+    ) -> Dict[str, Optional[BacktestResult]]:
         """
-        Evaluate multiple variants sequentially.
+        Evaluate multiple variants, optionally in parallel.
 
         Args:
             variants: List of (variant_id, code) tuples
+            parallel: If True, evaluate variants concurrently (default True)
+            max_concurrent: Maximum concurrent evaluations (default 3)
 
         Returns:
             Dict mapping variant_id to BacktestResult (or None if failed)
         """
+        if not parallel:
+            # Sequential evaluation (legacy behavior)
+            results = {}
+            for variant_id, code in variants:
+                result = await self.evaluate(code, variant_id)
+                results[variant_id] = result
+                # Rate limiting - be nice to QC API
+                await asyncio.sleep(2)
+            return results
+
+        # Parallel evaluation with semaphore for rate limiting
+        semaphore = asyncio.Semaphore(max_concurrent)
         results = {}
 
-        for variant_id, code in variants:
-            result = await self.evaluate(code, variant_id)
-            results[variant_id] = result
+        async def evaluate_with_semaphore(variant_id: str, code: str):
+            async with semaphore:
+                result = await self.evaluate(code, variant_id)
+                # Small delay between releases to avoid API burst
+                await asyncio.sleep(1)
+                return variant_id, result
 
-            # Rate limiting - be nice to QC API
-            await asyncio.sleep(2)
+        # Run all evaluations concurrently
+        tasks = [
+            evaluate_with_semaphore(variant_id, code)
+            for variant_id, code in variants
+        ]
+
+        completed = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for item in completed:
+            if isinstance(item, Exception):
+                self.logger.error(f"Evaluation failed with exception: {item}")
+            else:
+                variant_id, result = item
+                results[variant_id] = result
 
         return results

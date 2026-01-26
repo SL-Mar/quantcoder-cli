@@ -8,6 +8,7 @@ Coordinates variation generation, evaluation, and elite pool management.
 Adapted for QuantCoder v2.0 with async support and multi-provider LLM.
 """
 
+import asyncio
 import logging
 import os
 from typing import Optional, Callable, List
@@ -202,27 +203,47 @@ class EvolutionEngine:
 
         return variants
 
-    async def _evaluate_variants(self, variants: List[Variant]):
-        """Evaluate all variants and update their metrics/fitness."""
+    async def _evaluate_variants(self, variants: List[Variant], max_concurrent: int = 3):
+        """Evaluate all variants in parallel and update their metrics/fitness."""
+        self.logger.info(f"Evaluating {len(variants)} variants in parallel (max {max_concurrent} concurrent)")
 
-        for variant in variants:
-            self.logger.info(f"Evaluating {variant.id}: {variant.mutation_description}")
+        # Create semaphore for rate limiting
+        semaphore = asyncio.Semaphore(max_concurrent)
 
-            result = await self.evaluator.evaluate(variant.code, variant.id)
+        async def evaluate_single(variant: Variant):
+            """Evaluate a single variant with semaphore-based rate limiting."""
+            async with semaphore:
+                self.logger.info(f"Evaluating {variant.id}: {variant.mutation_description}")
+                result = await self.evaluator.evaluate(variant.code, variant.id)
+                # Small delay to avoid API burst
+                await asyncio.sleep(1)
+                return variant, result
+
+        # Run all evaluations concurrently
+        tasks = [evaluate_single(v) for v in variants]
+        completed = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Process results
+        for item in completed:
+            if isinstance(item, Exception):
+                self.logger.error(f"Evaluation failed with exception: {item}")
+                continue
+
+            variant, result = item
 
             if result:
                 variant.metrics = result.to_metrics_dict()
                 variant.fitness = self.config.calculate_fitness(variant.metrics)
 
                 self.logger.info(
-                    f"  -> Fitness: {variant.fitness:.4f} "
+                    f"  -> {variant.id} Fitness: {variant.fitness:.4f} "
                     f"(Sharpe: {result.sharpe_ratio:.2f}, DD: {result.max_drawdown:.1%})"
                 )
 
                 # Update elite pool
                 added = self.state.elite_pool.update(variant)
                 if added:
-                    self.logger.info(f"  -> Added to elite pool!")
+                    self.logger.info(f"  -> {variant.id} Added to elite pool!")
             else:
                 self.logger.warning(f"  -> Evaluation failed for {variant.id}")
                 variant.fitness = -1  # Mark as failed

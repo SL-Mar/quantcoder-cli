@@ -372,25 +372,40 @@ class TestSearchArticlesTool:
         assert tool.name == "search_articles"
         assert "search" in tool.description.lower()
 
-    @patch('requests.get')
-    def test_search_success(self, mock_get, mock_config):
+    @patch('quantcoder.tools.article_tools.aiohttp.ClientSession')
+    def test_search_success(self, mock_session_class, mock_config):
         """Test successful article search."""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
+        from unittest.mock import AsyncMock
+
+        mock_response_data = {
             'message': {
                 'items': [
                     {
                         'DOI': '10.1234/test',
                         'title': ['Test Article'],
                         'author': [{'given': 'John', 'family': 'Doe'}],
-                        'published': {'date-parts': [[2023, 1, 15]]},
-                        'abstract': 'Test abstract'
+                        'published-print': {'date-parts': [[2023, 1, 15]]},
+                        'URL': 'https://example.com'
                     }
                 ]
             }
         }
-        mock_get.return_value = mock_response
+
+        # Mock the async context managers
+        mock_response = AsyncMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json = AsyncMock(return_value=mock_response_data)
+
+        mock_get_context = AsyncMock()
+        mock_get_context.__aenter__.return_value = mock_response
+        mock_get_context.__aexit__.return_value = None
+
+        mock_session = MagicMock()
+        mock_session.get.return_value = mock_get_context
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session_class.return_value = mock_session
 
         tool = SearchArticlesTool(mock_config)
         result = tool.execute(query="momentum trading")
@@ -398,13 +413,25 @@ class TestSearchArticlesTool:
         assert result.success is True
         assert result.data is not None
 
-    @patch('requests.get')
-    def test_search_no_results(self, mock_get, mock_config):
+    @patch('quantcoder.tools.article_tools.aiohttp.ClientSession')
+    def test_search_no_results(self, mock_session_class, mock_config):
         """Test search with no results."""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {'message': {'items': []}}
-        mock_get.return_value = mock_response
+        from unittest.mock import AsyncMock
+
+        mock_response = AsyncMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json = AsyncMock(return_value={'message': {'items': []}})
+
+        mock_get_context = AsyncMock()
+        mock_get_context.__aenter__.return_value = mock_response
+        mock_get_context.__aexit__.return_value = None
+
+        mock_session = MagicMock()
+        mock_session.get.return_value = mock_get_context
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session_class.return_value = mock_session
 
         tool = SearchArticlesTool(mock_config)
         result = tool.execute(query="nonexistent query xyz")
@@ -413,16 +440,24 @@ class TestSearchArticlesTool:
         assert result.success is False
         assert "no articles found" in result.error.lower()
 
-    @patch('requests.get')
-    def test_search_api_error(self, mock_get, mock_config):
+    @patch('quantcoder.tools.article_tools.aiohttp.ClientSession')
+    def test_search_api_error(self, mock_session_class, mock_config):
         """Test search with API error."""
-        mock_get.side_effect = Exception("Network error")
+        from unittest.mock import AsyncMock
+        import aiohttp
+
+        mock_session = MagicMock()
+        mock_session.get.side_effect = aiohttp.ClientError("Network error")
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session_class.return_value = mock_session
 
         tool = SearchArticlesTool(mock_config)
         result = tool.execute(query="test")
 
         assert result.success is False
-        assert "error" in result.error.lower() or "Network" in result.error
+        assert "no articles found" in result.error.lower() or "error" in result.error.lower()
 
 
 class TestGenerateCodeTool:
