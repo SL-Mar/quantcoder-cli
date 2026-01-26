@@ -15,7 +15,7 @@ Thank you for your interest in contributing to QuantCoder CLI! This document pro
 
 ## Code of Conduct
 
-This project adheres to the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code.
+By participating in this project, you are expected to maintain a respectful and inclusive environment. Be kind, constructive, and professional in all interactions.
 
 ## Getting Started
 

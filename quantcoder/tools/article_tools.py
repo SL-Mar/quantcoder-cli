@@ -1,12 +1,15 @@
 """Tools for article search, download, and processing."""
 
-import os
 import json
 import requests
-import webbrowser
 from pathlib import Path
 from typing import Dict, List, Optional
 from .base import Tool, ToolResult
+from ..core.http_utils import (
+    make_request_with_retry,
+    cached_request,
+    DEFAULT_TIMEOUT,
+)
 
 
 class SearchArticlesTool(Tool):
@@ -60,21 +63,27 @@ class SearchArticlesTool(Tool):
             return ToolResult(success=False, error=str(e))
 
     def _search_crossref(self, query: str, rows: int = 5) -> List[Dict]:
-        """Search CrossRef API for articles."""
+        """Search CrossRef API for articles with retry and caching support."""
         api_url = "https://api.crossref.org/works"
         params = {
             "query": query,
             "rows": rows,
             "select": "DOI,title,author,published-print,URL"
         }
-        headers = {
-            "User-Agent": "QuantCoder/2.0 (mailto:smr.laignel@gmail.com)"
-        }
 
         try:
-            response = requests.get(api_url, params=params, headers=headers, timeout=10)
-            response.raise_for_status()
-            data = response.json()
+            # Use cached_request for automatic retry and caching
+            data = cached_request(
+                url=api_url,
+                params=params,
+                timeout=DEFAULT_TIMEOUT,
+                use_cache=True,
+                cache_ttl=1800,  # 30 minutes cache for search results
+            )
+
+            if not data:
+                self.logger.error("CrossRef API request failed after retries")
+                return []
 
             articles = []
             for item in data.get('message', {}).get('items', []):
@@ -89,7 +98,7 @@ class SearchArticlesTool(Tool):
 
             return articles
 
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             self.logger.error(f"CrossRef API request failed: {e}")
             return []
 
@@ -187,13 +196,16 @@ class DownloadArticleTool(Tool):
             return ToolResult(success=False, error=str(e))
 
     def _download_pdf(self, url: str, save_path: Path, doi: Optional[str] = None) -> bool:
-        """Attempt to download PDF from URL."""
-        headers = {
-            "User-Agent": "QuantCoder/2.0 (mailto:smr.laignel@gmail.com)"
-        }
-
+        """Attempt to download PDF from URL with retry support."""
         try:
-            response = requests.get(url, headers=headers, allow_redirects=True, timeout=30)
+            # Use make_request_with_retry for automatic retry on failure
+            response = make_request_with_retry(
+                url=url,
+                method="GET",
+                timeout=60,  # Longer timeout for PDF downloads
+                retries=3,
+                backoff_factor=1.0,  # 1s, 2s, 4s backoff
+            )
             response.raise_for_status()
 
             if 'application/pdf' in response.headers.get('Content-Type', ''):
@@ -202,7 +214,7 @@ class DownloadArticleTool(Tool):
                 return True
 
         except requests.exceptions.RequestException as e:
-            self.logger.error(f"Failed to download PDF: {e}")
+            self.logger.error(f"Failed to download PDF after retries: {e}")
 
         return False
 
