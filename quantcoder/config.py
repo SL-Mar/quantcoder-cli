@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ModelConfig:
     """Configuration for the AI model."""
-    provider: str = "anthropic"  # anthropic, mistral, deepseek, openai
+    provider: str = "anthropic"  # anthropic, mistral, deepseek, openai, ollama
     model: str = "claude-sonnet-4-5-20250929"
     temperature: float = 0.5
     max_tokens: int = 3000
@@ -22,6 +22,10 @@ class ModelConfig:
     coordinator_provider: str = "anthropic"  # Best for orchestration
     code_provider: str = "mistral"  # Devstral for code generation
     risk_provider: str = "anthropic"  # Sonnet for nuanced risk decisions
+
+    # Local LLM (Ollama) settings
+    ollama_base_url: str = "http://localhost:11434/v1"  # Ollama API endpoint
+    ollama_model: str = "llama3.2"  # Default Ollama model (codellama, qwen2.5-coder, etc.)
 
 
 @dataclass
@@ -108,6 +112,8 @@ class Config:
                 "model": self.model.model,
                 "temperature": self.model.temperature,
                 "max_tokens": self.model.max_tokens,
+                "ollama_base_url": self.model.ollama_base_url,
+                "ollama_model": self.model.ollama_model,
             },
             "ui": {
                 "theme": self.ui.theme,

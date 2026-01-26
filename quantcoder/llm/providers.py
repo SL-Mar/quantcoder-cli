@@ -250,14 +250,70 @@ class OpenAIProvider(LLMProvider):
         return "openai"
 
 
+class OllamaProvider(LLMProvider):
+    """Ollama local LLM provider - Run models locally without API costs."""
+
+    def __init__(
+        self,
+        model: str = "llama3.2",
+        base_url: str = "http://localhost:11434/v1"
+    ):
+        """
+        Initialize Ollama provider for local LLM inference.
+
+        Args:
+            model: Model identifier (e.g., llama3.2, codellama, mistral, qwen2.5-coder)
+            base_url: Ollama API endpoint (default: http://localhost:11434/v1)
+        """
+        try:
+            from openai import AsyncOpenAI
+            self.client = AsyncOpenAI(
+                api_key="ollama",  # Required but not used by Ollama
+                base_url=base_url
+            )
+            self.model = model
+            self.base_url = base_url
+            self.logger = logging.getLogger(self.__class__.__name__)
+        except ImportError:
+            raise ImportError("openai package not installed. Run: pip install openai")
+
+    async def chat(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = 0.7,
+        max_tokens: int = 2000,
+        **kwargs
+    ) -> str:
+        """Generate chat completion with local Ollama model."""
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                **kwargs
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            self.logger.error(f"Ollama API error: {e}")
+            raise
+
+    def get_model_name(self) -> str:
+        return self.model
+
+    def get_provider_name(self) -> str:
+        return "ollama"
+
+
 class LLMFactory:
     """Factory for creating LLM providers."""
 
     PROVIDERS = {
         "anthropic": AnthropicProvider,
-        "mistral": Mistral Provider,
+        "mistral": MistralProvider,
         "deepseek": DeepSeekProvider,
         "openai": OpenAIProvider,
+        "ollama": OllamaProvider,
     }
 
     DEFAULT_MODELS = {
@@ -265,29 +321,33 @@ class LLMFactory:
         "mistral": "devstral-2-123b",
         "deepseek": "deepseek-chat",
         "openai": "gpt-4o-2024-11-20",
+        "ollama": "llama3.2",
     }
 
     @classmethod
     def create(
         cls,
         provider: str,
-        api_key: str,
-        model: Optional[str] = None
+        api_key: Optional[str] = None,
+        model: Optional[str] = None,
+        base_url: Optional[str] = None
     ) -> LLMProvider:
         """
         Create LLM provider instance.
 
         Args:
-            provider: Provider name (anthropic, mistral, deepseek, openai)
-            api_key: API key for the provider
+            provider: Provider name (anthropic, mistral, deepseek, openai, ollama)
+            api_key: API key for the provider (not required for ollama)
             model: Optional model identifier (uses default if not specified)
+            base_url: Optional base URL for local providers (ollama)
 
         Returns:
             LLMProvider instance
 
         Example:
             >>> llm = LLMFactory.create("anthropic", api_key="sk-...")
-            >>> llm = LLMFactory.create("mistral", api_key="...", model="devstral-2-123b")
+            >>> llm = LLMFactory.create("ollama", model="codellama")
+            >>> llm = LLMFactory.create("ollama", model="qwen2.5-coder", base_url="http://localhost:11434/v1")
         """
         provider = provider.lower()
 
@@ -299,6 +359,15 @@ class LLMFactory:
 
         provider_class = cls.PROVIDERS[provider]
         model = model or cls.DEFAULT_MODELS[provider]
+
+        # Ollama doesn't require API key
+        if provider == "ollama":
+            if base_url:
+                return provider_class(model=model, base_url=base_url)
+            return provider_class(model=model)
+
+        if not api_key:
+            raise ValueError(f"API key required for provider: {provider}")
 
         return provider_class(api_key=api_key, model=model)
 
