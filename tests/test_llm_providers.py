@@ -255,57 +255,51 @@ class TestOpenAIProvider:
 class TestOllamaProvider:
     """Tests for OllamaProvider class."""
 
-    @patch('openai.AsyncOpenAI')
-    def test_init_defaults(self, mock_client_class):
+    def test_init_defaults(self):
         """Test provider initialization with defaults."""
         provider = OllamaProvider()
         assert provider.model == "llama3.2"
-        assert provider.base_url == "http://localhost:11434/v1"
+        assert provider.base_url == "http://localhost:11434"
         assert provider.get_provider_name() == "ollama"
-        mock_client_class.assert_called_with(
-            api_key="ollama",
-            base_url="http://localhost:11434/v1"
-        )
 
-    @patch('openai.AsyncOpenAI')
-    def test_init_custom_config(self, mock_client_class):
+    def test_init_custom_config(self):
         """Test provider with custom configuration."""
         provider = OllamaProvider(
             model="codellama",
-            base_url="http://192.168.1.100:11434/v1"
+            base_url="http://192.168.1.100:11434"
         )
         assert provider.model == "codellama"
         assert provider.get_model_name() == "codellama"
+        assert provider.base_url == "http://192.168.1.100:11434"
 
-    @patch('openai.AsyncOpenAI')
     @pytest.mark.asyncio
-    async def test_chat_success(self, mock_client_class):
+    async def test_chat_success(self):
         """Test successful chat completion with local Ollama."""
-        mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock(message=MagicMock(content="Ollama response"))]
-        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
-        mock_client_class.return_value = mock_client
-
-        provider = OllamaProvider()
-        result = await provider.chat(
-            messages=[{"role": "user", "content": "Hello"}]
-        )
-
-        assert result == "Ollama response"
-
-    @patch('openai.AsyncOpenAI')
-    @pytest.mark.asyncio
-    async def test_chat_connection_error(self, mock_client_class):
-        """Test chat error when Ollama is not running."""
-        mock_client = MagicMock()
-        mock_client.chat.completions.create = AsyncMock(
-            side_effect=Exception("Connection refused")
-        )
-        mock_client_class.return_value = mock_client
-
         provider = OllamaProvider()
 
-        with pytest.raises(Exception) as exc_info:
-            await provider.chat(messages=[{"role": "user", "content": "Hello"}])
-        assert "Connection refused" in str(exc_info.value)
+        with patch('aiohttp.ClientSession') as mock_session_class:
+            mock_response = AsyncMock()
+            mock_response.raise_for_status = MagicMock()
+            mock_response.json = AsyncMock(return_value={
+                "message": {"content": "Ollama response"}
+            })
+
+            mock_session = MagicMock()
+            mock_session.post = MagicMock(return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_response),
+                __aexit__=AsyncMock()
+            ))
+            mock_session_class.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session_class.return_value.__aexit__ = AsyncMock()
+
+            result = await provider.chat(
+                messages=[{"role": "user", "content": "Hello"}]
+            )
+
+            assert result == "Ollama response"
+
+    def test_init_with_env_base_url(self, monkeypatch):
+        """Test provider uses OLLAMA_BASE_URL env var."""
+        monkeypatch.setenv('OLLAMA_BASE_URL', 'http://custom:11434')
+        provider = OllamaProvider()
+        assert provider.base_url == 'http://custom:11434'

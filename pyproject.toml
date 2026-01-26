@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "quantcoder-cli"
-version = "2.1.0-alpha.1"
+version = "2.0.0"
 description = "A modern CLI coding assistant for generating QuantConnect trading algorithms from research articles with AlphaEvolve-inspired evolution"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -31,6 +31,9 @@ dependencies = [
     "pdfplumber>=0.10.0",
     "spacy>=3.7.0",
     "openai>=1.0.0",
+    "anthropic>=0.18.0",
+    "mistralai>=0.1.0",
+    "aiohttp>=3.9.0",
     "python-dotenv>=1.0.0",
     "pygments>=2.17.0",
     "rich>=13.7.0",

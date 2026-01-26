@@ -1,5 +1,6 @@
 """LLM provider abstraction for multiple backends."""
 
+import os
 import logging
 from abc import ABC, abstractmethod
 from typing import List, Dict, Optional, AsyncIterator
@@ -251,31 +252,28 @@ class OpenAIProvider(LLMProvider):
 
 
 class OllamaProvider(LLMProvider):
-    """Ollama local LLM provider - Run models locally without API costs."""
+    """Ollama provider - Local LLM support without API keys."""
 
     def __init__(
         self,
+        api_key: str = "",  # Not used, kept for interface compatibility
         model: str = "llama3.2",
-        base_url: str = "http://localhost:11434/v1"
+        base_url: str = None
     ):
         """
-        Initialize Ollama provider for local LLM inference.
+        Initialize Ollama provider.
 
         Args:
-            model: Model identifier (e.g., llama3.2, codellama, mistral, qwen2.5-coder)
-            base_url: Ollama API endpoint (default: http://localhost:11434/v1)
+            api_key: Not used (kept for interface compatibility)
+            model: Model identifier (default: llama3.2)
+            base_url: Ollama server URL (default: http://localhost:11434)
         """
-        try:
-            from openai import AsyncOpenAI
-            self.client = AsyncOpenAI(
-                api_key="ollama",  # Required but not used by Ollama
-                base_url=base_url
-            )
-            self.model = model
-            self.base_url = base_url
-            self.logger = logging.getLogger(self.__class__.__name__)
-        except ImportError:
-            raise ImportError("openai package not installed. Run: pip install openai")
+        self.model = model
+        self.base_url = base_url or os.environ.get(
+            'OLLAMA_BASE_URL', 'http://localhost:11434'
+        )
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.info(f"Initialized OllamaProvider: {self.base_url}, model={self.model}")
 
     async def chat(
         self,
@@ -284,18 +282,50 @@ class OllamaProvider(LLMProvider):
         max_tokens: int = 2000,
         **kwargs
     ) -> str:
-        """Generate chat completion with local Ollama model."""
+        """Generate chat completion with Ollama."""
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                **kwargs
-            )
-            return response.choices[0].message.content
+            import aiohttp
+        except ImportError:
+            raise ImportError("aiohttp package not installed. Run: pip install aiohttp")
+
+        url = f"{self.base_url}/api/chat"
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "stream": False,
+            "options": {
+                "temperature": temperature,
+                "num_predict": max_tokens
+            }
+        }
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=300)) as response:
+                    response.raise_for_status()
+                    result = await response.json()
+
+                    # Extract response text
+                    if 'message' in result and 'content' in result['message']:
+                        text = result['message']['content']
+                    elif 'response' in result:
+                        text = result['response']
+                    else:
+                        raise ValueError(f"Unexpected response format: {list(result.keys())}")
+
+                    self.logger.info(f"Ollama response received ({len(text)} chars)")
+                    return text.strip()
+
+        except aiohttp.ClientConnectorError as e:
+            error_msg = f"Failed to connect to Ollama at {self.base_url}. Is Ollama running? Error: {e}"
+            self.logger.error(error_msg)
+            raise ConnectionError(error_msg) from e
+        except aiohttp.ClientResponseError as e:
+            error_msg = f"Ollama API error: {e.status} - {e.message}"
+            self.logger.error(error_msg)
+            raise
         except Exception as e:
-            self.logger.error(f"Ollama API error: {e}")
+            self.logger.error(f"Ollama error: {e}")
             raise
 
     def get_model_name(self) -> str:
@@ -328,7 +358,7 @@ class LLMFactory:
     def create(
         cls,
         provider: str,
-        api_key: Optional[str] = None,
+        api_key: str = "",
         model: Optional[str] = None,
         base_url: Optional[str] = None
     ) -> LLMProvider:
@@ -346,8 +376,7 @@ class LLMFactory:
 
         Example:
             >>> llm = LLMFactory.create("anthropic", api_key="sk-...")
-            >>> llm = LLMFactory.create("ollama", model="codellama")
-            >>> llm = LLMFactory.create("ollama", model="qwen2.5-coder", base_url="http://localhost:11434/v1")
+            >>> llm = LLMFactory.create("ollama", model="llama3.2")
         """
         provider = provider.lower()
 
@@ -388,6 +417,7 @@ class LLMFactory:
             "general": "deepseek",     # Cost-effective for general tasks
             "coordination": "anthropic",  # Sonnet for orchestration
             "risk": "anthropic",       # Sonnet for nuanced risk decisions
+            "local": "ollama",         # Local LLM, no API key required
         }
 
         return recommendations.get(task_type, "anthropic")

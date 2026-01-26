@@ -1,16 +1,17 @@
-# QuantCoder 2.0.0-alpha.1
+# QuantCoder 2.0.0
 
-[![Version](https://img.shields.io/badge/version-2.0.0--alpha.1-orange)](https://github.com/SL-Mar/quantcoder-cli)
-[![Branch](https://img.shields.io/badge/branch-gamma-purple)](https://github.com/SL-Mar/quantcoder-cli/tree/gamma)
-[![Package](https://img.shields.io/badge/package-quantcoder-blue)](.)
+[![Version](https://img.shields.io/badge/version-2.0.0-green)](https://github.com/SL-Mar/quantcoder-cli)
+[![Python](https://img.shields.io/badge/python-3.10+-blue)](https://python.org)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
 > **AI-powered CLI for generating QuantConnect trading algorithms from research articles**
 
-**This is QuantCoder 2.0 (GAMMA)** - The primary development branch with autonomous mode & library builder
+> **Note**
+> This version (v2.0.0) has not been systematically tested yet.
+> It represents a complete architectural rewrite from the legacy v1.x codebase.
+> Use with caution and report any issues.
 
-**Want the original stable version?** → [QuantCoder 1.0 (main branch)](https://github.com/SL-Mar/quantcoder-cli/tree/main)
-
-📖 **[Version Comparison Guide](docs/VERSION_COMPARISON.md)** | **[Branch Map](docs/BRANCH_VERSION_MAP.md)**
+Features: Multi-agent system, AlphaEvolve-inspired evolution, autonomous learning, MCP integration.
 
 ---
 
@@ -30,7 +31,7 @@ The initial version successfully coded a blended momentum and mean-reversion str
 - 📝 **Programmable Mode** via `--prompt` flag
 - 💾 **Persistent Context** and conversation history
 
-👉 **[See full v2.0 documentation →](README_v2.md)** 
+📖 **[Architecture](docs/AGENTIC_WORKFLOW.md)** | **[Autonomous Mode](docs/AUTONOMOUS_MODE.md)** | **[Changelog](CHANGELOG.md)**
 
 ---
 
