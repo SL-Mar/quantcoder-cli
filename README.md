@@ -3,6 +3,12 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![OpenAI](https://img.shields.io/badge/OpenAI-1.0+-green.svg)](https://github.com/openai/openai-python)
+
+> **Warning**
+> This version (v1.0.0) has been restored from the beta branch on 2026-01-26.
+> The stability of this branch cannot be guaranteed at this time.
+> For the latest features, see the `gamma` branch (v2.0.0).
+
 # QuantCoder (CLI Version)
 
 > **Transform academic trading research into executable QuantConnect algorithms using AI.**
