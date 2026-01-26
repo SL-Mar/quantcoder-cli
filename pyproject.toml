@@ -40,9 +40,16 @@ dependencies = [
     "prompt-toolkit>=3.0.43",
     "toml>=0.10.2",
     "InquirerPy>=0.3.4",
-    # Security: minimum versions for transitive dependencies
-    "cryptography>=43.0.1",  # CVE-2023-50782, CVE-2024-0727
+    # Production reliability dependencies
+    "keyring>=25.0.0",           # Secure credential storage
+    "tenacity>=8.2.0",           # Retry with exponential backoff
+    "pybreaker>=1.0.0",          # Circuit breaker pattern
+    "python-json-logger>=2.0.0", # Structured JSON logging
+    # Security: minimum versions for transitive dependencies (CVE fixes)
+    "cryptography>=43.0.1",  # CVE-2023-50782, CVE-2024-0727, PYSEC-2024-225, GHSA-h4gh-qq45-vh27
     "setuptools>=78.1.1",    # CVE-2024-6345, PYSEC-2025-49
+    "wheel>=0.46.2",         # CVE-2026-24049
+    "pip>=25.0",             # CVE-2025-8869
 ]
 
 [project.optional-dependencies]
@@ -50,6 +57,7 @@ dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.0",
     "pytest-mock>=3.10",
+    "pytest-asyncio>=0.23.0",  # Required for async test support
     "black>=23.0.0",
     "ruff>=0.1.0",
     "mypy>=1.7.0",

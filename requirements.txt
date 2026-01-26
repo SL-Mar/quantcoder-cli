@@ -21,11 +21,18 @@ openai>=1.0.0      # GPT-4o / DeepSeek
 # Async & Parallel Execution
 aiohttp>=3.9.0
 
+# Production Reliability Dependencies
+keyring>=25.0.0           # Secure credential storage (encrypted API keys)
+tenacity>=8.2.0           # Retry with exponential backoff
+pybreaker>=1.0.0          # Circuit breaker pattern for external APIs
+python-json-logger>=2.0.0 # Structured JSON logging
+
 # Security: Minimum versions for transitive dependencies
 # These address known CVEs in older versions
 cryptography>=43.0.1  # CVE-2023-50782, CVE-2024-0727, PYSEC-2024-225, GHSA-h4gh-qq45-vh27
 setuptools>=78.1.1    # CVE-2024-6345, PYSEC-2025-49
 wheel>=0.46.2         # CVE-2026-24049
+pip>=25.0             # CVE-2025-8869
 
 # Optional: MCP SDK (when available)
 # mcp>=0.1.0

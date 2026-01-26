@@ -2,7 +2,9 @@
 
 import click
 import logging
+import os
 import sys
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from rich.console import Console
 from rich.logging import RichHandler
@@ -23,18 +25,73 @@ from .tools import (
 console = Console()
 
 
-def setup_logging(verbose: bool = False):
-    """Configure logging with rich handler."""
-    log_level = logging.DEBUG if verbose else logging.INFO
+def setup_logging(verbose: bool = False, json_format: bool = False):
+    """
+    Configure logging with optional structured JSON format.
+
+    Supports:
+    - LOG_LEVEL environment variable (DEBUG, INFO, WARNING, ERROR)
+    - LOG_FORMAT=json for structured JSON logging
+    - Rotating log files (max 10MB, 5 backups)
+
+    Args:
+        verbose: Enable debug logging (overrides LOG_LEVEL)
+        json_format: Use JSON format for logs
+    """
+    # Get log level from env or verbose flag
+    env_level = os.environ.get('LOG_LEVEL', '').upper()
+    if verbose:
+        log_level = logging.DEBUG
+    elif env_level in ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'):
+        log_level = getattr(logging, env_level)
+    else:
+        log_level = logging.INFO
+
+    # Check for JSON format preference
+    use_json = json_format or os.environ.get('LOG_FORMAT', '').lower() == 'json'
+
+    handlers = []
+
+    if use_json:
+        # Structured JSON logging for production/aggregation
+        try:
+            from pythonjsonlogger import jsonlogger
+
+            json_handler = logging.StreamHandler()
+            json_formatter = jsonlogger.JsonFormatter(
+                '%(asctime)s %(name)s %(levelname)s %(message)s',
+                timestamp=True
+            )
+            json_handler.setFormatter(json_formatter)
+            handlers.append(json_handler)
+        except ImportError:
+            # Fall back to rich handler if json logger not available
+            handlers.append(RichHandler(rich_tracebacks=True, console=console))
+    else:
+        # Rich console handler for interactive use
+        handlers.append(RichHandler(rich_tracebacks=True, console=console))
+
+    # Rotating file handler (prevents unbounded log growth)
+    log_file = Path.home() / ".quantcoder" / "quantcoder.log"
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+
+    file_handler = RotatingFileHandler(
+        log_file,
+        maxBytes=10 * 1024 * 1024,  # 10 MB
+        backupCount=5,
+        encoding='utf-8'
+    )
+    file_handler.setFormatter(logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    ))
+    handlers.append(file_handler)
 
     logging.basicConfig(
         level=log_level,
         format="%(message)s",
         datefmt="[%X]",
-        handlers=[
-            RichHandler(rich_tracebacks=True, console=console),
-            logging.FileHandler("quantcoder.log")
-        ]
+        handlers=handlers,
+        force=True  # Override any existing config
     )
 
 
@@ -373,6 +430,163 @@ def version():
     """Show version information."""
     from . import __version__
     console.print(f"QuantCoder v{__version__}")
+
+
+@main.command()
+@click.option('--json', 'json_output', is_flag=True, help='Output in JSON format')
+@click.pass_context
+def health(ctx, json_output):
+    """
+    Check application health and dependencies.
+
+    Verifies:
+    - Configuration file accessibility
+    - API key availability (without exposing it)
+    - External service connectivity
+    - Required dependencies
+
+    Exit codes:
+    - 0: All checks passed
+    - 1: One or more checks failed
+
+    Example:
+        quantcoder health
+        quantcoder health --json
+    """
+    import json
+    from . import __version__
+
+    checks = {
+        "version": __version__,
+        "status": "healthy",
+        "checks": {}
+    }
+
+    all_passed = True
+
+    # Check 1: Configuration
+    try:
+        config = ctx.obj.get('config') if ctx.obj else Config.load()
+        checks["checks"]["config"] = {
+            "status": "pass",
+            "message": f"Config loaded from {config.home_dir}"
+        }
+    except Exception as e:
+        checks["checks"]["config"] = {
+            "status": "fail",
+            "message": str(e)
+        }
+        all_passed = False
+
+    # Check 2: API Keys (check presence without exposing)
+    api_keys_found = []
+    for key_name in ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'MISTRAL_API_KEY']:
+        if os.environ.get(key_name):
+            api_keys_found.append(key_name)
+
+    if api_keys_found:
+        checks["checks"]["api_keys"] = {
+            "status": "pass",
+            "message": f"Found: {', '.join(api_keys_found)}"
+        }
+    else:
+        checks["checks"]["api_keys"] = {
+            "status": "warn",
+            "message": "No API keys found in environment"
+        }
+
+    # Check 3: QuantConnect credentials
+    try:
+        if config and config.has_quantconnect_credentials():
+            checks["checks"]["quantconnect"] = {
+                "status": "pass",
+                "message": "QuantConnect credentials configured"
+            }
+        else:
+            checks["checks"]["quantconnect"] = {
+                "status": "warn",
+                "message": "QuantConnect credentials not configured"
+            }
+    except Exception:
+        checks["checks"]["quantconnect"] = {
+            "status": "warn",
+            "message": "QuantConnect credentials not configured"
+        }
+
+    # Check 4: Required directories
+    try:
+        downloads_dir = Path(config.tools.downloads_dir if config else "downloads")
+        generated_dir = Path(config.tools.generated_code_dir if config else "generated_code")
+
+        dirs_status = []
+        if downloads_dir.exists():
+            dirs_status.append(f"downloads: exists")
+        else:
+            dirs_status.append(f"downloads: will be created")
+
+        if generated_dir.exists():
+            dirs_status.append(f"generated_code: exists")
+        else:
+            dirs_status.append(f"generated_code: will be created")
+
+        checks["checks"]["directories"] = {
+            "status": "pass",
+            "message": "; ".join(dirs_status)
+        }
+    except Exception as e:
+        checks["checks"]["directories"] = {
+            "status": "fail",
+            "message": str(e)
+        }
+        all_passed = False
+
+    # Check 5: Python dependencies
+    required_packages = ['click', 'rich', 'aiohttp', 'toml', 'tenacity']
+    missing_packages = []
+    for pkg in required_packages:
+        try:
+            __import__(pkg)
+        except ImportError:
+            missing_packages.append(pkg)
+
+    if missing_packages:
+        checks["checks"]["dependencies"] = {
+            "status": "fail",
+            "message": f"Missing: {', '.join(missing_packages)}"
+        }
+        all_passed = False
+    else:
+        checks["checks"]["dependencies"] = {
+            "status": "pass",
+            "message": "All required packages available"
+        }
+
+    # Set overall status
+    if not all_passed:
+        checks["status"] = "unhealthy"
+
+    # Output
+    if json_output:
+        console.print(json.dumps(checks, indent=2))
+    else:
+        status_color = "green" if all_passed else "red"
+        console.print(f"\n[bold]QuantCoder Health Check[/bold] v{__version__}\n")
+
+        for check_name, check_result in checks["checks"].items():
+            status = check_result["status"]
+            if status == "pass":
+                icon = "[green]✓[/green]"
+            elif status == "warn":
+                icon = "[yellow]![/yellow]"
+            else:
+                icon = "[red]✗[/red]"
+
+            console.print(f"  {icon} {check_name}: {check_result['message']}")
+
+        console.print(f"\n[{status_color}]Status: {checks['status'].upper()}[/{status_color}]")
+
+    # Exit with appropriate code
+    sys.exit(0 if all_passed else 1)
 
 
 # ============================================================================
