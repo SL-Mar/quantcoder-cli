@@ -199,11 +199,18 @@ class TestReadFileTool:
     """Tests for ReadFileTool class."""
 
     @pytest.fixture
-    def mock_config(self):
-        """Create mock configuration."""
+    def mock_config(self, tmp_path):
+        """Create mock configuration with proper paths for security validation."""
         config = MagicMock()
         config.tools.enabled_tools = ["*"]
         config.tools.disabled_tools = []
+        # Set up allowed directories for path validation
+        config.tools.downloads_dir = str(tmp_path / "downloads")
+        config.tools.generated_code_dir = str(tmp_path / "generated_code")
+        config.home_dir = tmp_path / ".quantcoder"
+        # Create the directories
+        (tmp_path / "downloads").mkdir(exist_ok=True)
+        (tmp_path / "generated_code").mkdir(exist_ok=True)
         return config
 
     def test_name_and_description(self, mock_config):
@@ -212,53 +219,69 @@ class TestReadFileTool:
         assert tool.name == "read_file"
         assert "read" in tool.description.lower()
 
-    def test_read_existing_file(self, mock_config):
-        """Test reading an existing file."""
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
-            f.write("Hello, World!")
-            f.flush()
+    def test_read_existing_file(self, mock_config, tmp_path):
+        """Test reading an existing file within allowed directories."""
+        # Create file in downloads directory (allowed)
+        downloads_dir = tmp_path / "downloads"
+        test_file = downloads_dir / "test.txt"
+        test_file.write_text("Hello, World!")
 
-            tool = ReadFileTool(mock_config)
-            result = tool.execute(file_path=f.name)
-
-            assert result.success is True
-            assert result.data == "Hello, World!"
-
-            Path(f.name).unlink()
-
-    def test_read_with_max_lines(self, mock_config):
-        """Test reading with line limit."""
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
-            f.write("Line 1\nLine 2\nLine 3\n")
-            f.flush()
-
-            tool = ReadFileTool(mock_config)
-            result = tool.execute(file_path=f.name, max_lines=2)
-
-            assert result.success is True
-            assert "Line 1" in result.data
-            assert "Line 2" in result.data
-
-            Path(f.name).unlink()
-
-    def test_read_nonexistent_file(self, mock_config):
-        """Test reading a nonexistent file."""
         tool = ReadFileTool(mock_config)
-        result = tool.execute(file_path="/nonexistent/path/file.txt")
+        result = tool.execute(file_path=str(test_file))
+
+        assert result.success is True
+        assert result.data == "Hello, World!"
+
+    def test_read_with_max_lines(self, mock_config, tmp_path):
+        """Test reading with line limit."""
+        # Create file in downloads directory (allowed)
+        downloads_dir = tmp_path / "downloads"
+        test_file = downloads_dir / "multiline.txt"
+        test_file.write_text("Line 1\nLine 2\nLine 3\n")
+
+        tool = ReadFileTool(mock_config)
+        result = tool.execute(file_path=str(test_file), max_lines=2)
+
+        assert result.success is True
+        assert "Line 1" in result.data
+        assert "Line 2" in result.data
+
+    def test_read_nonexistent_file(self, mock_config, tmp_path):
+        """Test reading a nonexistent file within allowed directory."""
+        # Use path within allowed directory
+        downloads_dir = tmp_path / "downloads"
+        nonexistent = downloads_dir / "nonexistent.txt"
+
+        tool = ReadFileTool(mock_config)
+        result = tool.execute(file_path=str(nonexistent))
 
         assert result.success is False
         assert "not found" in result.error.lower()
+
+    def test_read_outside_allowed_dirs_rejected(self, mock_config):
+        """Test that reading outside allowed directories is rejected."""
+        tool = ReadFileTool(mock_config)
+        result = tool.execute(file_path="/etc/passwd")
+
+        assert result.success is False
+        assert "outside allowed" in result.error.lower()
 
 
 class TestWriteFileTool:
     """Tests for WriteFileTool class."""
 
     @pytest.fixture
-    def mock_config(self):
-        """Create mock configuration."""
+    def mock_config(self, tmp_path):
+        """Create mock configuration with proper paths for security validation."""
         config = MagicMock()
         config.tools.enabled_tools = ["*"]
         config.tools.disabled_tools = []
+        # Set up allowed directories for path validation
+        config.tools.downloads_dir = str(tmp_path / "downloads")
+        config.tools.generated_code_dir = str(tmp_path / "generated_code")
+        # Create the directories
+        (tmp_path / "downloads").mkdir(exist_ok=True)
+        (tmp_path / "generated_code").mkdir(exist_ok=True)
         return config
 
     def test_name_and_description(self, mock_config):
@@ -267,66 +290,69 @@ class TestWriteFileTool:
         assert tool.name == "write_file"
         assert "write" in tool.description.lower()
 
-    def test_write_new_file(self, mock_config):
-        """Test writing to a new file."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            file_path = Path(tmpdir) / "test.txt"
+    def test_write_new_file(self, mock_config, tmp_path):
+        """Test writing to a new file within allowed directories."""
+        # Write to generated_code directory (allowed)
+        file_path = tmp_path / "generated_code" / "test.txt"
 
-            tool = WriteFileTool(mock_config)
-            result = tool.execute(file_path=str(file_path), content="Hello!")
+        tool = WriteFileTool(mock_config)
+        result = tool.execute(file_path=str(file_path), content="Hello!")
 
-            assert result.success is True
-            assert file_path.exists()
-            assert file_path.read_text() == "Hello!"
+        assert result.success is True
+        assert file_path.exists()
+        assert file_path.read_text() == "Hello!"
 
-    def test_write_creates_directories(self, mock_config):
-        """Test that writing creates parent directories."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            file_path = Path(tmpdir) / "nested" / "dir" / "test.txt"
+    def test_write_creates_directories(self, mock_config, tmp_path):
+        """Test that writing creates parent directories within allowed path."""
+        file_path = tmp_path / "generated_code" / "nested" / "dir" / "test.txt"
 
-            tool = WriteFileTool(mock_config)
-            result = tool.execute(file_path=str(file_path), content="Content")
+        tool = WriteFileTool(mock_config)
+        result = tool.execute(file_path=str(file_path), content="Content")
 
-            assert result.success is True
-            assert file_path.exists()
+        assert result.success is True
+        assert file_path.exists()
 
-    def test_write_append_mode(self, mock_config):
-        """Test appending to a file."""
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
-            f.write("Original")
-            f.flush()
+    def test_write_append_mode(self, mock_config, tmp_path):
+        """Test appending to a file within allowed directories."""
+        # Create initial file in downloads directory (allowed)
+        file_path = tmp_path / "downloads" / "append_test.txt"
+        file_path.write_text("Original")
 
-            tool = WriteFileTool(mock_config)
-            result = tool.execute(
-                file_path=f.name,
-                content=" Appended",
-                append=True
-            )
+        tool = WriteFileTool(mock_config)
+        result = tool.execute(
+            file_path=str(file_path),
+            content=" Appended",
+            append=True
+        )
 
-            assert result.success is True
-            content = Path(f.name).read_text()
-            assert content == "Original Appended"
+        assert result.success is True
+        content = file_path.read_text()
+        assert content == "Original Appended"
 
-            Path(f.name).unlink()
+    def test_write_overwrite_mode(self, mock_config, tmp_path):
+        """Test overwriting a file within allowed directories."""
+        # Create initial file in downloads directory (allowed)
+        file_path = tmp_path / "downloads" / "overwrite_test.txt"
+        file_path.write_text("Original content")
 
-    def test_write_overwrite_mode(self, mock_config):
-        """Test overwriting a file."""
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
-            f.write("Original content")
-            f.flush()
+        tool = WriteFileTool(mock_config)
+        result = tool.execute(
+            file_path=str(file_path),
+            content="New content",
+            append=False
+        )
 
-            tool = WriteFileTool(mock_config)
-            result = tool.execute(
-                file_path=f.name,
-                content="New content",
-                append=False
-            )
+        assert result.success is True
+        content = file_path.read_text()
+        assert content == "New content"
 
-            assert result.success is True
-            content = Path(f.name).read_text()
-            assert content == "New content"
+    def test_write_outside_allowed_dirs_rejected(self, mock_config, tmp_path):
+        """Test that writing outside allowed directories is rejected."""
+        tool = WriteFileTool(mock_config)
+        result = tool.execute(file_path="/tmp/unauthorized.txt", content="test")
 
-            Path(f.name).unlink()
+        assert result.success is False
+        assert "outside allowed" in result.error.lower()
 
 
 class TestSearchArticlesTool:

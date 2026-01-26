@@ -6,7 +6,10 @@ import requests
 import webbrowser
 from pathlib import Path
 from typing import Dict, List, Optional
-from .base import Tool, ToolResult
+from .base import Tool, ToolResult, get_safe_path, PathSecurityError
+
+# Maximum allowed article ID to prevent DoS via huge IDs
+MAX_ARTICLE_ID = 10000
 
 
 class SearchArticlesTool(Tool):
@@ -137,6 +140,13 @@ class DownloadArticleTool(Tool):
         self.logger.info(f"Downloading article {article_id}")
 
         try:
+            # Validate article_id bounds
+            if not isinstance(article_id, int) or article_id < 1 or article_id > MAX_ARTICLE_ID:
+                return ToolResult(
+                    success=False,
+                    error=f"Invalid article ID. Must be between 1 and {MAX_ARTICLE_ID}"
+                )
+
             # Load cached articles
             cache_file = Path(self.config.home_dir) / "articles.json"
             if not cache_file.exists():
@@ -148,7 +158,7 @@ class DownloadArticleTool(Tool):
             with open(cache_file, 'r') as f:
                 articles = json.load(f)
 
-            if article_id < 1 or article_id > len(articles):
+            if article_id > len(articles):
                 return ToolResult(
                     success=False,
                     error=f"Article ID {article_id} not found. Valid range: 1-{len(articles)}"
@@ -156,13 +166,22 @@ class DownloadArticleTool(Tool):
 
             article = articles[article_id - 1]
 
-            # Create downloads directory
-            downloads_dir = Path(self.config.tools.downloads_dir)
-            downloads_dir.mkdir(parents=True, exist_ok=True)
-
-            # Define save path
-            filename = f"article_{article_id}.pdf"
-            save_path = downloads_dir / filename
+            # Create downloads directory with path validation
+            # Resolve the downloads_dir relative to current working directory
+            base_dir = Path.cwd()
+            try:
+                save_path = get_safe_path(
+                    base_dir,
+                    self.config.tools.downloads_dir,
+                    f"article_{article_id}.pdf",
+                    create_parents=True
+                )
+            except PathSecurityError as e:
+                self.logger.error(f"Path security error: {e}")
+                return ToolResult(
+                    success=False,
+                    error="Invalid downloads directory configuration"
+                )
 
             # Attempt to download
             doi = article.get("DOI")
@@ -182,6 +201,9 @@ class DownloadArticleTool(Tool):
                     data={"url": article["URL"], "can_open_browser": True}
                 )
 
+        except PathSecurityError as e:
+            self.logger.error(f"Path security error: {e}")
+            return ToolResult(success=False, error="Path security violation")
         except Exception as e:
             self.logger.error(f"Error downloading article: {e}")
             return ToolResult(success=False, error=str(e))
@@ -233,8 +255,27 @@ class SummarizeArticleTool(Tool):
         self.logger.info(f"Summarizing article {article_id}")
 
         try:
-            # Find the article file
-            filepath = Path(self.config.tools.downloads_dir) / f"article_{article_id}.pdf"
+            # Validate article_id bounds
+            if not isinstance(article_id, int) or article_id < 1 or article_id > MAX_ARTICLE_ID:
+                return ToolResult(
+                    success=False,
+                    error=f"Invalid article ID. Must be between 1 and {MAX_ARTICLE_ID}"
+                )
+
+            # Find the article file with path validation
+            base_dir = Path.cwd()
+            try:
+                filepath = get_safe_path(
+                    base_dir,
+                    self.config.tools.downloads_dir,
+                    f"article_{article_id}.pdf"
+                )
+            except PathSecurityError as e:
+                self.logger.error(f"Path security error: {e}")
+                return ToolResult(
+                    success=False,
+                    error="Invalid downloads directory configuration"
+                )
 
             if not filepath.exists():
                 return ToolResult(
@@ -261,8 +302,21 @@ class SummarizeArticleTool(Tool):
                     error="Failed to generate summary"
                 )
 
-            # Save summary
-            summary_path = Path(self.config.tools.downloads_dir) / f"article_{article_id}_summary.txt"
+            # Save summary with path validation
+            try:
+                summary_path = get_safe_path(
+                    base_dir,
+                    self.config.tools.downloads_dir,
+                    f"article_{article_id}_summary.txt",
+                    create_parents=True
+                )
+            except PathSecurityError as e:
+                self.logger.error(f"Path security error: {e}")
+                return ToolResult(
+                    success=False,
+                    error="Invalid downloads directory configuration"
+                )
+
             with open(summary_path, 'w', encoding='utf-8') as f:
                 f.write(summary)
 
@@ -272,6 +326,9 @@ class SummarizeArticleTool(Tool):
                 message=f"Summary saved to {summary_path}"
             )
 
+        except PathSecurityError as e:
+            self.logger.error(f"Path security error: {e}")
+            return ToolResult(success=False, error="Path security violation")
         except Exception as e:
             self.logger.error(f"Error summarizing article: {e}")
             return ToolResult(success=False, error=str(e))

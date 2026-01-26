@@ -1,6 +1,7 @@
 """Configuration management for QuantCoder CLI."""
 
 import os
+import stat
 import toml
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -8,6 +9,18 @@ from dataclasses import dataclass, field
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Service name for keyring storage
+KEYRING_SERVICE = "quantcoder-cli"
+
+
+def _get_keyring():
+    """Get keyring module if available."""
+    try:
+        import keyring
+        return keyring
+    except ImportError:
+        return None
 
 
 @dataclass
@@ -142,39 +155,85 @@ class Config:
         logger.info(f"Configuration saved to {config_path}")
 
     def load_api_key(self) -> str:
-        """Load API key from environment or .env file."""
+        """Load API key from keyring, environment, or .env file (in that order)."""
         from dotenv import load_dotenv
 
-        # Try to load from .env in home directory
+        # 1. Try keyring first (most secure)
+        keyring = _get_keyring()
+        if keyring:
+            try:
+                api_key = keyring.get_password(KEYRING_SERVICE, "OPENAI_API_KEY")
+                if api_key:
+                    logger.debug("Loaded API key from system keyring")
+                    self.api_key = api_key
+                    return api_key
+            except Exception as e:
+                logger.debug(f"Keyring not available: {e}")
+
+        # 2. Try environment variable
+        api_key = os.getenv("OPENAI_API_KEY")
+        if api_key:
+            logger.debug("Loaded API key from environment variable")
+            self.api_key = api_key
+            return api_key
+
+        # 3. Try .env file in home directory
         env_path = self.home_dir / ".env"
         if env_path.exists():
             load_dotenv(env_path)
+            api_key = os.getenv("OPENAI_API_KEY")
+            if api_key:
+                logger.debug(f"Loaded API key from {env_path}")
+                self.api_key = api_key
+                return api_key
 
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise EnvironmentError(
-                "OPENAI_API_KEY not found. Please set it in your environment "
-                f"or create {env_path} with OPENAI_API_KEY=your_key"
-            )
-
-        self.api_key = api_key
-        return api_key
+        raise EnvironmentError(
+            "OPENAI_API_KEY not found. Please set it via:\n"
+            "  1. System keyring (most secure): quantcoder config set-key\n"
+            "  2. Environment variable: export OPENAI_API_KEY=your_key\n"
+            f"  3. .env file: {env_path}"
+        )
 
     def load_quantconnect_credentials(self) -> tuple[str, str]:
-        """Load QuantConnect API credentials from environment."""
+        """Load QuantConnect API credentials from keyring, environment, or .env file."""
         from dotenv import load_dotenv
 
-        env_path = self.home_dir / ".env"
-        if env_path.exists():
-            load_dotenv(env_path)
+        api_key = None
+        user_id = None
 
-        api_key = os.getenv("QUANTCONNECT_API_KEY")
-        user_id = os.getenv("QUANTCONNECT_USER_ID")
+        # 1. Try keyring first
+        keyring = _get_keyring()
+        if keyring:
+            try:
+                api_key = keyring.get_password(KEYRING_SERVICE, "QUANTCONNECT_API_KEY")
+                user_id = keyring.get_password(KEYRING_SERVICE, "QUANTCONNECT_USER_ID")
+                if api_key and user_id:
+                    logger.debug("Loaded QuantConnect credentials from system keyring")
+            except Exception as e:
+                logger.debug(f"Keyring not available: {e}")
+
+        # 2. Try environment variables
+        if not api_key:
+            api_key = os.getenv("QUANTCONNECT_API_KEY")
+        if not user_id:
+            user_id = os.getenv("QUANTCONNECT_USER_ID")
+
+        # 3. Try .env file
+        if not api_key or not user_id:
+            env_path = self.home_dir / ".env"
+            if env_path.exists():
+                load_dotenv(env_path)
+                if not api_key:
+                    api_key = os.getenv("QUANTCONNECT_API_KEY")
+                if not user_id:
+                    user_id = os.getenv("QUANTCONNECT_USER_ID")
 
         if not api_key or not user_id:
             raise EnvironmentError(
-                "QuantConnect credentials not found. Please set QUANTCONNECT_API_KEY "
-                f"and QUANTCONNECT_USER_ID in your environment or {env_path}"
+                "QuantConnect credentials not found. Please set via:\n"
+                "  1. System keyring: quantcoder config set-qc-credentials\n"
+                "  2. Environment: export QUANTCONNECT_API_KEY=... QUANTCONNECT_USER_ID=...\n"
+                f"  3. .env file: {self.home_dir / '.env'}"
             )
 
         self.quantconnect_api_key = api_key
@@ -193,13 +252,55 @@ class Config:
         user_id = os.getenv("QUANTCONNECT_USER_ID")
         return bool(api_key and user_id)
 
-    def save_api_key(self, api_key: str):
-        """Save API key to .env file."""
+    def save_api_key(self, api_key: str, provider: str = "openai"):
+        """
+        Save API key securely using keyring (preferred) or secure file storage.
+
+        Args:
+            api_key: The API key to store
+            provider: The provider name (openai, anthropic, mistral, etc.)
+        """
+        key_name = f"{provider.upper()}_API_KEY"
+
+        # 1. Try keyring first (most secure - uses OS credential store)
+        keyring = _get_keyring()
+        if keyring:
+            try:
+                keyring.set_password(KEYRING_SERVICE, key_name, api_key)
+                logger.info(f"API key saved to system keyring ({key_name})")
+                self.api_key = api_key
+                return
+            except Exception as e:
+                logger.warning(f"Could not save to keyring: {e}. Falling back to file storage.")
+
+        # 2. Fallback to .env file with restricted permissions
         env_path = self.home_dir / ".env"
         env_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(env_path, 'w') as f:
-            f.write(f"OPENAI_API_KEY={api_key}\n")
+        # Read existing content to preserve other keys
+        existing_content = {}
+        if env_path.exists():
+            with open(env_path, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if '=' in line and not line.startswith('#'):
+                        k, v = line.split('=', 1)
+                        existing_content[k] = v
 
-        logger.info(f"API key saved to {env_path}")
+        # Update with new key
+        existing_content[key_name] = api_key
+
+        # Write with restricted permissions (owner read/write only)
+        with open(env_path, 'w') as f:
+            for k, v in existing_content.items():
+                f.write(f"{k}={v}\n")
+
+        # Set file permissions to 600 (owner read/write only)
+        try:
+            os.chmod(env_path, stat.S_IRUSR | stat.S_IWUSR)
+            logger.info(f"API key saved to {env_path} (permissions: 600)")
+        except Exception as e:
+            logger.warning(f"Could not set file permissions: {e}")
+            logger.info(f"API key saved to {env_path}")
+
         self.api_key = api_key
