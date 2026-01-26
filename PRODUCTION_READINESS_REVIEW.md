@@ -13,11 +13,13 @@
 
 This application is ready for commercial release as a self-hosted Docker image. All critical issues identified in the initial assessment have been addressed:
 
-1. **Async network calls** — Converted all blocking `requests` calls to async `aiohttp`
+1. **Async network calls** — Converted all blocking `requests` calls to async `aiohttp` (including `pipeline.py`)
 2. **Performance tests** — Added comprehensive performance test suite
 3. **Operational runbooks** — Created full incident response and troubleshooting documentation
 4. **E2E tests** — Added end-to-end workflow tests
 5. **Parallel evaluation** — Evolution engine now evaluates variants concurrently (3-5x speedup)
+6. **CLI tests** — Added 33 CLI integration tests using CliRunner
+7. **CVE documentation** — Documented protobuf CVE-2026-0994 with monitoring instructions
 
 ---
 
@@ -341,6 +343,65 @@ All critical and high-priority risks have been mitigated. Remaining low-priority
 | protobuf CVE has no available fix | Low | Monitor for fix; transitive dep with limited exposure | Monitoring |
 | No Prometheus metrics | Low | Acceptable for CLI tool; add if enterprise demand | P3 |
 | No automated CD | Low | Manual Docker builds acceptable for self-hosted | P3 |
+
+---
+
+## 8. Known Vulnerability: protobuf CVE-2026-0994
+
+### Summary
+
+**CVE ID:** CVE-2026-0994
+**Package:** protobuf (Google Protocol Buffers)
+**Status:** No patch available (as of 2026-01-26)
+**Severity:** Low (in this application's context)
+**Type:** Transitive dependency
+
+### Description
+
+`protobuf` is a transitive dependency pulled in by the LLM provider SDKs (likely `grpcio` or `anthropic`/`openai` SDKs). This CVE affects protobuf's message parsing and could potentially allow crafted messages to cause unexpected behavior.
+
+### Why Low Risk for QuantCoder
+
+1. **CLI Tool**: QuantCoder is a self-hosted CLI tool, not a network-exposed service
+2. **No External Protobuf Input**: Users control all inputs; no untrusted protobuf messages are parsed
+3. **Indirect Usage**: Protobuf is only used internally by LLM SDKs for their API communication
+4. **Attack Vector**: Exploitation would require an attacker to:
+   - Compromise the LLM provider's API responses, OR
+   - Perform a man-in-the-middle attack on HTTPS connections
+   - Both scenarios are extremely unlikely
+
+### Monitoring Instructions
+
+Check monthly for a patched version:
+
+```bash
+# Check for available updates
+pip index versions protobuf
+
+# Run pip-audit to check CVE status
+pip-audit --fix --dry-run 2>&1 | grep -i protobuf
+
+# Check the upstream issue tracker
+# https://github.com/protocolbuffers/protobuf/security/advisories
+```
+
+### Remediation Plan
+
+1. **When Fix Available**: Update `requirements.txt` to pin minimum safe version:
+   ```
+   protobuf>=X.Y.Z  # CVE-2026-0994
+   ```
+
+2. **Run CI Pipeline**: Ensure all tests pass with updated dependency
+
+3. **Update This Document**: Mark CVE as resolved in Risk Acceptance table
+
+### Acceptance
+
+This risk is accepted for production release because:
+- Severity is Low in this application's context
+- No known exploits targeting CLI tools
+- Monitoring is in place for when a fix becomes available
 
 ---
 

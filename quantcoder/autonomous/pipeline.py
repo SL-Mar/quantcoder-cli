@@ -5,7 +5,7 @@ import ast
 import json
 import signal
 import sys
-import requests
+import aiohttp
 from pathlib import Path
 from typing import Optional, Dict, List, Any
 from dataclasses import dataclass
@@ -342,15 +342,15 @@ class AutonomousPipeline:
                 "sortOrder": "descending"
             }
 
-            response = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: requests.get(base_url, params=params, timeout=15)
-            )
-            response.raise_for_status()
+            timeout = aiohttp.ClientTimeout(total=15)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(base_url, params=params) as response:
+                    response.raise_for_status()
+                    content = await response.read()
 
             # Parse Atom XML response
             import xml.etree.ElementTree as ET
-            root = ET.fromstring(response.content)
+            root = ET.fromstring(content)
 
             # Define namespaces
             ns = {
@@ -401,12 +401,11 @@ class AutonomousPipeline:
                 "User-Agent": "QuantCoder/2.0 (mailto:quantcoder@example.com)"
             }
 
-            response = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: requests.get(api_url, params=params, headers=headers, timeout=15)
-            )
-            response.raise_for_status()
-            data = response.json()
+            timeout = aiohttp.ClientTimeout(total=15)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(api_url, params=params, headers=headers) as response:
+                    response.raise_for_status()
+                    data = await response.json()
 
             papers = []
             for item in data.get('message', {}).get('items', []):
