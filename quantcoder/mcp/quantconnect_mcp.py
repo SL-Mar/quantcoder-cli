@@ -1,11 +1,9 @@
 """MCP Client and Server for QuantConnect API integration."""
 
 import asyncio
-import json
 import logging
-from typing import Dict, Any, List, Optional
 from datetime import datetime
-from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -34,11 +32,7 @@ class QuantConnectMCPClient:
         self.base_url = "https://www.quantconnect.com/api/v2"
         self.logger = logging.getLogger(self.__class__.__name__)
 
-    async def validate_code(
-        self,
-        code: str,
-        files: Optional[Dict[str, str]] = None
-    ) -> Dict[str, Any]:
+    async def validate_code(self, code: str, files: dict[str, str] | None = None) -> dict[str, Any]:
         """
         Validate code against QuantConnect API.
 
@@ -66,25 +60,21 @@ class QuantConnectMCPClient:
                 "errors": compile_result.get("errors", []),
                 "warnings": compile_result.get("warnings", []),
                 "compile_id": compile_result.get("compileId"),
-                "project_id": project_id
+                "project_id": project_id,
             }
 
         except Exception as e:
             self.logger.error(f"Validation error: {e}")
-            return {
-                "valid": False,
-                "errors": [str(e)],
-                "warnings": []
-            }
+            return {"valid": False, "errors": [str(e)], "warnings": []}
 
     async def backtest(
         self,
         code: str,
         start_date: str,
         end_date: str,
-        files: Optional[Dict[str, str]] = None,
-        name: Optional[str] = None
-    ) -> Dict[str, Any]:
+        files: dict[str, str] | None = None,
+        name: str | None = None,
+    ) -> dict[str, Any]:
         """
         Run backtest in QuantConnect.
 
@@ -108,7 +98,7 @@ class QuantConnectMCPClient:
                 return {
                     "success": False,
                     "error": "Code validation failed",
-                    "validation_errors": validation["errors"]
+                    "validation_errors": validation["errors"],
                 }
 
             # Create backtest
@@ -120,17 +110,14 @@ class QuantConnectMCPClient:
                 data={
                     "projectId": validation["project_id"],
                     "compileId": validation["compile_id"],
-                    "backtestName": backtest_name
-                }
+                    "backtestName": backtest_name,
+                },
             )
 
             backtest_id = backtest_result.get("backtestId")
 
             if not backtest_id:
-                return {
-                    "success": False,
-                    "error": "Failed to create backtest"
-                }
+                return {"success": False, "error": "Failed to create backtest"}
 
             # Poll for completion
             self.logger.info(f"Waiting for backtest {backtest_id} to complete")
@@ -144,15 +131,14 @@ class QuantConnectMCPClient:
                 "runtime_statistics": result.get("result", {}).get("RuntimeStatistics", {}),
                 "charts": result.get("result", {}).get("Charts", {}),
                 "sharpe": result.get("result", {}).get("Statistics", {}).get("Sharpe Ratio"),
-                "total_return": result.get("result", {}).get("Statistics", {}).get("Total Net Profit")
+                "total_return": result.get("result", {})
+                .get("Statistics", {})
+                .get("Total Net Profit"),
             }
 
         except Exception as e:
             self.logger.error(f"Backtest error: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            return {"success": False, "error": str(e)}
 
     async def get_api_docs(self, topic: str) -> str:
         """
@@ -218,12 +204,8 @@ class QuantConnectMCPClient:
             return f"Documentation for '{topic}': {doc_url}"
 
     async def deploy_live(
-        self,
-        project_id: str,
-        compile_id: str,
-        node_id: str,
-        brokerage: str = "InteractiveBrokers"
-    ) -> Dict[str, Any]:
+        self, project_id: str, compile_id: str, node_id: str, brokerage: str = "InteractiveBrokers"
+    ) -> dict[str, Any]:
         """
         Deploy algorithm to live trading.
 
@@ -246,22 +228,19 @@ class QuantConnectMCPClient:
                     "projectId": project_id,
                     "compileId": compile_id,
                     "nodeId": node_id,
-                    "brokerage": brokerage
-                }
+                    "brokerage": brokerage,
+                },
             )
 
             return {
                 "success": result.get("success", False),
                 "live_id": result.get("liveAlgorithmId"),
-                "message": result.get("message", "")
+                "message": result.get("message", ""),
             }
 
         except Exception as e:
             self.logger.error(f"Deployment error: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            return {"success": False, "error": str(e)}
 
     # Private helper methods
 
@@ -272,77 +251,61 @@ class QuantConnectMCPClient:
             method="POST",
             data={
                 "name": f"QuantCoder_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                "language": "Py"
-            }
+                "language": "Py",
+            },
         )
 
         return result.get("projects", [{}])[0].get("projectId")
 
     async def _upload_files(
-        self,
-        project_id: str,
-        main_code: str,
-        additional_files: Dict[str, str]
+        self, project_id: str, main_code: str, additional_files: dict[str, str]
     ):
         """Upload files to project."""
         # Upload Main.py
         await self._call_api(
-            f"/files/create",
+            "/files/create",
             method="POST",
-            data={
-                "projectId": project_id,
-                "name": "main.py",
-                "content": main_code
-            }
+            data={"projectId": project_id, "name": "main.py", "content": main_code},
         )
 
         # Upload additional files
         for filename, content in additional_files.items():
             await self._call_api(
-                f"/files/create",
+                "/files/create",
                 method="POST",
-                data={
-                    "projectId": project_id,
-                    "name": filename.lower(),
-                    "content": content
-                }
+                data={"projectId": project_id, "name": filename.lower(), "content": content},
             )
 
-    async def _compile(self, project_id: str) -> Dict[str, Any]:
+    async def _compile(self, project_id: str) -> dict[str, Any]:
         """Compile project."""
         result = await self._call_api(
-            f"/compile/create",
-            method="POST",
-            data={"projectId": project_id}
+            "/compile/create", method="POST", data={"projectId": project_id}
         )
 
         compile_id = result.get("compileId")
 
         # Wait for compilation
         while True:
-            status = await self._call_api(f"/compile/read", params={"projectId": project_id, "compileId": compile_id})
+            status = await self._call_api(
+                "/compile/read", params={"projectId": project_id, "compileId": compile_id}
+            )
 
             if status.get("state") == "BuildSuccess":
-                return {
-                    "success": True,
-                    "compileId": compile_id,
-                    "errors": [],
-                    "warnings": []
-                }
+                return {"success": True, "compileId": compile_id, "errors": [], "warnings": []}
             elif status.get("state") == "BuildError":
                 return {
                     "success": False,
                     "compileId": compile_id,
                     "errors": status.get("logs", []),
-                    "warnings": []
+                    "warnings": [],
                 }
 
             await asyncio.sleep(1)
 
-    async def _wait_for_backtest(self, backtest_id: str, max_wait: int = 300) -> Dict[str, Any]:
+    async def _wait_for_backtest(self, backtest_id: str, max_wait: int = 300) -> dict[str, Any]:
         """Wait for backtest to complete."""
         for _ in range(max_wait):
-            result = await self._call_api(f"/backtests/read", params={"backtestId": backtest_id})
+            result = await self._call_api("/backtests/read", params={"backtestId": backtest_id})
 
             if result.get("progress") == 1.0 or result.get("completed"):
                 return result
@@ -355,16 +318,14 @@ class QuantConnectMCPClient:
         self,
         endpoint: str,
         method: str = "GET",
-        data: Optional[Dict] = None,
-        params: Optional[Dict] = None
-    ) -> Dict[str, Any]:
+        data: dict | None = None,
+        params: dict | None = None,
+    ) -> dict[str, Any]:
         """Call QuantConnect API."""
         import aiohttp
 
         url = f"{self.base_url}{endpoint}"
-        headers = {
-            "Authorization": f"Basic {self._encode_credentials()}"
-        }
+        headers = {"Authorization": f"Basic {self._encode_credentials()}"}
 
         async with aiohttp.ClientSession() as session:
             if method == "GET":
@@ -377,6 +338,7 @@ class QuantConnectMCPClient:
     def _encode_credentials(self) -> str:
         """Encode API credentials."""
         import base64
+
         credentials = f"{self.user_id}:{self.api_key}"
         return base64.b64encode(credentials.encode()).decode()
 
@@ -450,18 +412,18 @@ class QuantConnectMCPServer:
 
     def get_tools(self) -> dict:
         """Return available tools and their schemas."""
-        return self.tools if hasattr(self, 'tools') else {}
+        return self.tools if hasattr(self, "tools") else {}
 
     def is_running(self) -> bool:
         """Check if server is running."""
-        return getattr(self, '_running', False)
+        return getattr(self, "_running", False)
 
     async def stop(self):
         """Stop the MCP server."""
         self._running = False
         self.logger.info("QuantConnect MCP Server stopped")
 
-    async def handle_tool_call(self, tool_name: str, arguments: Dict) -> Any:
+    async def handle_tool_call(self, tool_name: str, arguments: dict) -> Any:
         """Handle MCP tool call."""
         if tool_name == "validate_code":
             return await self.client.validate_code(**arguments)

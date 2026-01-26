@@ -1,13 +1,14 @@
 """Tests for the quantcoder.agents module."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
-from quantcoder.agents.base import AgentResult, BaseAgent
+import pytest
+
 from quantcoder.agents.alpha_agent import AlphaAgent
-from quantcoder.agents.universe_agent import UniverseAgent
+from quantcoder.agents.base import AgentResult, BaseAgent
 from quantcoder.agents.risk_agent import RiskAgent
 from quantcoder.agents.strategy_agent import StrategyAgent
+from quantcoder.agents.universe_agent import UniverseAgent
 
 
 class TestAgentResult:
@@ -20,7 +21,7 @@ class TestAgentResult:
             data={"key": "value"},
             message="Operation completed",
             code="def main(): pass",
-            filename="main.py"
+            filename="main.py",
         )
         assert result.success is True
         assert result.data == {"key": "value"}
@@ -30,10 +31,7 @@ class TestAgentResult:
 
     def test_error_result(self):
         """Test error result creation."""
-        result = AgentResult(
-            success=False,
-            error="Something went wrong"
-        )
+        result = AgentResult(success=False, error="Something went wrong")
         assert result.success is False
         assert result.error == "Something went wrong"
 
@@ -71,6 +69,7 @@ class TestBaseAgent:
 
     def test_extract_code_with_python_block(self, mock_llm):
         """Test code extraction from markdown python block."""
+
         # Create concrete implementation for testing
         class TestAgent(BaseAgent):
             @property
@@ -98,6 +97,7 @@ That's it."""
 
     def test_extract_code_with_generic_block(self, mock_llm):
         """Test code extraction from generic markdown block."""
+
         class TestAgent(BaseAgent):
             @property
             def agent_name(self):
@@ -122,6 +122,7 @@ def hello():
 
     def test_extract_code_no_block(self, mock_llm):
         """Test code extraction without markdown block."""
+
         class TestAgent(BaseAgent):
             @property
             def agent_name(self):
@@ -142,6 +143,7 @@ def hello():
 
     def test_repr(self, mock_llm):
         """Test agent representation."""
+
         class TestAgent(BaseAgent):
             @property
             def agent_name(self):
@@ -161,6 +163,7 @@ def hello():
     @pytest.mark.asyncio
     async def test_generate_with_llm(self, mock_llm):
         """Test LLM generation helper."""
+
         class TestAgent(BaseAgent):
             @property
             def agent_name(self):
@@ -176,8 +179,7 @@ def hello():
         agent = TestAgent(mock_llm)
 
         result = await agent._generate_with_llm(
-            system_prompt="You are a helper",
-            user_prompt="Hello"
+            system_prompt="You are a helper", user_prompt="Hello"
         )
 
         assert result == "Generated response"
@@ -203,10 +205,7 @@ def hello():
         agent = TestAgent(mock_llm)
 
         with pytest.raises(Exception) as exc_info:
-            await agent._generate_with_llm(
-                system_prompt="System",
-                user_prompt="User"
-            )
+            await agent._generate_with_llm(system_prompt="System", user_prompt="User")
         assert "API Error" in str(exc_info.value)
 
 
@@ -238,10 +237,7 @@ class MomentumAlpha(AlphaModel):
         """Test successful alpha generation."""
         agent = AlphaAgent(mock_llm)
 
-        result = await agent.execute(
-            strategy="20-day momentum",
-            indicators="SMA, RSI"
-        )
+        result = await agent.execute(strategy="20-day momentum", indicators="SMA, RSI")
 
         assert result.success is True
         assert result.filename == "Alpha.py"
@@ -254,8 +250,7 @@ class MomentumAlpha(AlphaModel):
         agent = AlphaAgent(mock_llm)
 
         result = await agent.execute(
-            strategy="momentum",
-            strategy_summary="Buy on RSI below 30, sell above 70"
+            strategy="momentum", strategy_summary="Buy on RSI below 30, sell above 70"
         )
 
         assert result.success is True
@@ -301,9 +296,7 @@ class CustomUniverse(UniverseSelectionModel):
         """Test successful universe generation."""
         agent = UniverseAgent(mock_llm)
 
-        result = await agent.execute(
-            criteria="S&P 500 stocks"
-        )
+        result = await agent.execute(criteria="S&P 500 stocks")
 
         assert result.success is True
         assert result.filename == "Universe.py"
@@ -315,8 +308,7 @@ class CustomUniverse(UniverseSelectionModel):
         agent = UniverseAgent(mock_llm)
 
         result = await agent.execute(
-            criteria="Top 100 by volume",
-            strategy_context="Momentum trading"
+            criteria="Top 100 by volume", strategy_context="Momentum trading"
         )
 
         assert result.success is True
@@ -361,9 +353,7 @@ class CustomRiskManagement(RiskManagementModel):
         """Test successful risk management generation."""
         agent = RiskAgent(mock_llm)
 
-        result = await agent.execute(
-            constraints="Max drawdown 10%"
-        )
+        result = await agent.execute(constraints="Max drawdown 10%")
 
         assert result.success is True
         assert result.filename == "Risk.py"
@@ -413,7 +403,7 @@ class MomentumStrategy(QCAlgorithm):
                 "universe": "class Universe: pass",
                 "alpha": "class Alpha: pass",
             },
-            strategy_summary="Momentum strategy"
+            strategy_summary="Momentum strategy",
         )
 
         assert result.success is True

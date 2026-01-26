@@ -1,10 +1,7 @@
 """Tests for the quantcoder.evolver module."""
 
-import pytest
 import tempfile
-import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 from quantcoder.evolver.config import (
     EvolutionConfig,
@@ -12,10 +9,9 @@ from quantcoder.evolver.config import (
     StoppingCondition,
 )
 from quantcoder.evolver.persistence import (
-    Variant,
-    GenerationRecord,
     ElitePool,
     EvolutionState,
+    Variant,
 )
 
 
@@ -33,10 +29,7 @@ class TestFitnessWeights:
     def test_custom_weights(self):
         """Test custom weight values."""
         weights = FitnessWeights(
-            sharpe_ratio=0.5,
-            max_drawdown=0.25,
-            total_return=0.15,
-            win_rate=0.1
+            sharpe_ratio=0.5, max_drawdown=0.25, total_return=0.15, win_rate=0.1
         )
         assert weights.sharpe_ratio == 0.5
         assert weights.max_drawdown == 0.25
@@ -56,12 +49,7 @@ class TestEvolutionConfig:
     def test_calculate_fitness_basic(self):
         """Test basic fitness calculation."""
         config = EvolutionConfig()
-        metrics = {
-            'sharpe_ratio': 2.0,
-            'max_drawdown': 0.1,
-            'total_return': 0.5,
-            'win_rate': 0.6
-        }
+        metrics = {"sharpe_ratio": 2.0, "max_drawdown": 0.1, "total_return": 0.5, "win_rate": 0.6}
 
         fitness = config.calculate_fitness(metrics)
         assert fitness > 0
@@ -79,31 +67,25 @@ class TestEvolutionConfig:
         """Test that high drawdown results in lower fitness."""
         config = EvolutionConfig()
 
-        low_drawdown = config.calculate_fitness({
-            'sharpe_ratio': 1.5,
-            'max_drawdown': 0.1,
-            'total_return': 0.3,
-            'win_rate': 0.5
-        })
+        low_drawdown = config.calculate_fitness(
+            {"sharpe_ratio": 1.5, "max_drawdown": 0.1, "total_return": 0.3, "win_rate": 0.5}
+        )
 
-        high_drawdown = config.calculate_fitness({
-            'sharpe_ratio': 1.5,
-            'max_drawdown': 0.5,
-            'total_return': 0.3,
-            'win_rate': 0.5
-        })
+        high_drawdown = config.calculate_fitness(
+            {"sharpe_ratio": 1.5, "max_drawdown": 0.5, "total_return": 0.3, "win_rate": 0.5}
+        )
 
         assert low_drawdown > high_drawdown
 
     def test_from_env(self, monkeypatch):
         """Test creating config from environment."""
-        monkeypatch.setenv('QC_USER_ID', 'test-user')
-        monkeypatch.setenv('QC_API_TOKEN', 'test-token')
-        monkeypatch.setenv('QC_PROJECT_ID', '12345')
+        monkeypatch.setenv("QC_USER_ID", "test-user")
+        monkeypatch.setenv("QC_API_TOKEN", "test-token")
+        monkeypatch.setenv("QC_PROJECT_ID", "12345")
 
         config = EvolutionConfig.from_env()
-        assert config.qc_user_id == 'test-user'
-        assert config.qc_api_token == 'test-token'
+        assert config.qc_user_id == "test-user"
+        assert config.qc_api_token == "test-token"
         assert config.qc_project_id == 12345
 
 
@@ -128,7 +110,7 @@ class TestVariant:
             generation=1,
             code="def main(): pass",
             parent_ids=[],
-            mutation_description="Initial variant"
+            mutation_description="Initial variant",
         )
         assert variant.id == "v001"
         assert variant.generation == 1
@@ -145,7 +127,7 @@ class TestVariant:
             parent_ids=["v001"],
             mutation_description="Mutation of v001",
             metrics={"sharpe_ratio": 1.5, "max_drawdown": 0.1},
-            fitness=1.2
+            fitness=1.2,
         )
         assert variant.metrics["sharpe_ratio"] == 1.5
         assert variant.fitness == 1.2
@@ -153,11 +135,7 @@ class TestVariant:
     def test_to_dict(self):
         """Test variant serialization."""
         variant = Variant(
-            id="v003",
-            generation=1,
-            code="code",
-            parent_ids=[],
-            mutation_description="test"
+            id="v003", generation=1, code="code", parent_ids=[], mutation_description="test"
         )
         data = variant.to_dict()
 
@@ -175,7 +153,7 @@ class TestVariant:
             "mutation_description": "crossover",
             "metrics": {"sharpe_ratio": 2.0},
             "fitness": 1.8,
-            "created_at": "2024-01-01T00:00:00"
+            "created_at": "2024-01-01T00:00:00",
         }
         variant = Variant.from_dict(data)
 
@@ -203,7 +181,7 @@ class TestElitePool:
             code="code",
             parent_ids=[],
             mutation_description="test",
-            fitness=1.0
+            fitness=1.0,
         )
 
         result = pool.update(variant)
@@ -220,7 +198,7 @@ class TestElitePool:
             code="code",
             parent_ids=[],
             mutation_description="test",
-            fitness=None
+            fitness=None,
         )
 
         result = pool.update(variant)
@@ -234,24 +212,28 @@ class TestElitePool:
 
         # Fill pool
         for i, fitness in enumerate([1.0, 2.0]):
-            pool.update(Variant(
-                id=f"v{i}",
-                generation=1,
+            pool.update(
+                Variant(
+                    id=f"v{i}",
+                    generation=1,
+                    code="code",
+                    parent_ids=[],
+                    mutation_description="test",
+                    fitness=fitness,
+                )
+            )
+
+        # Add better variant
+        result = pool.update(
+            Variant(
+                id="v_better",
+                generation=2,
                 code="code",
                 parent_ids=[],
                 mutation_description="test",
-                fitness=fitness
-            ))
-
-        # Add better variant
-        result = pool.update(Variant(
-            id="v_better",
-            generation=2,
-            code="code",
-            parent_ids=[],
-            mutation_description="test",
-            fitness=3.0
-        ))
+                fitness=3.0,
+            )
+        )
 
         assert result is True
         assert len(pool.variants) == 2
@@ -266,24 +248,28 @@ class TestElitePool:
 
         # Fill pool with good variants
         for i in range(2):
-            pool.update(Variant(
-                id=f"v{i}",
-                generation=1,
+            pool.update(
+                Variant(
+                    id=f"v{i}",
+                    generation=1,
+                    code="code",
+                    parent_ids=[],
+                    mutation_description="test",
+                    fitness=5.0 + i,
+                )
+            )
+
+        # Try to add worse variant
+        result = pool.update(
+            Variant(
+                id="v_worse",
+                generation=2,
                 code="code",
                 parent_ids=[],
                 mutation_description="test",
-                fitness=5.0 + i
-            ))
-
-        # Try to add worse variant
-        result = pool.update(Variant(
-            id="v_worse",
-            generation=2,
-            code="code",
-            parent_ids=[],
-            mutation_description="test",
-            fitness=1.0
-        ))
+                fitness=1.0,
+            )
+        )
 
         assert result is False
         assert len(pool.variants) == 2
@@ -293,14 +279,16 @@ class TestElitePool:
         pool = ElitePool(max_size=3)
 
         for fitness in [1.0, 3.0, 2.0]:
-            pool.update(Variant(
-                id=f"v_{fitness}",
-                generation=1,
-                code="code",
-                parent_ids=[],
-                mutation_description="test",
-                fitness=fitness
-            ))
+            pool.update(
+                Variant(
+                    id=f"v_{fitness}",
+                    generation=1,
+                    code="code",
+                    parent_ids=[],
+                    mutation_description="test",
+                    fitness=fitness,
+                )
+            )
 
         best = pool.get_best()
         assert best is not None
@@ -316,38 +304,38 @@ class TestElitePool:
         pool = ElitePool(max_size=3)
 
         for i in range(3):
-            pool.update(Variant(
-                id=f"v{i}",
-                generation=1,
-                code="code",
-                parent_ids=[],
-                mutation_description="test",
-                fitness=float(i)
-            ))
+            pool.update(
+                Variant(
+                    id=f"v{i}",
+                    generation=1,
+                    code="code",
+                    parent_ids=[],
+                    mutation_description="test",
+                    fitness=float(i),
+                )
+            )
 
         parents = pool.get_parents_for_next_gen()
         assert len(parents) == 3
         # Should be a copy
-        parents.append(Variant(
-            id="new",
-            generation=0,
-            code="",
-            parent_ids=[],
-            mutation_description=""
-        ))
+        parents.append(
+            Variant(id="new", generation=0, code="", parent_ids=[], mutation_description="")
+        )
         assert len(pool.variants) == 3
 
     def test_serialization(self):
         """Test pool serialization and deserialization."""
         pool = ElitePool(max_size=2)
-        pool.update(Variant(
-            id="v1",
-            generation=1,
-            code="code1",
-            parent_ids=[],
-            mutation_description="test",
-            fitness=1.5
-        ))
+        pool.update(
+            Variant(
+                id="v1",
+                generation=1,
+                code="code1",
+                parent_ids=[],
+                mutation_description="test",
+                fitness=1.5,
+            )
+        )
 
         data = pool.to_dict()
         restored = ElitePool.from_dict(data)
@@ -362,10 +350,7 @@ class TestEvolutionState:
 
     def test_init(self):
         """Test state initialization."""
-        state = EvolutionState(
-            baseline_code="def main(): pass",
-            source_paper="arxiv:1234"
-        )
+        state = EvolutionState(baseline_code="def main(): pass", source_paper="arxiv:1234")
 
         assert state.evolution_id is not None
         assert state.baseline_code == "def main(): pass"
@@ -381,7 +366,7 @@ class TestEvolutionState:
             code="code",
             parent_ids=[],
             mutation_description="test",
-            fitness=1.0
+            fitness=1.0,
         )
 
         state.add_variant(variant)
@@ -395,14 +380,16 @@ class TestEvolutionState:
 
         # Add variants
         for i in range(3):
-            state.add_variant(Variant(
-                id=f"v{i}",
-                generation=1,
-                code="code",
-                parent_ids=[],
-                mutation_description="test",
-                fitness=float(i)
-            ))
+            state.add_variant(
+                Variant(
+                    id=f"v{i}",
+                    generation=1,
+                    code="code",
+                    parent_ids=[],
+                    mutation_description="test",
+                    fitness=float(i),
+                )
+            )
 
         state.record_generation(1, ["v0", "v1", "v2"])
 
@@ -415,25 +402,29 @@ class TestEvolutionState:
         state = EvolutionState()
 
         # First generation
-        state.add_variant(Variant(
-            id="v1",
-            generation=1,
-            code="code",
-            parent_ids=[],
-            mutation_description="test",
-            fitness=2.0
-        ))
+        state.add_variant(
+            Variant(
+                id="v1",
+                generation=1,
+                code="code",
+                parent_ids=[],
+                mutation_description="test",
+                fitness=2.0,
+            )
+        )
         state.record_generation(1, ["v1"])
 
         # Second generation - same fitness (no improvement)
-        state.add_variant(Variant(
-            id="v2",
-            generation=2,
-            code="code",
-            parent_ids=[],
-            mutation_description="test",
-            fitness=2.0
-        ))
+        state.add_variant(
+            Variant(
+                id="v2",
+                generation=2,
+                code="code",
+                parent_ids=[],
+                mutation_description="test",
+                fitness=2.0,
+            )
+        )
         state.record_generation(2, ["v2"])
 
         assert state.generations_without_improvement == 1
@@ -465,15 +456,17 @@ class TestEvolutionState:
         config = EvolutionConfig(target_sharpe=2.0)
         state = EvolutionState()
 
-        state.add_variant(Variant(
-            id="v1",
-            generation=1,
-            code="code",
-            parent_ids=[],
-            mutation_description="test",
-            metrics={"sharpe_ratio": 2.5},
-            fitness=2.5
-        ))
+        state.add_variant(
+            Variant(
+                id="v1",
+                generation=1,
+                code="code",
+                parent_ids=[],
+                mutation_description="test",
+                metrics={"sharpe_ratio": 2.5},
+                fitness=2.5,
+            )
+        )
 
         should_stop, reason = state.should_stop(config)
 
@@ -482,10 +475,7 @@ class TestEvolutionState:
 
     def test_should_continue(self):
         """Test that evolution continues when no stopping condition met."""
-        config = EvolutionConfig(
-            max_generations=10,
-            convergence_patience=5
-        )
+        config = EvolutionConfig(max_generations=10, convergence_patience=5)
         state = EvolutionState()
         state.current_generation = 3
         state.generations_without_improvement = 2
@@ -501,18 +491,17 @@ class TestEvolutionState:
             path = Path(tmpdir) / "state.json"
 
             # Create and save state
-            state = EvolutionState(
-                baseline_code="def main(): pass",
-                source_paper="test paper"
+            state = EvolutionState(baseline_code="def main(): pass", source_paper="test paper")
+            state.add_variant(
+                Variant(
+                    id="v1",
+                    generation=1,
+                    code="variant code",
+                    parent_ids=[],
+                    mutation_description="initial",
+                    fitness=1.5,
+                )
             )
-            state.add_variant(Variant(
-                id="v1",
-                generation=1,
-                code="variant code",
-                parent_ids=[],
-                mutation_description="initial",
-                fitness=1.5
-            ))
             state.record_generation(1, ["v1"])
             state.status = "running"
 
@@ -537,14 +526,16 @@ class TestEvolutionState:
         state.status = "running"
         state.current_generation = 5
 
-        state.add_variant(Variant(
-            id="best",
-            generation=5,
-            code="code",
-            parent_ids=[],
-            mutation_description="test",
-            fitness=2.5
-        ))
+        state.add_variant(
+            Variant(
+                id="best",
+                generation=5,
+                code="code",
+                parent_ids=[],
+                mutation_description="test",
+                fitness=2.5,
+            )
+        )
 
         summary = state.get_summary()
 

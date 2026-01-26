@@ -9,39 +9,40 @@ Handles saving/loading of:
 """
 
 import json
-import os
 import logging
-from dataclasses import dataclass, field, asdict
-from typing import List, Dict, Optional, Any
-from datetime import datetime
+import os
 import uuid
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
 
 
 @dataclass
 class Variant:
     """A single algorithm variant."""
+
     id: str
     generation: int
     code: str
-    parent_ids: List[str]  # empty for baseline, 1 for mutation, 2 for crossover
+    parent_ids: list[str]  # empty for baseline, 1 for mutation, 2 for crossover
     mutation_description: str  # what was changed
-    metrics: Optional[Dict[str, float]] = None  # backtest results
-    fitness: Optional[float] = None
+    metrics: dict[str, float] | None = None  # backtest results
+    fitness: float | None = None
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
 
     def to_dict(self) -> dict:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'Variant':
+    def from_dict(cls, data: dict) -> "Variant":
         return cls(**data)
 
 
 @dataclass
 class GenerationRecord:
     """Record of a single generation."""
+
     generation_num: int
-    variants: List[str]  # variant IDs
+    variants: list[str]  # variant IDs
     best_fitness: float
     best_variant_id: str
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
@@ -55,7 +56,7 @@ class ElitePool:
 
     def __init__(self, max_size: int = 3):
         self.max_size = max_size
-        self.variants: List[Variant] = []
+        self.variants: list[Variant] = []
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def update(self, candidate: Variant) -> bool:
@@ -64,7 +65,9 @@ class ElitePool:
         Returns True if the candidate made it into the pool.
         """
         if candidate.fitness is None:
-            self.logger.warning(f"Cannot add variant {candidate.id} to elite pool: no fitness score")
+            self.logger.warning(
+                f"Cannot add variant {candidate.id} to elite pool: no fitness score"
+            )
             return False
 
         # Check if it beats any existing elite
@@ -91,11 +94,11 @@ class ElitePool:
         """Sort pool by fitness (descending)."""
         self.variants.sort(key=lambda v: v.fitness or 0, reverse=True)
 
-    def get_best(self) -> Optional[Variant]:
+    def get_best(self) -> Variant | None:
         """Get the best variant in the pool."""
         return self.variants[0] if self.variants else None
 
-    def get_parents_for_next_gen(self) -> List[Variant]:
+    def get_parents_for_next_gen(self) -> list[Variant]:
         """
         Get variants to use as parents for the next generation.
         Returns all elite variants for crossover/mutation.
@@ -103,15 +106,12 @@ class ElitePool:
         return self.variants.copy()
 
     def to_dict(self) -> dict:
-        return {
-            'max_size': self.max_size,
-            'variants': [v.to_dict() for v in self.variants]
-        }
+        return {"max_size": self.max_size, "variants": [v.to_dict() for v in self.variants]}
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'ElitePool':
-        pool = cls(max_size=data['max_size'])
-        pool.variants = [Variant.from_dict(v) for v in data['variants']]
+    def from_dict(cls, data: dict) -> "ElitePool":
+        pool = cls(max_size=data["max_size"])
+        pool.variants = [Variant.from_dict(v) for v in data["variants"]]
         return pool
 
 
@@ -123,19 +123,19 @@ class EvolutionState:
 
     def __init__(
         self,
-        evolution_id: Optional[str] = None,
+        evolution_id: str | None = None,
         baseline_code: str = "",
         source_paper: str = "",
-        config: Optional[dict] = None
+        config: dict | None = None,
     ):
         self.evolution_id = evolution_id or str(uuid.uuid4())[:8]
         self.baseline_code = baseline_code
         self.source_paper = source_paper
         self.config = config or {}
 
-        self.elite_pool = ElitePool(max_size=config.get('elite_pool_size', 3) if config else 3)
-        self.all_variants: Dict[str, Variant] = {}  # id -> Variant
-        self.generation_history: List[GenerationRecord] = []
+        self.elite_pool = ElitePool(max_size=config.get("elite_pool_size", 3) if config else 3)
+        self.all_variants: dict[str, Variant] = {}  # id -> Variant
+        self.generation_history: list[GenerationRecord] = []
 
         self.current_generation = 0
         self.generations_without_improvement = 0
@@ -152,9 +152,11 @@ class EvolutionState:
         self.elite_pool.update(variant)
         self.updated_at = datetime.now().isoformat()
 
-    def record_generation(self, generation_num: int, variant_ids: List[str]):
+    def record_generation(self, generation_num: int, variant_ids: list[str]):
         """Record completion of a generation."""
-        variants_in_gen = [self.all_variants[vid] for vid in variant_ids if vid in self.all_variants]
+        variants_in_gen = [
+            self.all_variants[vid] for vid in variant_ids if vid in self.all_variants
+        ]
 
         if not variants_in_gen:
             self.logger.warning(f"No variants found for generation {generation_num}")
@@ -166,7 +168,7 @@ class EvolutionState:
             generation_num=generation_num,
             variants=variant_ids,
             best_fitness=best_variant.fitness or 0,
-            best_variant_id=best_variant.id
+            best_variant_id=best_variant.id,
         )
         self.generation_history.append(record)
 
@@ -205,7 +207,7 @@ class EvolutionState:
         # Target fitness reached
         if config.target_sharpe and self.elite_pool.get_best():
             best = self.elite_pool.get_best()
-            if best.metrics and best.metrics.get('sharpe_ratio', 0) >= config.target_sharpe:
+            if best.metrics and best.metrics.get("sharpe_ratio", 0) >= config.target_sharpe:
                 return True, f"Target Sharpe ratio ({config.target_sharpe}) achieved"
 
         return False, ""
@@ -213,47 +215,47 @@ class EvolutionState:
     def save(self, path: str):
         """Save state to disk."""
         data = {
-            'evolution_id': self.evolution_id,
-            'baseline_code': self.baseline_code,
-            'source_paper': self.source_paper,
-            'config': self.config,
-            'elite_pool': self.elite_pool.to_dict(),
-            'all_variants': {k: v.to_dict() for k, v in self.all_variants.items()},
-            'generation_history': [asdict(g) for g in self.generation_history],
-            'current_generation': self.current_generation,
-            'generations_without_improvement': self.generations_without_improvement,
-            'status': self.status,
-            'created_at': self.created_at,
-            'updated_at': self.updated_at
+            "evolution_id": self.evolution_id,
+            "baseline_code": self.baseline_code,
+            "source_paper": self.source_paper,
+            "config": self.config,
+            "elite_pool": self.elite_pool.to_dict(),
+            "all_variants": {k: v.to_dict() for k, v in self.all_variants.items()},
+            "generation_history": [asdict(g) for g in self.generation_history],
+            "current_generation": self.current_generation,
+            "generations_without_improvement": self.generations_without_improvement,
+            "status": self.status,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
         }
 
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, 'w') as f:
+        with open(path, "w") as f:
             json.dump(data, f, indent=2)
 
         self.logger.info(f"Evolution state saved to {path}")
 
     @classmethod
-    def load(cls, path: str) -> 'EvolutionState':
+    def load(cls, path: str) -> "EvolutionState":
         """Load state from disk."""
-        with open(path, 'r') as f:
+        with open(path) as f:
             data = json.load(f)
 
         state = cls(
-            evolution_id=data['evolution_id'],
-            baseline_code=data['baseline_code'],
-            source_paper=data['source_paper'],
-            config=data['config']
+            evolution_id=data["evolution_id"],
+            baseline_code=data["baseline_code"],
+            source_paper=data["source_paper"],
+            config=data["config"],
         )
 
-        state.elite_pool = ElitePool.from_dict(data['elite_pool'])
-        state.all_variants = {k: Variant.from_dict(v) for k, v in data['all_variants'].items()}
-        state.generation_history = [GenerationRecord(**g) for g in data['generation_history']]
-        state.current_generation = data['current_generation']
-        state.generations_without_improvement = data['generations_without_improvement']
-        state.status = data['status']
-        state.created_at = data['created_at']
-        state.updated_at = data['updated_at']
+        state.elite_pool = ElitePool.from_dict(data["elite_pool"])
+        state.all_variants = {k: Variant.from_dict(v) for k, v in data["all_variants"].items()}
+        state.generation_history = [GenerationRecord(**g) for g in data["generation_history"]]
+        state.current_generation = data["current_generation"]
+        state.generations_without_improvement = data["generations_without_improvement"]
+        state.status = data["status"]
+        state.created_at = data["created_at"]
+        state.updated_at = data["updated_at"]
 
         return state
 

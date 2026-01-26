@@ -1,24 +1,24 @@
 """Interactive and programmatic chat interfaces for QuantCoder."""
 
 import logging
-from typing import List, Dict, Optional
+
 from prompt_toolkit import PromptSession
-from prompt_toolkit.history import FileHistory
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.history import FileHistory
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 
 from .config import Config
 from .tools import (
-    SearchArticlesTool,
-    DownloadArticleTool,
-    SummarizeArticleTool,
-    GenerateCodeTool,
-    ValidateCodeTool,
     BacktestTool,
+    DownloadArticleTool,
+    GenerateCodeTool,
     ReadFileTool,
+    SearchArticlesTool,
+    SummarizeArticleTool,
+    ValidateCodeTool,
     WriteFileTool,
 )
 
@@ -31,7 +31,7 @@ class InteractiveChat:
 
     def __init__(self, config: Config):
         self.config = config
-        self.context: List[Dict] = []
+        self.context: list[dict] = []
         self.session = PromptSession(
             history=FileHistory(str(config.home_dir / ".history")),
             auto_suggest=AutoSuggestFromHistory(),
@@ -39,21 +39,33 @@ class InteractiveChat:
 
         # Initialize tools
         self.tools = {
-            'search': SearchArticlesTool(config),
-            'download': DownloadArticleTool(config),
-            'summarize': SummarizeArticleTool(config),
-            'generate': GenerateCodeTool(config),
-            'validate': ValidateCodeTool(config),
-            'backtest': BacktestTool(config),
-            'read': ReadFileTool(config),
-            'write': WriteFileTool(config),
+            "search": SearchArticlesTool(config),
+            "download": DownloadArticleTool(config),
+            "summarize": SummarizeArticleTool(config),
+            "generate": GenerateCodeTool(config),
+            "validate": ValidateCodeTool(config),
+            "backtest": BacktestTool(config),
+            "read": ReadFileTool(config),
+            "write": WriteFileTool(config),
         }
 
         # Command completions
         self.completer = WordCompleter(
-            ['help', 'exit', 'quit', 'search', 'download', 'summarize',
-             'generate', 'validate', 'backtest', 'config', 'clear', 'history'],
-            ignore_case=True
+            [
+                "help",
+                "exit",
+                "quit",
+                "search",
+                "download",
+                "summarize",
+                "generate",
+                "validate",
+                "backtest",
+                "config",
+                "clear",
+                "history",
+            ],
+            ignore_case=True,
         )
 
     def run(self):
@@ -62,28 +74,26 @@ class InteractiveChat:
             try:
                 # Get user input
                 user_input = self.session.prompt(
-                    "quantcoder> ",
-                    completer=self.completer,
-                    multiline=False
+                    "quantcoder> ", completer=self.completer, multiline=False
                 ).strip()
 
                 if not user_input:
                     continue
 
                 # Handle special commands
-                if user_input.lower() in ['exit', 'quit']:
+                if user_input.lower() in ["exit", "quit"]:
                     console.print("[cyan]Goodbye![/cyan]")
                     break
 
-                elif user_input.lower() == 'help':
+                elif user_input.lower() == "help":
                     self.show_help()
                     continue
 
-                elif user_input.lower() == 'clear':
+                elif user_input.lower() == "clear":
                     console.clear()
                     continue
 
-                elif user_input.lower() == 'config':
+                elif user_input.lower() == "config":
                     self.show_config()
                     continue
 
@@ -101,32 +111,32 @@ class InteractiveChat:
         """Process user input and execute appropriate actions."""
 
         # Parse input for tool invocation
-        if user_input.startswith('search '):
+        if user_input.startswith("search "):
             query = user_input[7:].strip()
-            self.execute_tool('search', query=query, max_results=5)
+            self.execute_tool("search", query=query, max_results=5)
 
-        elif user_input.startswith('download '):
+        elif user_input.startswith("download "):
             try:
                 article_id = int(user_input[9:].strip())
-                self.execute_tool('download', article_id=article_id)
+                self.execute_tool("download", article_id=article_id)
             except ValueError:
                 console.print("[red]Error: Please provide a valid article ID[/red]")
 
-        elif user_input.startswith('summarize '):
+        elif user_input.startswith("summarize "):
             try:
                 article_id = int(user_input[10:].strip())
-                self.execute_tool('summarize', article_id=article_id)
+                self.execute_tool("summarize", article_id=article_id)
             except ValueError:
                 console.print("[red]Error: Please provide a valid article ID[/red]")
 
-        elif user_input.startswith('generate '):
+        elif user_input.startswith("generate "):
             try:
                 article_id = int(user_input[9:].strip())
-                self.execute_tool('generate', article_id=article_id, max_refine_attempts=6)
+                self.execute_tool("generate", article_id=article_id, max_refine_attempts=6)
             except ValueError:
                 console.print("[red]Error: Please provide a valid article ID[/red]")
 
-        elif user_input.startswith('backtest '):
+        elif user_input.startswith("backtest "):
             # Parse: backtest <file> [--start YYYY-MM-DD] [--end YYYY-MM-DD]
             parts = user_input[9:].strip().split()
             if not parts:
@@ -144,9 +154,11 @@ class InteractiveChat:
                 elif part == "--end" and i + 1 < len(parts):
                     end_date = parts[i + 1]
 
-            self.execute_tool('backtest', file_path=file_path, start_date=start_date, end_date=end_date)
+            self.execute_tool(
+                "backtest", file_path=file_path, start_date=start_date, end_date=end_date
+            )
 
-        elif user_input.startswith('validate '):
+        elif user_input.startswith("validate "):
             file_path = user_input[9:].strip()
             if not file_path:
                 console.print("[red]Error: Please provide a file path[/red]")
@@ -154,6 +166,7 @@ class InteractiveChat:
 
             # Read the file and validate
             from pathlib import Path
+
             path = Path(file_path)
             if not path.exists():
                 path = Path(self.config.tools.generated_code_dir) / file_path
@@ -161,9 +174,9 @@ class InteractiveChat:
                 console.print(f"[red]Error: File not found: {file_path}[/red]")
                 return
 
-            with open(path, 'r') as f:
+            with open(path) as f:
                 code = f.read()
-            self.execute_tool('validate', code=code)
+            self.execute_tool("validate", code=code)
 
         else:
             # For natural language queries, use the LLM to interpret
@@ -189,78 +202,80 @@ class InteractiveChat:
             console.print(f"[green]✓[/green] {result.message}")
 
             # Special handling for different tools
-            if tool_name == 'search' and result.data:
+            if tool_name == "search" and result.data:
                 for idx, article in enumerate(result.data, 1):
-                    published = f" ({article['published']})" if article.get('published') else ""
+                    published = f" ({article['published']})" if article.get("published") else ""
                     console.print(
                         f"  [cyan]{idx}.[/cyan] {article['title']}\n"
                         f"      [dim]{article['authors']}{published}[/dim]"
                     )
 
-            elif tool_name == 'summarize' and result.data:
-                console.print(Panel(
-                    Markdown(result.data['summary']),
-                    title="Summary",
-                    border_style="green"
-                ))
+            elif tool_name == "summarize" and result.data:
+                console.print(
+                    Panel(Markdown(result.data["summary"]), title="Summary", border_style="green")
+                )
 
-            elif tool_name == 'generate' and result.data:
+            elif tool_name == "generate" and result.data:
                 # Display summary if available
-                if result.data.get('summary'):
-                    console.print(Panel(
-                        Markdown(result.data['summary']),
-                        title="Strategy Summary",
-                        border_style="blue"
-                    ))
+                if result.data.get("summary"):
+                    console.print(
+                        Panel(
+                            Markdown(result.data["summary"]),
+                            title="Strategy Summary",
+                            border_style="blue",
+                        )
+                    )
 
                 # Display code
                 from rich.syntax import Syntax
+
                 code_display = Syntax(
-                    result.data['code'],
-                    "python",
-                    theme=self.config.ui.theme,
-                    line_numbers=True
+                    result.data["code"], "python", theme=self.config.ui.theme, line_numbers=True
                 )
                 console.print("\n")
-                console.print(Panel(
-                    code_display,
-                    title="Generated Code",
-                    border_style="green"
-                ))
+                console.print(Panel(code_display, title="Generated Code", border_style="green"))
 
-            elif tool_name == 'backtest' and result.data:
+            elif tool_name == "backtest" and result.data:
                 from rich.table import Table
+
                 table = Table(title="Backtest Results")
                 table.add_column("Metric", style="cyan")
                 table.add_column("Value", style="green")
 
-                table.add_row("Sharpe Ratio", f"{result.data.get('sharpe_ratio', 'N/A'):.2f}" if result.data.get('sharpe_ratio') else "N/A")
+                table.add_row(
+                    "Sharpe Ratio",
+                    (
+                        f"{result.data.get('sharpe_ratio', 'N/A'):.2f}"
+                        if result.data.get("sharpe_ratio")
+                        else "N/A"
+                    ),
+                )
                 table.add_row("Total Return", f"{result.data.get('total_return', 'N/A')}")
-                table.add_row("Backtest ID", str(result.data.get('backtest_id', 'N/A')))
+                table.add_row("Backtest ID", str(result.data.get("backtest_id", "N/A")))
 
                 # Add more stats if available
-                stats = result.data.get('statistics', {})
+                stats = result.data.get("statistics", {})
                 for key, value in list(stats.items())[:5]:
                     table.add_row(key, str(value))
 
                 console.print(table)
 
-            elif tool_name == 'validate' and result.data:
-                stage = result.data.get('stage', 'local')
-                if stage == 'quantconnect':
-                    console.print(f"[green]✓ Compiled on QuantConnect[/green]")
-                    if result.data.get('warnings'):
+            elif tool_name == "validate" and result.data:
+                stage = result.data.get("stage", "local")
+                if stage == "quantconnect":
+                    console.print("[green]✓ Compiled on QuantConnect[/green]")
+                    if result.data.get("warnings"):
                         console.print("[yellow]Warnings:[/yellow]")
-                        for w in result.data['warnings']:
+                        for w in result.data["warnings"]:
                             console.print(f"  • {w}")
 
         else:
             console.print(f"[red]✗[/red] {result.error}")
             # Show additional error details if available
-            if hasattr(result, 'data') and result.data:
-                if result.data.get('errors'):
+            if hasattr(result, "data") and result.data:
+                if result.data.get("errors"):
                     console.print("[red]Errors:[/red]")
-                    for err in result.data['errors'][:5]:
+                    for err in result.data["errors"][:5]:
                         console.print(f"  • {err}")
 
     def process_natural_language(self, user_input: str):
@@ -272,17 +287,19 @@ class InteractiveChat:
         llm = LLMHandler(self.config)
 
         # Build context with system prompt
-        messages = [{
-            "role": "system",
-            "content": (
-                "You are QuantCoder, an AI assistant specialized in helping users "
-                "generate QuantConnect trading algorithms from research articles. "
-                "You can help users search for articles, download PDFs, summarize "
-                "trading strategies, and generate Python code. "
-                "Be concise and helpful. If users ask about trading strategies, "
-                "guide them through the process: search → download → summarize → generate."
-            )
-        }]
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are QuantCoder, an AI assistant specialized in helping users "
+                    "generate QuantConnect trading algorithms from research articles. "
+                    "You can help users search for articles, download PDFs, summarize "
+                    "trading strategies, and generate Python code. "
+                    "Be concise and helpful. If users ask about trading strategies, "
+                    "guide them through the process: search → download → summarize → generate."
+                ),
+            }
+        ]
 
         # Add conversation history
         messages.extend(self.context)
@@ -303,11 +320,7 @@ class InteractiveChat:
                 self.context = self.context[-20:]
 
             # Display response
-            console.print(Panel(
-                Markdown(response),
-                title="QuantCoder",
-                border_style="cyan"
-            ))
+            console.print(Panel(Markdown(response), title="QuantCoder", border_style="cyan"))
         else:
             console.print("[red]Error: Failed to get response from LLM[/red]")
 
@@ -350,11 +363,7 @@ QUANTCONNECT_USER_ID=your_user_id
 ```
 """
 
-        console.print(Panel(
-            Markdown(help_text),
-            title="Help",
-            border_style="cyan"
-        ))
+        console.print(Panel(Markdown(help_text), title="Help", border_style="cyan"))
 
     def show_config(self):
         """Show current configuration."""
@@ -366,11 +375,7 @@ QUANTCONNECT_USER_ID=your_user_id
 **Generated Code:** {self.config.tools.generated_code_dir}
 """
 
-        console.print(Panel(
-            Markdown(config_text),
-            title="Configuration",
-            border_style="cyan"
-        ))
+        console.print(Panel(Markdown(config_text), title="Configuration", border_style="cyan"))
 
 
 class ProgrammaticChat:
@@ -382,14 +387,14 @@ class ProgrammaticChat:
 
         # Initialize tools
         self.tools = {
-            'search': SearchArticlesTool(config),
-            'download': DownloadArticleTool(config),
-            'summarize': SummarizeArticleTool(config),
-            'generate': GenerateCodeTool(config),
-            'validate': ValidateCodeTool(config),
-            'backtest': BacktestTool(config),
-            'read': ReadFileTool(config),
-            'write': WriteFileTool(config),
+            "search": SearchArticlesTool(config),
+            "download": DownloadArticleTool(config),
+            "summarize": SummarizeArticleTool(config),
+            "generate": GenerateCodeTool(config),
+            "validate": ValidateCodeTool(config),
+            "backtest": BacktestTool(config),
+            "read": ReadFileTool(config),
+            "write": WriteFileTool(config),
         }
 
     def process(self, prompt: str) -> str:
@@ -401,17 +406,17 @@ class ProgrammaticChat:
         llm = LLMHandler(self.config)
 
         # Build context with system prompt
-        messages = [{
-            "role": "system",
-            "content": (
-                "You are QuantCoder, an AI assistant specialized in helping users "
-                "generate QuantConnect trading algorithms from research articles. "
-                "Provide concise, actionable responses."
-            )
-        }, {
-            "role": "user",
-            "content": prompt
-        }]
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are QuantCoder, an AI assistant specialized in helping users "
+                    "generate QuantConnect trading algorithms from research articles. "
+                    "Provide concise, actionable responses."
+                ),
+            },
+            {"role": "user", "content": prompt},
+        ]
 
         response = llm.chat(prompt, context=messages)
 

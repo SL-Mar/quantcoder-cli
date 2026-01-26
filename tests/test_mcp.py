@@ -1,7 +1,8 @@
 """Tests for the quantcoder.mcp module."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from quantcoder.mcp.quantconnect_mcp import (
     QuantConnectMCPClient,
@@ -15,10 +16,7 @@ class TestQuantConnectMCPClient:
     @pytest.fixture
     def client(self):
         """Create MCP client for testing."""
-        return QuantConnectMCPClient(
-            api_key="test-api-key",
-            user_id="test-user-id"
-        )
+        return QuantConnectMCPClient(api_key="test-api-key", user_id="test-user-id")
 
     def test_init(self, client):
         """Test client initialization."""
@@ -30,21 +28,22 @@ class TestQuantConnectMCPClient:
         """Test credential encoding."""
         encoded = client._encode_credentials()
         import base64
+
         decoded = base64.b64decode(encoded).decode()
         assert decoded == "test-user-id:test-api-key"
 
     @pytest.mark.asyncio
     async def test_validate_code_success(self, client):
         """Test successful code validation."""
-        with patch.object(client, '_create_project', new_callable=AsyncMock) as mock_create:
-            with patch.object(client, '_upload_files', new_callable=AsyncMock) as mock_upload:
-                with patch.object(client, '_compile', new_callable=AsyncMock) as mock_compile:
+        with patch.object(client, "_create_project", new_callable=AsyncMock) as mock_create:
+            with patch.object(client, "_upload_files", new_callable=AsyncMock) as mock_upload:
+                with patch.object(client, "_compile", new_callable=AsyncMock) as mock_compile:
                     mock_create.return_value = "project-123"
                     mock_compile.return_value = {
                         "success": True,
                         "compileId": "compile-456",
                         "errors": [],
-                        "warnings": []
+                        "warnings": [],
                     }
 
                     result = await client.validate_code("def main(): pass")
@@ -57,27 +56,24 @@ class TestQuantConnectMCPClient:
     @pytest.mark.asyncio
     async def test_validate_code_with_files(self, client):
         """Test code validation with additional files."""
-        with patch.object(client, '_create_project', new_callable=AsyncMock) as mock_create:
-            with patch.object(client, '_upload_files', new_callable=AsyncMock) as mock_upload:
-                with patch.object(client, '_compile', new_callable=AsyncMock) as mock_compile:
+        with patch.object(client, "_create_project", new_callable=AsyncMock) as mock_create:
+            with patch.object(client, "_upload_files", new_callable=AsyncMock) as mock_upload:
+                with patch.object(client, "_compile", new_callable=AsyncMock) as mock_compile:
                     mock_create.return_value = "project-123"
                     mock_compile.return_value = {"success": True}
 
-                    result = await client.validate_code(
-                        code="def main(): pass",
-                        files={"Alpha.py": "class Alpha: pass"}
+                    await client.validate_code(
+                        code="def main(): pass", files={"Alpha.py": "class Alpha: pass"}
                     )
 
                     mock_upload.assert_called_with(
-                        "project-123",
-                        "def main(): pass",
-                        {"Alpha.py": "class Alpha: pass"}
+                        "project-123", "def main(): pass", {"Alpha.py": "class Alpha: pass"}
                     )
 
     @pytest.mark.asyncio
     async def test_validate_code_error(self, client):
         """Test code validation with error."""
-        with patch.object(client, '_create_project', new_callable=AsyncMock) as mock_create:
+        with patch.object(client, "_create_project", new_callable=AsyncMock) as mock_create:
             mock_create.side_effect = Exception("API Error")
 
             result = await client.validate_code("def main(): pass")
@@ -88,16 +84,11 @@ class TestQuantConnectMCPClient:
     @pytest.mark.asyncio
     async def test_backtest_validation_fails(self, client):
         """Test backtest when validation fails."""
-        with patch.object(client, 'validate_code', new_callable=AsyncMock) as mock_validate:
-            mock_validate.return_value = {
-                "valid": False,
-                "errors": ["Syntax error"]
-            }
+        with patch.object(client, "validate_code", new_callable=AsyncMock) as mock_validate:
+            mock_validate.return_value = {"valid": False, "errors": ["Syntax error"]}
 
             result = await client.backtest(
-                code="invalid code",
-                start_date="2020-01-01",
-                end_date="2020-12-31"
+                code="invalid code", start_date="2020-01-01", end_date="2020-12-31"
             )
 
             assert result["success"] is False
@@ -106,27 +97,27 @@ class TestQuantConnectMCPClient:
     @pytest.mark.asyncio
     async def test_backtest_success(self, client):
         """Test successful backtest."""
-        with patch.object(client, 'validate_code', new_callable=AsyncMock) as mock_validate:
-            with patch.object(client, '_call_api', new_callable=AsyncMock) as mock_api:
-                with patch.object(client, '_wait_for_backtest', new_callable=AsyncMock) as mock_wait:
+        with patch.object(client, "validate_code", new_callable=AsyncMock) as mock_validate:
+            with patch.object(client, "_call_api", new_callable=AsyncMock) as mock_api:
+                with patch.object(
+                    client, "_wait_for_backtest", new_callable=AsyncMock
+                ) as mock_wait:
                     mock_validate.return_value = {
                         "valid": True,
                         "project_id": "proj-123",
-                        "compile_id": "compile-456"
+                        "compile_id": "compile-456",
                     }
                     mock_api.return_value = {"backtestId": "backtest-789"}
                     mock_wait.return_value = {
                         "result": {
                             "Statistics": {"Sharpe Ratio": "1.5"},
                             "RuntimeStatistics": {},
-                            "Charts": {}
+                            "Charts": {},
                         }
                     }
 
                     result = await client.backtest(
-                        code="def main(): pass",
-                        start_date="2020-01-01",
-                        end_date="2020-12-31"
+                        code="def main(): pass", start_date="2020-01-01", end_date="2020-12-31"
                     )
 
                     assert result["success"] is True
@@ -135,7 +126,7 @@ class TestQuantConnectMCPClient:
     @pytest.mark.asyncio
     async def test_get_api_docs_with_topic(self, client):
         """Test getting API docs for known topic."""
-        with patch('aiohttp.ClientSession') as mock_session:
+        with patch("aiohttp.ClientSession") as mock_session:
             mock_response = MagicMock()
             mock_response.status = 200
             mock_context = AsyncMock()
@@ -149,7 +140,7 @@ class TestQuantConnectMCPClient:
     @pytest.mark.asyncio
     async def test_get_api_docs_unknown_topic(self, client):
         """Test getting API docs for unknown topic."""
-        with patch('aiohttp.ClientSession') as mock_session:
+        with patch("aiohttp.ClientSession") as mock_session:
             mock_response = MagicMock()
             mock_response.status = 200
             mock_context = AsyncMock()
@@ -163,16 +154,11 @@ class TestQuantConnectMCPClient:
     @pytest.mark.asyncio
     async def test_deploy_live(self, client):
         """Test live deployment."""
-        with patch.object(client, '_call_api', new_callable=AsyncMock) as mock_api:
-            mock_api.return_value = {
-                "success": True,
-                "liveAlgorithmId": "live-123"
-            }
+        with patch.object(client, "_call_api", new_callable=AsyncMock) as mock_api:
+            mock_api.return_value = {"success": True, "liveAlgorithmId": "live-123"}
 
             result = await client.deploy_live(
-                project_id="proj-123",
-                compile_id="compile-456",
-                node_id="node-789"
+                project_id="proj-123", compile_id="compile-456", node_id="node-789"
             )
 
             assert result["success"] is True
@@ -181,13 +167,11 @@ class TestQuantConnectMCPClient:
     @pytest.mark.asyncio
     async def test_deploy_live_error(self, client):
         """Test live deployment error."""
-        with patch.object(client, '_call_api', new_callable=AsyncMock) as mock_api:
+        with patch.object(client, "_call_api", new_callable=AsyncMock) as mock_api:
             mock_api.side_effect = Exception("Deployment failed")
 
             result = await client.deploy_live(
-                project_id="proj-123",
-                compile_id="compile-456",
-                node_id="node-789"
+                project_id="proj-123", compile_id="compile-456", node_id="node-789"
             )
 
             assert result["success"] is False
@@ -200,10 +184,7 @@ class TestQuantConnectMCPServer:
     @pytest.fixture
     def server(self):
         """Create MCP server for testing."""
-        return QuantConnectMCPServer(
-            api_key="test-api-key",
-            user_id="test-user-id"
-        )
+        return QuantConnectMCPServer(api_key="test-api-key", user_id="test-user-id")
 
     def test_init(self, server):
         """Test server initialization."""
@@ -240,17 +221,10 @@ class TestQuantConnectMCPServer:
     @pytest.mark.asyncio
     async def test_handle_tool_call_validate(self, server):
         """Test handling validate_code tool call."""
-        with patch.object(
-            server.client,
-            'validate_code',
-            new_callable=AsyncMock
-        ) as mock_validate:
+        with patch.object(server.client, "validate_code", new_callable=AsyncMock) as mock_validate:
             mock_validate.return_value = {"valid": True}
 
-            result = await server.handle_tool_call(
-                "validate_code",
-                {"code": "def main(): pass"}
-            )
+            result = await server.handle_tool_call("validate_code", {"code": "def main(): pass"})
 
             assert result == {"valid": True}
             mock_validate.assert_called_with(code="def main(): pass")
@@ -258,20 +232,12 @@ class TestQuantConnectMCPServer:
     @pytest.mark.asyncio
     async def test_handle_tool_call_backtest(self, server):
         """Test handling backtest tool call."""
-        with patch.object(
-            server.client,
-            'backtest',
-            new_callable=AsyncMock
-        ) as mock_backtest:
+        with patch.object(server.client, "backtest", new_callable=AsyncMock) as mock_backtest:
             mock_backtest.return_value = {"success": True}
 
             result = await server.handle_tool_call(
                 "backtest",
-                {
-                    "code": "def main(): pass",
-                    "start_date": "2020-01-01",
-                    "end_date": "2020-12-31"
-                }
+                {"code": "def main(): pass", "start_date": "2020-01-01", "end_date": "2020-12-31"},
             )
 
             assert result == {"success": True}
@@ -279,37 +245,21 @@ class TestQuantConnectMCPServer:
     @pytest.mark.asyncio
     async def test_handle_tool_call_docs(self, server):
         """Test handling get_api_docs tool call."""
-        with patch.object(
-            server.client,
-            'get_api_docs',
-            new_callable=AsyncMock
-        ) as mock_docs:
+        with patch.object(server.client, "get_api_docs", new_callable=AsyncMock) as mock_docs:
             mock_docs.return_value = "Documentation text"
 
-            result = await server.handle_tool_call(
-                "get_api_docs",
-                {"topic": "indicators"}
-            )
+            result = await server.handle_tool_call("get_api_docs", {"topic": "indicators"})
 
             assert result == "Documentation text"
 
     @pytest.mark.asyncio
     async def test_handle_tool_call_deploy(self, server):
         """Test handling deploy_live tool call."""
-        with patch.object(
-            server.client,
-            'deploy_live',
-            new_callable=AsyncMock
-        ) as mock_deploy:
+        with patch.object(server.client, "deploy_live", new_callable=AsyncMock) as mock_deploy:
             mock_deploy.return_value = {"success": True}
 
             result = await server.handle_tool_call(
-                "deploy_live",
-                {
-                    "project_id": "123",
-                    "compile_id": "456",
-                    "node_id": "789"
-                }
+                "deploy_live", {"project_id": "123", "compile_id": "456", "node_id": "789"}
             )
 
             assert result == {"success": True}

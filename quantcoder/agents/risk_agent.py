@@ -1,6 +1,6 @@
 """Risk Agent - Generates risk management logic."""
 
-from .base import BaseAgent, AgentResult
+from .base import AgentResult, BaseAgent
 
 
 class RiskAgent(BaseAgent):
@@ -23,10 +23,7 @@ class RiskAgent(BaseAgent):
         return "Generates risk management and position sizing logic"
 
     async def execute(
-        self,
-        risk_parameters: str,
-        alpha_info: str = "",
-        strategy_context: str = ""
+        self, risk_parameters: str, alpha_info: str = "", strategy_context: str = ""
     ) -> AgentResult:
         """
         Generate risk management code.
@@ -82,7 +79,7 @@ Generate complete Risk.py code."""
             response = await self._generate_with_llm(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
-                temperature=0.2  # Very deterministic for risk
+                temperature=0.2,  # Very deterministic for risk
             )
 
             code = self._extract_code(response)
@@ -92,12 +89,9 @@ Generate complete Risk.py code."""
                 code=code,
                 filename="Risk.py",
                 message=f"Generated risk management for: {risk_parameters}",
-                data={"risk_parameters": risk_parameters}
+                data={"risk_parameters": risk_parameters},
             )
 
         except Exception as e:
             self.logger.error(f"Risk generation error: {e}")
-            return AgentResult(
-                success=False,
-                error=str(e)
-            )
+            return AgentResult(success=False, error=str(e))

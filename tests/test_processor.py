@@ -1,13 +1,10 @@
 """Tests for the quantcoder.core.processor module."""
 
-import pytest
-from unittest.mock import MagicMock, patch
-
 from quantcoder.core.processor import (
-    TextPreprocessor,
     CodeValidator,
     KeywordAnalyzer,
     SectionSplitter,
+    TextPreprocessor,
 )
 
 

@@ -1,23 +1,24 @@
 """Main CLI interface for QuantCoder - inspired by Mistral Vibe CLI."""
 
-import click
 import logging
 import sys
 from pathlib import Path
+
+import click
 from rich.console import Console
 from rich.logging import RichHandler
-from rich.panel import Panel
 from rich.markdown import Markdown
+from rich.panel import Panel
 
-from .config import Config
 from .chat import InteractiveChat
+from .config import Config
 from .tools import (
-    SearchArticlesTool,
-    DownloadArticleTool,
-    SummarizeArticleTool,
-    GenerateCodeTool,
-    ValidateCodeTool,
     BacktestTool,
+    DownloadArticleTool,
+    GenerateCodeTool,
+    SearchArticlesTool,
+    SummarizeArticleTool,
+    ValidateCodeTool,
 )
 
 console = Console()
@@ -33,15 +34,15 @@ def setup_logging(verbose: bool = False):
         datefmt="[%X]",
         handlers=[
             RichHandler(rich_tracebacks=True, console=console),
-            logging.FileHandler("quantcoder.log")
-        ]
+            logging.FileHandler("quantcoder.log"),
+        ],
     )
 
 
 @click.group(invoke_without_command=True)
-@click.option('--verbose', '-v', is_flag=True, help='Enable verbose logging')
-@click.option('--config', type=click.Path(), help='Path to config file')
-@click.option('--prompt', '-p', type=str, help='Run in non-interactive mode with prompt')
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
+@click.option("--config", type=click.Path(), help="Path to config file")
+@click.option("--prompt", "-p", type=str, help="Run in non-interactive mode with prompt")
 @click.pass_context
 def main(ctx, verbose, config, prompt):
     """
@@ -66,7 +67,7 @@ def main(ctx, verbose, config, prompt):
                 )
                 api_key = click.prompt("OpenAI API Key", hide_input=True)
                 cfg.save_api_key(api_key)
-    except EnvironmentError as e:
+    except OSError as e:
         console.print(f"[red]Error: {e}[/red]")
         console.print(
             "[yellow]Please set your OPENAI_API_KEY in the environment or "
@@ -75,12 +76,13 @@ def main(ctx, verbose, config, prompt):
         sys.exit(1)
 
     ctx.ensure_object(dict)
-    ctx.obj['config'] = cfg
-    ctx.obj['verbose'] = verbose
+    ctx.obj["config"] = cfg
+    ctx.obj["verbose"] = verbose
 
     # If prompt is provided, run in non-interactive mode
     if prompt:
         from .chat import ProgrammaticChat
+
         chat = ProgrammaticChat(cfg)
         result = chat.process(prompt)
         console.print(result)
@@ -99,7 +101,7 @@ def interactive(config: Config):
             "AI-powered CLI for QuantConnect algorithms\n\n"
             "[dim]Type 'help' for commands, 'exit' to quit[/dim]",
             title="Welcome",
-            border_style="cyan"
+            border_style="cyan",
         )
     )
 
@@ -108,8 +110,8 @@ def interactive(config: Config):
 
 
 @main.command()
-@click.argument('query')
-@click.option('--num', default=5, help='Number of results to return')
+@click.argument("query")
+@click.option("--num", default=5, help="Number of results to return")
 @click.pass_context
 def search(ctx, query, num):
     """
@@ -117,7 +119,7 @@ def search(ctx, query, num):
 
     Example: quantcoder search "algorithmic trading" --num 3
     """
-    config = ctx.obj['config']
+    config = ctx.obj["config"]
     tool = SearchArticlesTool(config)
 
     with console.status(f"Searching for '{query}'..."):
@@ -127,7 +129,7 @@ def search(ctx, query, num):
         console.print(f"[green]✓[/green] {result.message}")
 
         for idx, article in enumerate(result.data, 1):
-            published = f" ({article['published']})" if article.get('published') else ""
+            published = f" ({article['published']})" if article.get("published") else ""
             console.print(
                 f"  [cyan]{idx}.[/cyan] {article['title']}\n"
                 f"      [dim]{article['authors']}{published}[/dim]"
@@ -137,7 +139,7 @@ def search(ctx, query, num):
 
 
 @main.command()
-@click.argument('article_id', type=int)
+@click.argument("article_id", type=int)
 @click.pass_context
 def download(ctx, article_id):
     """
@@ -145,7 +147,7 @@ def download(ctx, article_id):
 
     Example: quantcoder download 1
     """
-    config = ctx.obj['config']
+    config = ctx.obj["config"]
     tool = DownloadArticleTool(config)
 
     with console.status(f"Downloading article {article_id}..."):
@@ -158,7 +160,7 @@ def download(ctx, article_id):
 
 
 @main.command()
-@click.argument('article_id', type=int)
+@click.argument("article_id", type=int)
 @click.pass_context
 def summarize(ctx, article_id):
     """
@@ -166,7 +168,7 @@ def summarize(ctx, article_id):
 
     Example: quantcoder summarize 1
     """
-    config = ctx.obj['config']
+    config = ctx.obj["config"]
     tool = SummarizeArticleTool(config)
 
     with console.status(f"Analyzing article {article_id}..."):
@@ -174,20 +176,20 @@ def summarize(ctx, article_id):
 
     if result.success:
         console.print(f"[green]✓[/green] {result.message}\n")
-        console.print(Panel(
-            Markdown(result.data['summary']),
-            title="Summary",
-            border_style="green"
-        ))
+        console.print(
+            Panel(Markdown(result.data["summary"]), title="Summary", border_style="green")
+        )
     else:
         console.print(f"[red]✗[/red] {result.error}")
 
 
-@main.command(name='generate')
-@click.argument('article_id', type=int)
-@click.option('--max-attempts', default=6, help='Maximum refinement attempts')
-@click.option('--open-in-editor', is_flag=True, help='Open generated code in editor (default: Zed)')
-@click.option('--editor', default=None, help='Editor to use (overrides config, e.g., zed, code, vim)')
+@main.command(name="generate")
+@click.argument("article_id", type=int)
+@click.option("--max-attempts", default=6, help="Maximum refinement attempts")
+@click.option("--open-in-editor", is_flag=True, help="Open generated code in editor (default: Zed)")
+@click.option(
+    "--editor", default=None, help="Editor to use (overrides config, e.g., zed, code, vim)"
+)
 @click.pass_context
 def generate_code(ctx, article_id, max_attempts, open_in_editor, editor):
     """
@@ -198,7 +200,7 @@ def generate_code(ctx, article_id, max_attempts, open_in_editor, editor):
         quantcoder generate 1 --open-in-editor
         quantcoder generate 1 --open-in-editor --editor code
     """
-    config = ctx.obj['config']
+    config = ctx.obj["config"]
     tool = GenerateCodeTool(config)
 
     with console.status(f"Generating code for article {article_id}..."):
@@ -208,46 +210,42 @@ def generate_code(ctx, article_id, max_attempts, open_in_editor, editor):
         console.print(f"[green]✓[/green] {result.message}\n")
 
         # Display summary
-        if result.data.get('summary'):
-            console.print(Panel(
-                Markdown(result.data['summary']),
-                title="Strategy Summary",
-                border_style="blue"
-            ))
+        if result.data.get("summary"):
+            console.print(
+                Panel(
+                    Markdown(result.data["summary"]), title="Strategy Summary", border_style="blue"
+                )
+            )
 
         # Display code
         from rich.syntax import Syntax
-        code_display = Syntax(
-            result.data['code'],
-            "python",
-            theme="monokai",
-            line_numbers=True
-        )
+
+        code_display = Syntax(result.data["code"], "python", theme="monokai", line_numbers=True)
         console.print("\n")
-        console.print(Panel(
-            code_display,
-            title="Generated Code",
-            border_style="green"
-        ))
+        console.print(Panel(code_display, title="Generated Code", border_style="green"))
 
         # Open in editor if requested
         if open_in_editor:
-            from .editor import open_in_editor as launch_editor, get_editor_display_name
+            from .editor import get_editor_display_name
+            from .editor import open_in_editor as launch_editor
+
             editor_cmd = editor or config.ui.editor
             editor_name = get_editor_display_name(editor_cmd)
-            code_path = result.data.get('path')
+            code_path = result.data.get("path")
             if code_path:
                 if launch_editor(code_path, editor_cmd):
                     console.print(f"[cyan]Opened in {editor_name}[/cyan]")
                 else:
-                    console.print(f"[yellow]Could not open in {editor_name}. Is it installed?[/yellow]")
+                    console.print(
+                        f"[yellow]Could not open in {editor_name}. Is it installed?[/yellow]"
+                    )
     else:
         console.print(f"[red]✗[/red] {result.error}")
 
 
-@main.command(name='validate')
-@click.argument('file_path', type=click.Path(exists=True))
-@click.option('--local-only', is_flag=True, help='Only run local syntax check, skip QuantConnect')
+@main.command(name="validate")
+@click.argument("file_path", type=click.Path(exists=True))
+@click.option("--local-only", is_flag=True, help="Only run local syntax check, skip QuantConnect")
 @click.pass_context
 def validate_code_cmd(ctx, file_path, local_only):
     """
@@ -257,11 +255,11 @@ def validate_code_cmd(ctx, file_path, local_only):
         quantcoder validate generated_code/algorithm_1.py
         quantcoder validate my_algo.py --local-only
     """
-    config = ctx.obj['config']
+    config = ctx.obj["config"]
     tool = ValidateCodeTool(config)
 
     # Read the file
-    with open(file_path, 'r') as f:
+    with open(file_path) as f:
         code = f.read()
 
     with console.status(f"Validating {file_path}..."):
@@ -269,23 +267,23 @@ def validate_code_cmd(ctx, file_path, local_only):
 
     if result.success:
         console.print(f"[green]✓[/green] {result.message}")
-        if result.data and result.data.get('warnings'):
+        if result.data and result.data.get("warnings"):
             console.print("[yellow]Warnings:[/yellow]")
-            for w in result.data['warnings']:
+            for w in result.data["warnings"]:
                 console.print(f"  • {w}")
     else:
         console.print(f"[red]✗[/red] {result.error}")
-        if result.data and result.data.get('errors'):
+        if result.data and result.data.get("errors"):
             console.print("[red]Errors:[/red]")
-            for err in result.data['errors'][:10]:
+            for err in result.data["errors"][:10]:
                 console.print(f"  • {err}")
 
 
-@main.command(name='backtest')
-@click.argument('file_path', type=click.Path(exists=True))
-@click.option('--start', default='2020-01-01', help='Backtest start date (YYYY-MM-DD)')
-@click.option('--end', default='2024-01-01', help='Backtest end date (YYYY-MM-DD)')
-@click.option('--name', help='Name for the backtest')
+@main.command(name="backtest")
+@click.argument("file_path", type=click.Path(exists=True))
+@click.option("--start", default="2020-01-01", help="Backtest start date (YYYY-MM-DD)")
+@click.option("--end", default="2024-01-01", help="Backtest end date (YYYY-MM-DD)")
+@click.option("--name", help="Name for the backtest")
 @click.pass_context
 def backtest_cmd(ctx, file_path, start, end, name):
     """
@@ -297,12 +295,14 @@ def backtest_cmd(ctx, file_path, start, end, name):
         quantcoder backtest generated_code/algorithm_1.py
         quantcoder backtest my_algo.py --start 2022-01-01 --end 2024-01-01
     """
-    config = ctx.obj['config']
+    config = ctx.obj["config"]
 
     # Check credentials first
     if not config.has_quantconnect_credentials():
         console.print("[red]Error: QuantConnect credentials not configured[/red]")
-        console.print(f"[yellow]Please set QUANTCONNECT_API_KEY and QUANTCONNECT_USER_ID in {config.home_dir / '.env'}[/yellow]")
+        console.print(
+            f"[yellow]Please set QUANTCONNECT_API_KEY and QUANTCONNECT_USER_ID in {config.home_dir / '.env'}[/yellow]"
+        )
         return
 
     tool = BacktestTool(config)
@@ -315,16 +315,17 @@ def backtest_cmd(ctx, file_path, start, end, name):
 
         # Display results table
         from rich.table import Table
+
         table = Table(title="Backtest Results")
         table.add_column("Metric", style="cyan")
         table.add_column("Value", style="green")
 
-        table.add_row("Backtest ID", str(result.data.get('backtest_id', 'N/A')))
+        table.add_row("Backtest ID", str(result.data.get("backtest_id", "N/A")))
         table.add_row("Sharpe Ratio", f"{result.data.get('sharpe_ratio', 0):.2f}")
-        table.add_row("Total Return", str(result.data.get('total_return', 'N/A')))
+        table.add_row("Total Return", str(result.data.get("total_return", "N/A")))
 
         # Add statistics
-        stats = result.data.get('statistics', {})
+        stats = result.data.get("statistics", {})
         for key, value in list(stats.items())[:8]:
             table.add_row(key, str(value))
 
@@ -337,7 +338,7 @@ def backtest_cmd(ctx, file_path, start, end, name):
 @click.pass_context
 def config_show(ctx):
     """Show current configuration."""
-    config = ctx.obj['config']
+    config = ctx.obj["config"]
 
     config_text = f"""
 **Model Configuration:**
@@ -361,23 +362,21 @@ def config_show(ctx):
 - Config File: {config.home_dir / 'config.toml'}
 """
 
-    console.print(Panel(
-        Markdown(config_text),
-        title="Configuration",
-        border_style="cyan"
-    ))
+    console.print(Panel(Markdown(config_text), title="Configuration", border_style="cyan"))
 
 
 @main.command()
 def version():
     """Show version information."""
     from . import __version__
+
     console.print(f"QuantCoder v{__version__}")
 
 
 # ============================================================================
 # AUTONOMOUS MODE COMMANDS
 # ============================================================================
+
 
 @main.group()
 def auto():
@@ -389,12 +388,12 @@ def auto():
     pass
 
 
-@auto.command(name='start')
-@click.option('--query', required=True, help='Strategy query (e.g., "momentum trading")')
-@click.option('--max-iterations', default=50, help='Maximum iterations to run')
-@click.option('--min-sharpe', default=0.5, type=float, help='Minimum Sharpe ratio threshold')
-@click.option('--output', type=click.Path(), help='Output directory for strategies')
-@click.option('--demo', is_flag=True, help='Run in demo mode (no real API calls)')
+@auto.command(name="start")
+@click.option("--query", required=True, help='Strategy query (e.g., "momentum trading")')
+@click.option("--max-iterations", default=50, help="Maximum iterations to run")
+@click.option("--min-sharpe", default=0.5, type=float, help="Minimum Sharpe ratio threshold")
+@click.option("--output", type=click.Path(), help="Output directory for strategies")
+@click.option("--demo", is_flag=True, help="Run in demo mode (no real API calls)")
 @click.pass_context
 def auto_start(ctx, query, max_iterations, min_sharpe, output, demo):
     """
@@ -405,32 +404,32 @@ def auto_start(ctx, query, max_iterations, min_sharpe, output, demo):
     """
     import asyncio
     from pathlib import Path
+
     from quantcoder.autonomous import AutonomousPipeline
 
-    config = ctx.obj['config']
+    config = ctx.obj["config"]
 
     if demo:
         console.print("[yellow]Running in DEMO mode (no real API calls)[/yellow]\n")
 
     output_dir = Path(output) if output else None
 
-    pipeline = AutonomousPipeline(
-        config=config,
-        demo_mode=demo
-    )
+    pipeline = AutonomousPipeline(config=config, demo_mode=demo)
 
     try:
-        asyncio.run(pipeline.run(
-            query=query,
-            max_iterations=max_iterations,
-            min_sharpe=min_sharpe,
-            output_dir=output_dir
-        ))
+        asyncio.run(
+            pipeline.run(
+                query=query,
+                max_iterations=max_iterations,
+                min_sharpe=min_sharpe,
+                output_dir=output_dir,
+            )
+        )
     except KeyboardInterrupt:
         console.print("\n[yellow]Autonomous mode stopped by user[/yellow]")
 
 
-@auto.command(name='status')
+@auto.command(name="status")
 def auto_status():
     """
     Show autonomous mode status and learning statistics.
@@ -450,18 +449,19 @@ def auto_status():
     # Show common errors
     console.print("[bold cyan]Common Errors:[/bold cyan]")
     from quantcoder.autonomous.learner import ErrorLearner
+
     learner = ErrorLearner(db)
     errors = learner.get_common_errors(limit=5)
 
     for i, error in enumerate(errors, 1):
-        fix_rate = (error['fixed_count'] / error['count'] * 100) if error['count'] > 0 else 0
+        fix_rate = (error["fixed_count"] / error["count"] * 100) if error["count"] > 0 else 0
         console.print(f"  {i}. {error['error_type']}: {error['count']} ({fix_rate:.0f}% fixed)")
 
     db.close()
 
 
-@auto.command(name='report')
-@click.option('--format', type=click.Choice(['text', 'json']), default='text')
+@auto.command(name="report")
+@click.option("--format", type=click.Choice(["text", "json"]), default="text")
 def auto_report(format):
     """
     Generate learning report from autonomous mode.
@@ -471,8 +471,9 @@ def auto_report(format):
     db = LearningDatabase()
     stats = db.get_library_stats()
 
-    if format == 'json':
+    if format == "json":
         import json
+
         console.print(json.dumps(stats, indent=2))
     else:
         # Text format
@@ -487,10 +488,12 @@ def auto_report(format):
         console.print(f"Average Refinements: {stats.get('avg_refinements', 0):.1f}")
 
         # Category breakdown
-        if stats.get('categories'):
+        if stats.get("categories"):
             console.print("\n[bold]Category Breakdown:[/bold]")
-            for cat in stats['categories']:
-                console.print(f"  • {cat['category']}: {cat['count']} strategies (avg Sharpe: {cat['avg_sharpe']:.2f})")
+            for cat in stats["categories"]:
+                console.print(
+                    f"  • {cat['category']}: {cat['count']} strategies (avg Sharpe: {cat['avg_sharpe']:.2f})"
+                )
 
     db.close()
 
@@ -498,6 +501,7 @@ def auto_report(format):
 # ============================================================================
 # LIBRARY BUILDER MODE COMMANDS
 # ============================================================================
+
 
 @main.group()
 def library():
@@ -509,13 +513,13 @@ def library():
     pass
 
 
-@library.command(name='build')
-@click.option('--comprehensive', is_flag=True, help='Build all categories')
-@click.option('--max-hours', default=24, type=int, help='Maximum build time in hours')
-@click.option('--output', type=click.Path(), help='Output directory for library')
-@click.option('--min-sharpe', default=0.5, type=float, help='Minimum Sharpe ratio threshold')
-@click.option('--categories', help='Comma-separated list of categories to build')
-@click.option('--demo', is_flag=True, help='Run in demo mode (no real API calls)')
+@library.command(name="build")
+@click.option("--comprehensive", is_flag=True, help="Build all categories")
+@click.option("--max-hours", default=24, type=int, help="Maximum build time in hours")
+@click.option("--output", type=click.Path(), help="Output directory for library")
+@click.option("--min-sharpe", default=0.5, type=float, help="Minimum Sharpe ratio threshold")
+@click.option("--categories", help="Comma-separated list of categories to build")
+@click.option("--demo", is_flag=True, help="Run in demo mode (no real API calls)")
 @click.pass_context
 def library_build(ctx, comprehensive, max_hours, output, min_sharpe, categories, demo):
     """
@@ -527,39 +531,40 @@ def library_build(ctx, comprehensive, max_hours, output, min_sharpe, categories,
     """
     import asyncio
     from pathlib import Path
+
     from quantcoder.library import LibraryBuilder
 
-    config = ctx.obj['config']
+    config = ctx.obj["config"]
 
     if demo:
         console.print("[yellow]Running in DEMO mode (no real API calls)[/yellow]\n")
 
     output_dir = Path(output) if output else None
-    category_list = categories.split(',') if categories else None
+    category_list = categories.split(",") if categories else None
 
-    builder = LibraryBuilder(
-        config=config,
-        demo_mode=demo
-    )
+    builder = LibraryBuilder(config=config, demo_mode=demo)
 
     try:
-        asyncio.run(builder.build(
-            comprehensive=comprehensive,
-            max_hours=max_hours,
-            output_dir=output_dir,
-            min_sharpe=min_sharpe,
-            categories=category_list
-        ))
+        asyncio.run(
+            builder.build(
+                comprehensive=comprehensive,
+                max_hours=max_hours,
+                output_dir=output_dir,
+                min_sharpe=min_sharpe,
+                categories=category_list,
+            )
+        )
     except KeyboardInterrupt:
         console.print("\n[yellow]Library build stopped by user[/yellow]")
 
 
-@library.command(name='status')
+@library.command(name="status")
 def library_status():
     """
     Show library build progress.
     """
     import asyncio
+
     from quantcoder.library import LibraryBuilder
 
     builder = LibraryBuilder()
@@ -570,16 +575,17 @@ def library_status():
         console.print("[yellow]No library build in progress[/yellow]")
 
 
-@library.command(name='resume')
+@library.command(name="resume")
 @click.pass_context
 def library_resume(ctx):
     """
     Resume interrupted library build from checkpoint.
     """
     import asyncio
+
     from quantcoder.library import LibraryBuilder
 
-    config = ctx.obj['config']
+    config = ctx.obj["config"]
     builder = LibraryBuilder(config=config)
 
     try:
@@ -588,9 +594,9 @@ def library_resume(ctx):
         console.print("\n[yellow]Library build stopped by user[/yellow]")
 
 
-@library.command(name='export')
-@click.option('--format', type=click.Choice(['json', 'zip']), default='zip', help='Export format')
-@click.option('--output', type=click.Path(), help='Output file path')
+@library.command(name="export")
+@click.option("--format", type=click.Choice(["json", "zip"]), default="zip", help="Export format")
+@click.option("--output", type=click.Path(), help="Output file path")
 def library_export(format, output):
     """
     Export completed library.
@@ -601,6 +607,7 @@ def library_export(format, output):
     """
     import asyncio
     from pathlib import Path
+
     from quantcoder.library import LibraryBuilder
 
     output_path = Path(output) if output else None
@@ -631,20 +638,31 @@ def evolve():
     pass
 
 
-@evolve.command(name='start')
-@click.argument('article_id', type=int, required=False)
-@click.option('--code', type=click.Path(exists=True), help='Path to algorithm file to evolve')
-@click.option('--resume', 'resume_id', help='Resume a previous evolution by ID')
-@click.option('--gens', 'max_generations', default=10, help='Maximum generations to run')
-@click.option('--variants', 'variants_per_gen', default=5, help='Variants per generation')
-@click.option('--elite', 'elite_size', default=3, help='Elite pool size')
-@click.option('--patience', default=3, help='Stop after N generations without improvement')
-@click.option('--qc-user', envvar='QC_USER_ID', help='QuantConnect user ID')
-@click.option('--qc-token', envvar='QC_API_TOKEN', help='QuantConnect API token')
-@click.option('--qc-project', envvar='QC_PROJECT_ID', type=int, help='QuantConnect project ID')
+@evolve.command(name="start")
+@click.argument("article_id", type=int, required=False)
+@click.option("--code", type=click.Path(exists=True), help="Path to algorithm file to evolve")
+@click.option("--resume", "resume_id", help="Resume a previous evolution by ID")
+@click.option("--gens", "max_generations", default=10, help="Maximum generations to run")
+@click.option("--variants", "variants_per_gen", default=5, help="Variants per generation")
+@click.option("--elite", "elite_size", default=3, help="Elite pool size")
+@click.option("--patience", default=3, help="Stop after N generations without improvement")
+@click.option("--qc-user", envvar="QC_USER_ID", help="QuantConnect user ID")
+@click.option("--qc-token", envvar="QC_API_TOKEN", help="QuantConnect API token")
+@click.option("--qc-project", envvar="QC_PROJECT_ID", type=int, help="QuantConnect project ID")
 @click.pass_context
-def evolve_start(ctx, article_id, code, resume_id, max_generations, variants_per_gen,
-                 elite_size, patience, qc_user, qc_token, qc_project):
+def evolve_start(
+    ctx,
+    article_id,
+    code,
+    resume_id,
+    max_generations,
+    variants_per_gen,
+    elite_size,
+    patience,
+    qc_user,
+    qc_token,
+    qc_project,
+):
     """
     Evolve a trading algorithm using AlphaEvolve-inspired optimization.
 
@@ -666,10 +684,10 @@ def evolve_start(ctx, article_id, code, resume_id, max_generations, variants_per
         quantcoder evolve start --resume abc123     # Resume evolution abc123
     """
     import asyncio
-    import os
     import json
     from pathlib import Path
-    from quantcoder.evolver import EvolutionEngine, EvolutionConfig
+
+    from quantcoder.evolver import EvolutionConfig, EvolutionEngine
 
     # Validate QuantConnect credentials
     if not all([qc_user, qc_token, qc_project]):
@@ -681,7 +699,9 @@ def evolve_start(ctx, article_id, code, resume_id, max_generations, variants_per
         console.print("  export QC_PROJECT_ID=your_project_id")
         console.print("")
         console.print("[yellow]Or use command options:[/yellow]")
-        console.print("  quantcoder evolve start 1 --qc-user ID --qc-token TOKEN --qc-project PROJECT")
+        console.print(
+            "  quantcoder evolve start 1 --qc-user ID --qc-token TOKEN --qc-project PROJECT"
+        )
         ctx.exit(1)
 
     # Handle resume mode
@@ -692,7 +712,7 @@ def evolve_start(ctx, article_id, code, resume_id, max_generations, variants_per
     elif code:
         # Load from file
         code_path = Path(code)
-        with open(code_path, 'r') as f:
+        with open(code_path) as f:
             baseline_code = f.read()
         source_paper = str(code_path)
     elif article_id:
@@ -703,17 +723,17 @@ def evolve_start(ctx, article_id, code, resume_id, max_generations, variants_per
             console.print(f"[yellow]Run 'quantcoder generate {article_id}' first.[/yellow]")
             ctx.exit(1)
 
-        with open(code_path, 'r') as f:
+        with open(code_path) as f:
             baseline_code = f.read()
 
         # Get article info for reference
         source_paper = f"article_{article_id}"
         articles_file = Path("articles.json")
         if articles_file.exists():
-            with open(articles_file, 'r') as f:
+            with open(articles_file) as f:
                 articles = json.load(f)
             if 0 < article_id <= len(articles):
-                source_paper = articles[article_id - 1].get('title', source_paper)
+                source_paper = articles[article_id - 1].get("title", source_paper)
     else:
         console.print("[red]Error: Provide ARTICLE_ID, --code, or --resume[/red]")
         ctx.exit(1)
@@ -726,19 +746,21 @@ def evolve_start(ctx, article_id, code, resume_id, max_generations, variants_per
         max_generations=max_generations,
         variants_per_generation=variants_per_gen,
         elite_pool_size=elite_size,
-        convergence_patience=patience
+        convergence_patience=patience,
     )
 
     # Display configuration
     console.print("")
-    console.print(Panel.fit(
-        f"[bold]Max generations:[/bold] {max_generations}\n"
-        f"[bold]Variants/gen:[/bold] {variants_per_gen}\n"
-        f"[bold]Elite pool size:[/bold] {elite_size}\n"
-        f"[bold]Convergence patience:[/bold] {patience}",
-        title="[bold cyan]AlphaEvolve Strategy Optimization[/bold cyan]",
-        border_style="cyan"
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold]Max generations:[/bold] {max_generations}\n"
+            f"[bold]Variants/gen:[/bold] {variants_per_gen}\n"
+            f"[bold]Elite pool size:[/bold] {elite_size}\n"
+            f"[bold]Convergence patience:[/bold] {patience}",
+            title="[bold cyan]AlphaEvolve Strategy Optimization[/bold cyan]",
+            border_style="cyan",
+        )
+    )
     console.print("")
 
     async def run_evolution():
@@ -748,7 +770,9 @@ def evolve_start(ctx, article_id, code, resume_id, max_generations, variants_per
         def on_generation_complete(state, gen):
             best = state.elite_pool.get_best()
             if best and best.fitness:
-                console.print(f"\n[green]Generation {gen} complete.[/green] Best fitness: {best.fitness:.4f}")
+                console.print(
+                    f"\n[green]Generation {gen} complete.[/green] Best fitness: {best.fitness:.4f}"
+                )
 
         engine.on_generation_complete = on_generation_complete
 
@@ -765,11 +789,13 @@ def evolve_start(ctx, article_id, code, resume_id, max_generations, variants_per
 
         # Report results
         console.print("")
-        console.print(Panel.fit(
-            result.get_summary(),
-            title="[bold green]EVOLUTION COMPLETE[/bold green]",
-            border_style="green"
-        ))
+        console.print(
+            Panel.fit(
+                result.get_summary(),
+                title="[bold green]EVOLUTION COMPLETE[/bold green]",
+                border_style="green",
+            )
+        )
 
         # Export best variant
         best = engine.get_best_variant()
@@ -780,21 +806,22 @@ def evolve_start(ctx, article_id, code, resume_id, max_generations, variants_per
             console.print(f"\n[green]Best algorithm saved to:[/green] {output_path}")
 
         console.print(f"\n[cyan]Evolution ID:[/cyan] {result.evolution_id}")
-        console.print(f"[dim]To resume: quantcoder evolve start --resume {result.evolution_id}[/dim]")
+        console.print(
+            f"[dim]To resume: quantcoder evolve start --resume {result.evolution_id}[/dim]"
+        )
 
     except Exception as e:
         console.print(f"[red]Error: Evolution failed - {e}[/red]")
         ctx.exit(1)
 
 
-@evolve.command(name='list')
+@evolve.command(name="list")
 def evolve_list():
     """
     List all saved evolution runs.
 
     Shows evolution IDs, status, and best fitness for each saved evolution.
     """
-    import os
     import json
     from pathlib import Path
 
@@ -815,20 +842,18 @@ def evolve_list():
 
     for filepath in sorted(evolution_files):
         try:
-            with open(filepath, 'r') as f:
+            with open(filepath) as f:
                 data = json.load(f)
 
-            evo_id = data.get('evolution_id', 'unknown')
-            status = data.get('status', 'unknown')
-            generation = data.get('current_generation', 0)
-            elite = data.get('elite_pool', {}).get('variants', [])
-            best_fitness = elite[0].get('fitness', 'N/A') if elite else 'N/A'
+            evo_id = data.get("evolution_id", "unknown")
+            status = data.get("status", "unknown")
+            generation = data.get("current_generation", 0)
+            elite = data.get("elite_pool", {}).get("variants", [])
+            best_fitness = elite[0].get("fitness", "N/A") if elite else "N/A"
 
-            status_color = {
-                'completed': 'green',
-                'running': 'yellow',
-                'failed': 'red'
-            }.get(status, 'white')
+            status_color = {"completed": "green", "running": "yellow", "failed": "red"}.get(
+                status, "white"
+            )
 
             console.print(
                 f"  [cyan]{evo_id}[/cyan]: "
@@ -843,8 +868,8 @@ def evolve_list():
     console.print("[dim]Resume with: quantcoder evolve start --resume <id>[/dim]")
 
 
-@evolve.command(name='show')
-@click.argument('evolution_id')
+@evolve.command(name="show")
+@click.argument("evolution_id")
 def evolve_show(evolution_id):
     """
     Show details of a specific evolution.
@@ -860,26 +885,28 @@ def evolve_show(evolution_id):
         console.print(f"[red]Evolution {evolution_id} not found.[/red]")
         return
 
-    with open(filepath, 'r') as f:
+    with open(filepath) as f:
         data = json.load(f)
 
     # Summary
-    console.print(Panel.fit(
-        f"[bold]Evolution ID:[/bold] {data.get('evolution_id')}\n"
-        f"[bold]Status:[/bold] {data.get('status')}\n"
-        f"[bold]Generation:[/bold] {data.get('current_generation')}\n"
-        f"[bold]Total Variants:[/bold] {len(data.get('all_variants', {}))}\n"
-        f"[bold]Source:[/bold] {data.get('source_paper', 'N/A')}",
-        title=f"[bold cyan]Evolution {evolution_id}[/bold cyan]",
-        border_style="cyan"
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold]Evolution ID:[/bold] {data.get('evolution_id')}\n"
+            f"[bold]Status:[/bold] {data.get('status')}\n"
+            f"[bold]Generation:[/bold] {data.get('current_generation')}\n"
+            f"[bold]Total Variants:[/bold] {len(data.get('all_variants', {}))}\n"
+            f"[bold]Source:[/bold] {data.get('source_paper', 'N/A')}",
+            title=f"[bold cyan]Evolution {evolution_id}[/bold cyan]",
+            border_style="cyan",
+        )
+    )
 
     # Elite pool
-    elite = data.get('elite_pool', {}).get('variants', [])
+    elite = data.get("elite_pool", {}).get("variants", [])
     if elite:
         console.print("\n[bold]Elite Pool:[/bold]")
         for i, variant in enumerate(elite, 1):
-            metrics = variant.get('metrics', {})
+            metrics = variant.get("metrics", {})
             console.print(
                 f"  {i}. [cyan]{variant['id']}[/cyan] (Gen {variant['generation']}): "
                 f"Fitness={variant.get('fitness', 'N/A'):.4f if variant.get('fitness') else 'N/A'}"
@@ -892,9 +919,9 @@ def evolve_show(evolution_id):
                 )
 
 
-@evolve.command(name='export')
-@click.argument('evolution_id')
-@click.option('--output', type=click.Path(), help='Output file path')
+@evolve.command(name="export")
+@click.argument("evolution_id")
+@click.option("--output", type=click.Path(), help="Output file path")
 def evolve_export(evolution_id, output):
     """
     Export the best algorithm from an evolution.
@@ -910,31 +937,33 @@ def evolve_export(evolution_id, output):
         console.print(f"[red]Evolution {evolution_id} not found.[/red]")
         return
 
-    with open(filepath, 'r') as f:
+    with open(filepath) as f:
         data = json.load(f)
 
-    elite = data.get('elite_pool', {}).get('variants', [])
+    elite = data.get("elite_pool", {}).get("variants", [])
     if not elite:
         console.print("[red]No elite variants found in this evolution.[/red]")
         return
 
     best = elite[0]
-    output_path = Path(output) if output else Path(GENERATED_CODE_DIR) / f"evolved_{evolution_id}.py"
+    output_path = (
+        Path(output) if output else Path(GENERATED_CODE_DIR) / f"evolved_{evolution_id}.py"
+    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with open(output_path, 'w') as f:
+    with open(output_path, "w") as f:
         f.write(f"# Evolution: {evolution_id}\n")
         f.write(f"# Variant: {best['id']} (Generation {best['generation']})\n")
         f.write(f"# Fitness: {best.get('fitness', 'N/A')}\n")
-        if best.get('metrics'):
+        if best.get("metrics"):
             f.write(f"# Sharpe: {best['metrics'].get('sharpe_ratio', 0):.2f}\n")
             f.write(f"# Max Drawdown: {best['metrics'].get('max_drawdown', 0):.1%}\n")
         f.write(f"# Description: {best.get('mutation_description', 'N/A')}\n")
         f.write("#\n")
-        f.write(best.get('code', ''))
+        f.write(best.get("code", ""))
 
     console.print(f"[green]Exported best variant to:[/green] {output_path}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

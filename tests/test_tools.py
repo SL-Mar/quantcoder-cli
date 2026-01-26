@@ -1,14 +1,17 @@
 """Tests for the quantcoder.tools module."""
 
-import pytest
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from quantcoder.tools.article_tools import (
+    SearchArticlesTool,
+)
 from quantcoder.tools.base import Tool, ToolResult
+from quantcoder.tools.code_tools import BacktestTool, GenerateCodeTool, ValidateCodeTool
 from quantcoder.tools.file_tools import ReadFileTool, WriteFileTool
-from quantcoder.tools.article_tools import SearchArticlesTool, DownloadArticleTool, SummarizeArticleTool
-from quantcoder.tools.code_tools import GenerateCodeTool, ValidateCodeTool, BacktestTool
 
 
 class TestToolResult:
@@ -16,21 +19,14 @@ class TestToolResult:
 
     def test_success_result(self):
         """Test successful result creation."""
-        result = ToolResult(
-            success=True,
-            data="test data",
-            message="Operation successful"
-        )
+        result = ToolResult(success=True, data="test data", message="Operation successful")
         assert result.success is True
         assert result.data == "test data"
         assert result.message == "Operation successful"
 
     def test_error_result(self):
         """Test error result creation."""
-        result = ToolResult(
-            success=False,
-            error="Something went wrong"
-        )
+        result = ToolResult(success=False, error="Something went wrong")
         assert result.success is False
         assert result.error == "Something went wrong"
 
@@ -69,6 +65,7 @@ class TestToolBase:
 
     def test_is_enabled_wildcard(self, mock_config):
         """Test tool enabled with wildcard."""
+
         class TestTool(Tool):
             @property
             def name(self):
@@ -143,6 +140,7 @@ class TestToolBase:
 
     def test_require_approval(self, mock_config):
         """Test tool requires approval by default."""
+
         class TestTool(Tool):
             @property
             def name(self):
@@ -179,6 +177,7 @@ class TestToolBase:
 
     def test_repr(self, mock_config):
         """Test tool representation."""
+
         class TestTool(Tool):
             @property
             def name(self):
@@ -214,7 +213,7 @@ class TestReadFileTool:
 
     def test_read_existing_file(self, mock_config):
         """Test reading an existing file."""
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as f:
             f.write("Hello, World!")
             f.flush()
 
@@ -228,7 +227,7 @@ class TestReadFileTool:
 
     def test_read_with_max_lines(self, mock_config):
         """Test reading with line limit."""
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as f:
             f.write("Line 1\nLine 2\nLine 3\n")
             f.flush()
 
@@ -292,16 +291,12 @@ class TestWriteFileTool:
 
     def test_write_append_mode(self, mock_config):
         """Test appending to a file."""
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as f:
             f.write("Original")
             f.flush()
 
             tool = WriteFileTool(mock_config)
-            result = tool.execute(
-                file_path=f.name,
-                content=" Appended",
-                append=True
-            )
+            result = tool.execute(file_path=f.name, content=" Appended", append=True)
 
             assert result.success is True
             content = Path(f.name).read_text()
@@ -311,16 +306,12 @@ class TestWriteFileTool:
 
     def test_write_overwrite_mode(self, mock_config):
         """Test overwriting a file."""
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as f:
             f.write("Original content")
             f.flush()
 
             tool = WriteFileTool(mock_config)
-            result = tool.execute(
-                file_path=f.name,
-                content="New content",
-                append=False
-            )
+            result = tool.execute(file_path=f.name, content="New content", append=False)
 
             assert result.success is True
             content = Path(f.name).read_text()
@@ -346,20 +337,20 @@ class TestSearchArticlesTool:
         assert tool.name == "search_articles"
         assert "search" in tool.description.lower()
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_search_success(self, mock_get, mock_config):
         """Test successful article search."""
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            'message': {
-                'items': [
+            "message": {
+                "items": [
                     {
-                        'DOI': '10.1234/test',
-                        'title': ['Test Article'],
-                        'author': [{'given': 'John', 'family': 'Doe'}],
-                        'published': {'date-parts': [[2023, 1, 15]]},
-                        'abstract': 'Test abstract'
+                        "DOI": "10.1234/test",
+                        "title": ["Test Article"],
+                        "author": [{"given": "John", "family": "Doe"}],
+                        "published": {"date-parts": [[2023, 1, 15]]},
+                        "abstract": "Test abstract",
                     }
                 ]
             }
@@ -372,12 +363,12 @@ class TestSearchArticlesTool:
         assert result.success is True
         assert result.data is not None
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_search_no_results(self, mock_get, mock_config):
         """Test search with no results."""
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {'message': {'items': []}}
+        mock_response.json.return_value = {"message": {"items": []}}
         mock_get.return_value = mock_response
 
         tool = SearchArticlesTool(mock_config)
@@ -386,7 +377,7 @@ class TestSearchArticlesTool:
         assert result.success is True
         assert result.data == []
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_search_api_error(self, mock_get, mock_config):
         """Test search with API error."""
         mock_get.side_effect = Exception("Network error")
@@ -440,7 +431,7 @@ class TestValidateCodeTool:
 
     def test_validate_valid_code(self, mock_config):
         """Test validating syntactically correct code."""
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.py') as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".py") as f:
             f.write("def hello():\n    return 'Hello'\n")
             f.flush()
 
@@ -452,7 +443,7 @@ class TestValidateCodeTool:
 
     def test_validate_invalid_code(self, mock_config):
         """Test validating syntactically incorrect code."""
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.py') as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".py") as f:
             f.write("def hello(\n    # missing closing paren")
             f.flush()
 
@@ -490,16 +481,12 @@ class TestBacktestTool:
 
     def test_backtest_without_credentials(self, mock_config):
         """Test backtest fails without QC credentials."""
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.py') as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".py") as f:
             f.write("def main(): pass")
             f.flush()
 
             tool = BacktestTool(mock_config)
-            result = tool.execute(
-                file_path=f.name,
-                start_date="2020-01-01",
-                end_date="2020-12-31"
-            )
+            result = tool.execute(file_path=f.name, start_date="2020-01-01", end_date="2020-12-31")
 
             # Should fail or indicate missing credentials
             assert result.success is False or "credential" in str(result).lower()

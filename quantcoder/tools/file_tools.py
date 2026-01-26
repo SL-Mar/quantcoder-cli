@@ -1,7 +1,7 @@
 """Tools for file operations."""
 
 from pathlib import Path
-from typing import Optional
+
 from .base import Tool, ToolResult
 
 
@@ -16,7 +16,7 @@ class ReadFileTool(Tool):
     def description(self) -> str:
         return "Read contents of a file"
 
-    def execute(self, file_path: str, max_lines: Optional[int] = None) -> ToolResult:
+    def execute(self, file_path: str, max_lines: int | None = None) -> ToolResult:
         """
         Read a file.
 
@@ -33,22 +33,19 @@ class ReadFileTool(Tool):
             path = Path(file_path)
 
             if not path.exists():
-                return ToolResult(
-                    success=False,
-                    error=f"File not found: {file_path}"
-                )
+                return ToolResult(success=False, error=f"File not found: {file_path}")
 
-            with open(path, 'r', encoding='utf-8') as f:
+            with open(path, encoding="utf-8") as f:
                 if max_lines:
                     lines = [f.readline() for _ in range(max_lines)]
-                    content = ''.join(lines)
+                    content = "".join(lines)
                 else:
                     content = f.read()
 
             return ToolResult(
                 success=True,
                 data=content,
-                message=f"Read {len(content)} characters from {file_path}"
+                message=f"Read {len(content)} characters from {file_path}",
             )
 
         except Exception as e:
@@ -85,13 +82,12 @@ class WriteFileTool(Tool):
             path = Path(file_path)
             path.parent.mkdir(parents=True, exist_ok=True)
 
-            mode = 'a' if append else 'w'
-            with open(path, mode, encoding='utf-8') as f:
+            mode = "a" if append else "w"
+            with open(path, mode, encoding="utf-8") as f:
                 f.write(content)
 
             return ToolResult(
-                success=True,
-                message=f"Wrote {len(content)} characters to {file_path}"
+                success=True, message=f"Wrote {len(content)} characters to {file_path}"
             )
 
         except Exception as e:

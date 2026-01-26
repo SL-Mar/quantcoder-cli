@@ -3,7 +3,8 @@
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
+
 from ..llm import LLMProvider
 
 
@@ -13,10 +14,10 @@ class AgentResult:
 
     success: bool
     data: Any = None
-    error: Optional[str] = None
-    message: Optional[str] = None
-    code: Optional[str] = None
-    filename: Optional[str] = None
+    error: str | None = None
+    message: str | None = None
+    code: str | None = None
+    filename: str | None = None
 
     def __str__(self) -> str:
         if self.success:
@@ -63,11 +64,7 @@ class BaseAgent(ABC):
         pass
 
     async def _generate_with_llm(
-        self,
-        system_prompt: str,
-        user_prompt: str,
-        temperature: float = 0.7,
-        max_tokens: int = 3000
+        self, system_prompt: str, user_prompt: str, temperature: float = 0.7, max_tokens: int = 3000
     ) -> str:
         """
         Generate response using LLM.
@@ -83,14 +80,12 @@ class BaseAgent(ABC):
         """
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
+            {"role": "user", "content": user_prompt},
         ]
 
         try:
             response = await self.llm.chat(
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens
+                messages=messages, temperature=temperature, max_tokens=max_tokens
             )
             return response
         except Exception as e:

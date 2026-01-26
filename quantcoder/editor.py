@@ -1,10 +1,9 @@
 """Editor integration utilities for QuantCoder CLI."""
 
-import subprocess
-import shutil
 import logging
+import shutil
+import subprocess
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +37,7 @@ def open_in_editor(file_path: str, editor: str = "zed") -> bool:
             [editor, str(path)],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            start_new_session=True
+            start_new_session=True,
         )
         logger.info(f"Opened {file_path} in {editor}")
         return True

@@ -1,14 +1,14 @@
 """Coordinator Agent - Orchestrates multi-agent workflow."""
 
-import asyncio
-from typing import Dict, List, Any
-from .base import BaseAgent, AgentResult
-from .universe_agent import UniverseAgent
-from .alpha_agent import AlphaAgent
-from .risk_agent import RiskAgent
-from .strategy_agent import StrategyAgent
+from typing import Any
+
 from ..execution import ParallelExecutor
 from ..llm import LLMFactory
+from .alpha_agent import AlphaAgent
+from .base import AgentResult, BaseAgent
+from .risk_agent import RiskAgent
+from .strategy_agent import StrategyAgent
+from .universe_agent import UniverseAgent
 
 
 class CoordinatorAgent(BaseAgent):
@@ -34,10 +34,7 @@ class CoordinatorAgent(BaseAgent):
         return "Orchestrates multi-agent workflow for algorithm generation"
 
     async def execute(
-        self,
-        user_request: str,
-        strategy_summary: str = "",
-        mcp_client: Any = None
+        self, user_request: str, strategy_summary: str = "", mcp_client: Any = None
     ) -> AgentResult:
         """
         Coordinate full algorithm generation.
@@ -70,21 +67,16 @@ class CoordinatorAgent(BaseAgent):
                 success=True,
                 data=results,
                 message=f"Generated {len(results.get('files', {}))} files",
-                code=results.get('files', {}).get('Main.py', '')
+                code=results.get("files", {}).get("Main.py", ""),
             )
 
         except Exception as e:
             self.logger.error(f"Coordination error: {e}")
-            return AgentResult(
-                success=False,
-                error=str(e)
-            )
+            return AgentResult(success=False, error=str(e))
 
     async def _create_execution_plan(
-        self,
-        user_request: str,
-        strategy_summary: str
-    ) -> Dict[str, Any]:
+        self, user_request: str, strategy_summary: str
+    ) -> dict[str, Any]:
         """
         Analyze request and create execution plan.
 
@@ -123,13 +115,12 @@ User Request: {user_request}
 Create a plan for generating the QuantConnect algorithm."""
 
         response = await self._generate_with_llm(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            temperature=0.3
+            system_prompt=system_prompt, user_prompt=user_prompt, temperature=0.3
         )
 
         # Parse JSON plan
         import json
+
         try:
             plan = json.loads(response)
         except (json.JSONDecodeError, ValueError):
@@ -138,19 +129,19 @@ Create a plan for generating the QuantConnect algorithm."""
                 "components": {
                     "universe": user_request,
                     "alpha": user_request,
-                    "risk": "2% per trade, max 10 positions"
+                    "risk": "2% per trade, max 10 positions",
                 },
                 "parameters": {
                     "start_date": "2020-01-01",
                     "end_date": "2023-12-31",
-                    "initial_cash": 100000
+                    "initial_cash": 100000,
                 },
-                "execution_strategy": "parallel"
+                "execution_strategy": "parallel",
             }
 
         return plan
 
-    async def _execute_plan(self, plan: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_plan(self, plan: dict[str, Any]) -> dict[str, Any]:
         """
         Execute the plan by spawning specialized agents.
 
@@ -164,12 +155,11 @@ Create a plan for generating the QuantConnect algorithm."""
         # Create specialized LLMs for different tasks
         code_llm = LLMFactory.create(
             LLMFactory.get_recommended_for_task("coding"),
-            self.config.api_key if self.config else ""
+            self.config.api_key if self.config else "",
         )
 
         risk_llm = LLMFactory.create(
-            LLMFactory.get_recommended_for_task("risk"),
-            self.config.api_key if self.config else ""
+            LLMFactory.get_recommended_for_task("risk"), self.config.api_key if self.config else ""
         )
 
         files = {}
@@ -187,7 +177,7 @@ Create a plan for generating the QuantConnect algorithm."""
                     AgentTask(
                         agent_class=lambda: UniverseAgent(code_llm, self.config),
                         params={"criteria": components["universe"]},
-                        task_id="universe"
+                        task_id="universe",
                     )
                 )
 
@@ -196,14 +186,14 @@ Create a plan for generating the QuantConnect algorithm."""
                     AgentTask(
                         agent_class=lambda: AlphaAgent(code_llm, self.config),
                         params={"strategy": components["alpha"]},
-                        task_id="alpha"
+                        task_id="alpha",
                     )
                 )
 
             results = await executor.execute_agents_parallel(parallel_tasks)
 
             # Store results
-            for i, task_id in enumerate(["universe", "alpha"][:len(results)]):
+            for i, _task_id in enumerate(["universe", "alpha"][: len(results)]):
                 if results[i].success:
                     files[results[i].filename] = results[i].code
 
@@ -211,8 +201,7 @@ Create a plan for generating the QuantConnect algorithm."""
             if "risk" in components:
                 risk_agent = RiskAgent(risk_llm, self.config)
                 risk_result = await risk_agent.execute(
-                    risk_parameters=components["risk"],
-                    alpha_info=components.get("alpha", "")
+                    risk_parameters=components["risk"], alpha_info=components.get("alpha", "")
                 )
                 if risk_result.success:
                     files[risk_result.filename] = risk_result.code
@@ -240,26 +229,17 @@ Create a plan for generating the QuantConnect algorithm."""
         # Always generate Main.py last (integrates all components)
         strategy_agent = StrategyAgent(self.llm, self.config)
         main_result = await strategy_agent.execute(
-            strategy_name="Generated Strategy",
-            components=components,
-            parameters=parameters
+            strategy_name="Generated Strategy", components=components, parameters=parameters
         )
 
         if main_result.success:
             files[main_result.filename] = main_result.code
 
-        return {
-            "files": files,
-            "plan": plan,
-            "components": components
-        }
+        return {"files": files, "plan": plan, "components": components}
 
     async def _validate_and_refine(
-        self,
-        results: Dict[str, Any],
-        mcp_client: Any,
-        max_attempts: int = 3
-    ) -> Dict[str, Any]:
+        self, results: dict[str, Any], mcp_client: Any, max_attempts: int = 3
+    ) -> dict[str, Any]:
         """
         Validate generated code via MCP and refine if needed.
 
@@ -282,8 +262,7 @@ Create a plan for generating the QuantConnect algorithm."""
         for attempt in range(max_attempts):
             # Validate
             validation = await mcp_client.validate_code(
-                code=main_code,
-                files={k: v for k, v in files.items() if k != "Main.py"}
+                code=main_code, files={k: v for k, v in files.items() if k != "Main.py"}
             )
 
             if validation.get("valid"):
@@ -306,7 +285,7 @@ Create a plan for generating the QuantConnect algorithm."""
 
         return results
 
-    async def _fix_errors(self, code: str, errors: List[str]) -> str:
+    async def _fix_errors(self, code: str, errors: list[str]) -> str:
         """Use LLM to fix validation errors."""
         system_prompt = """You are a QuantConnect debugging expert.
 
@@ -329,9 +308,7 @@ Code:
 Return corrected code."""
 
         response = await self._generate_with_llm(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            temperature=0.2
+            system_prompt=system_prompt, user_prompt=user_prompt, temperature=0.2
         )
 
         return self._extract_code(response)

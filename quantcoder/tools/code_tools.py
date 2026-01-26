@@ -3,7 +3,7 @@
 import ast
 import asyncio
 from pathlib import Path
-from typing import Optional
+
 from .base import Tool, ToolResult
 
 
@@ -40,7 +40,7 @@ class GenerateCodeTool(Tool):
             if not filepath.exists():
                 return ToolResult(
                     success=False,
-                    error=f"Article not downloaded. Please download article {article_id} first."
+                    error=f"Article not downloaded. Please download article {article_id} first.",
                 )
 
             # Process the article
@@ -54,7 +54,7 @@ class GenerateCodeTool(Tool):
                 return ToolResult(
                     success=False,
                     error="Failed to generate valid QuantConnect code",
-                    data={"summary": summary}
+                    data={"summary": summary},
                 )
 
             # Save code
@@ -62,17 +62,13 @@ class GenerateCodeTool(Tool):
             code_dir.mkdir(parents=True, exist_ok=True)
 
             code_path = code_dir / f"algorithm_{article_id}.py"
-            with open(code_path, 'w', encoding='utf-8') as f:
+            with open(code_path, "w", encoding="utf-8") as f:
                 f.write(code)
 
             return ToolResult(
                 success=True,
-                data={
-                    "code": code,
-                    "summary": summary,
-                    "path": str(code_path)
-                },
-                message=f"Code generated and saved to {code_path}"
+                data={"code": code, "summary": summary, "path": str(code_path)},
+                message=f"Code generated and saved to {code_path}",
             )
 
         except Exception as e:
@@ -91,11 +87,7 @@ class ValidateCodeTool(Tool):
     def description(self) -> str:
         return "Validate Python code syntax locally and compile on QuantConnect"
 
-    def execute(
-        self,
-        code: str,
-        use_quantconnect: bool = True
-    ) -> ToolResult:
+    def execute(self, code: str, use_quantconnect: bool = True) -> ToolResult:
         """
         Validate Python code locally and optionally on QuantConnect.
 
@@ -116,7 +108,7 @@ class ValidateCodeTool(Tool):
             return ToolResult(
                 success=False,
                 error=f"Syntax error: {e.msg} at line {e.lineno}",
-                data={"line": e.lineno, "offset": e.offset, "stage": "local"}
+                data={"line": e.lineno, "offset": e.offset, "stage": "local"},
             )
 
         # Step 2: QuantConnect validation (if enabled and credentials available)
@@ -130,8 +122,8 @@ class ValidateCodeTool(Tool):
                         data={
                             "stage": "quantconnect",
                             "errors": qc_result.get("errors", []),
-                            "warnings": qc_result.get("warnings", [])
-                        }
+                            "warnings": qc_result.get("warnings", []),
+                        },
                     )
                 return ToolResult(
                     success=True,
@@ -140,8 +132,8 @@ class ValidateCodeTool(Tool):
                         "stage": "quantconnect",
                         "project_id": qc_result.get("project_id"),
                         "compile_id": qc_result.get("compile_id"),
-                        "warnings": qc_result.get("warnings", [])
-                    }
+                        "warnings": qc_result.get("warnings", []),
+                    },
                 )
             except Exception as e:
                 self.logger.warning(f"QuantConnect validation failed: {e}")
@@ -149,13 +141,10 @@ class ValidateCodeTool(Tool):
                 return ToolResult(
                     success=True,
                     message="Code is syntactically correct (QuantConnect validation skipped)",
-                    data={"stage": "local", "qc_error": str(e)}
+                    data={"stage": "local", "qc_error": str(e)},
                 )
 
-        return ToolResult(
-            success=True,
-            message="Code is syntactically correct"
-        )
+        return ToolResult(success=True, message="Code is syntactically correct")
 
     def _validate_on_quantconnect(self, code: str) -> dict:
         """Validate code on QuantConnect API."""
@@ -186,11 +175,11 @@ class BacktestTool(Tool):
 
     def execute(
         self,
-        code: Optional[str] = None,
-        file_path: Optional[str] = None,
+        code: str | None = None,
+        file_path: str | None = None,
         start_date: str = "2020-01-01",
         end_date: str = "2024-01-01",
-        name: Optional[str] = None
+        name: str | None = None,
     ) -> ToolResult:
         """
         Run a backtest on QuantConnect.
@@ -212,25 +201,19 @@ class BacktestTool(Tool):
                 # Try in generated_code directory
                 path = Path(self.config.tools.generated_code_dir) / file_path
             if not path.exists():
-                return ToolResult(
-                    success=False,
-                    error=f"File not found: {file_path}"
-                )
-            with open(path, 'r') as f:
+                return ToolResult(success=False, error=f"File not found: {file_path}")
+            with open(path) as f:
                 code = f.read()
             self.logger.info(f"Loaded code from {path}")
         elif not code:
-            return ToolResult(
-                success=False,
-                error="Either 'code' or 'file_path' must be provided"
-            )
+            return ToolResult(success=False, error="Either 'code' or 'file_path' must be provided")
 
         # Check credentials
         if not self.config.has_quantconnect_credentials():
             return ToolResult(
                 success=False,
                 error="QuantConnect credentials not configured. "
-                      "Set QUANTCONNECT_API_KEY and QUANTCONNECT_USER_ID in ~/.quantcoder/.env"
+                "Set QUANTCONNECT_API_KEY and QUANTCONNECT_USER_ID in ~/.quantcoder/.env",
             )
 
         self.logger.info(f"Running backtest from {start_date} to {end_date}")
@@ -240,9 +223,7 @@ class BacktestTool(Tool):
 
             if not result.get("success"):
                 return ToolResult(
-                    success=False,
-                    error=result.get("error", "Backtest failed"),
-                    data=result
+                    success=False, error=result.get("error", "Backtest failed"), data=result
                 )
 
             # Extract key metrics
@@ -258,24 +239,15 @@ class BacktestTool(Tool):
                     "sharpe_ratio": sharpe,
                     "total_return": total_return,
                     "statistics": stats,
-                    "runtime_statistics": result.get("runtime_statistics", {})
-                }
+                    "runtime_statistics": result.get("runtime_statistics", {}),
+                },
             )
 
         except Exception as e:
             self.logger.error(f"Backtest error: {e}")
-            return ToolResult(
-                success=False,
-                error=str(e)
-            )
+            return ToolResult(success=False, error=str(e))
 
-    def _run_backtest(
-        self,
-        code: str,
-        start_date: str,
-        end_date: str,
-        name: Optional[str]
-    ) -> dict:
+    def _run_backtest(self, code: str, start_date: str, end_date: str, name: str | None) -> dict:
         """Run backtest on QuantConnect API."""
         from ..mcp.quantconnect_mcp import QuantConnectMCPClient
 
@@ -285,9 +257,7 @@ class BacktestTool(Tool):
         # Run async backtest in sync context
         loop = asyncio.new_event_loop()
         try:
-            result = loop.run_until_complete(
-                client.backtest(code, start_date, end_date, name=name)
-            )
+            result = loop.run_until_complete(client.backtest(code, start_date, end_date, name=name))
             return result
         finally:
             loop.close()

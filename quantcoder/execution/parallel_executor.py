@@ -2,9 +2,9 @@
 
 import asyncio
 import logging
-from typing import List, Dict, Any, Callable
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -12,16 +12,18 @@ logger = logging.getLogger(__name__)
 @dataclass
 class AgentTask:
     """Represents an agent task to execute."""
+
     agent_class: Any
-    params: Dict[str, Any]
+    params: dict[str, Any]
     task_id: str = None
 
 
 @dataclass
 class ToolTask:
     """Represents a tool task to execute."""
+
     tool: Any
-    params: Dict[str, Any]
+    params: dict[str, Any]
     task_id: str = None
 
 
@@ -43,10 +45,7 @@ class ParallelExecutor:
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
         self.logger = logging.getLogger(self.__class__.__name__)
 
-    async def execute_agents_parallel(
-        self,
-        agent_tasks: List[AgentTask]
-    ) -> List[Any]:
+    async def execute_agents_parallel(self, agent_tasks: list[AgentTask]) -> list[Any]:
         """
         Execute multiple agents in parallel.
 
@@ -66,10 +65,7 @@ class ParallelExecutor:
         self.logger.info(f"Executing {len(agent_tasks)} agents in parallel")
 
         # Create async tasks
-        tasks = [
-            self._run_agent_async(task)
-            for task in agent_tasks
-        ]
+        tasks = [self._run_agent_async(task) for task in agent_tasks]
 
         # Execute in parallel
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -81,10 +77,7 @@ class ParallelExecutor:
 
         return results
 
-    async def execute_tools_parallel(
-        self,
-        tool_tasks: List[ToolTask]
-    ) -> List[Any]:
+    async def execute_tools_parallel(self, tool_tasks: list[ToolTask]) -> list[Any]:
         """
         Execute multiple tools in parallel.
 
@@ -103,19 +96,13 @@ class ParallelExecutor:
         """
         self.logger.info(f"Executing {len(tool_tasks)} tools in parallel")
 
-        tasks = [
-            self._run_tool_async(task)
-            for task in tool_tasks
-        ]
+        tasks = [self._run_tool_async(task) for task in tool_tasks]
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         return results
 
-    async def execute_with_dependencies(
-        self,
-        tasks: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+    async def execute_with_dependencies(self, tasks: list[dict[str, Any]]) -> dict[str, Any]:
         """
         Execute tasks with dependency resolution.
 
@@ -151,7 +138,7 @@ class ParallelExecutor:
         self.logger.info("Executing tasks with dependency resolution")
 
         # Build dependency graph
-        task_map = {task["id"]: task for task in tasks}
+        {task["id"]: task for task in tasks}
         results = {}
         executed = set()
 
@@ -159,7 +146,8 @@ class ParallelExecutor:
         while len(executed) < len(tasks):
             # Find tasks ready to execute (all dependencies met)
             ready = [
-                task for task in tasks
+                task
+                for task in tasks
                 if task["id"] not in executed
                 and all(dep in executed for dep in task.get("depends_on", []))
             ]
@@ -175,7 +163,7 @@ class ParallelExecutor:
                     AgentTask(
                         agent_class=task["agent"],
                         params=self._resolve_params(task["params"], results),
-                        task_id=task["id"]
+                        task_id=task["id"],
                     )
                     for task in ready
                 ]
@@ -185,20 +173,20 @@ class ParallelExecutor:
                     ToolTask(
                         tool=task["tool"],
                         params=self._resolve_params(task["params"], results),
-                        task_id=task["id"]
+                        task_id=task["id"],
                     )
                     for task in ready
                 ]
                 batch_results = await self.execute_tools_parallel(tool_tasks)
 
             # Store results
-            for task, result in zip(ready, batch_results):
+            for task, result in zip(ready, batch_results, strict=False):
                 results[task["id"]] = result
                 executed.add(task["id"])
 
         return results
 
-    def _resolve_params(self, params: Dict, results: Dict) -> Dict:
+    def _resolve_params(self, params: dict, results: dict) -> dict:
         """Resolve parameter references to previous results."""
         resolved = {}
 

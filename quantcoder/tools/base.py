@@ -1,9 +1,9 @@
 """Base classes for tools."""
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
-import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -14,8 +14,8 @@ class ToolResult:
 
     success: bool
     data: Any = None
-    error: Optional[str] = None
-    message: Optional[str] = None
+    error: str | None = None
+    message: str | None = None
 
     def __str__(self) -> str:
         if self.success:

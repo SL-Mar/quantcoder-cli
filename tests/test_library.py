@@ -1,19 +1,19 @@
 """Tests for the quantcoder.library module."""
 
-import pytest
-import tempfile
 import json
-import time
+import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
+
+import pytest
 
 from quantcoder.library.coverage import CategoryProgress, CoverageTracker
 from quantcoder.library.taxonomy import (
-    StrategyCategory,
     STRATEGY_TAXONOMY,
-    get_total_strategies_needed,
-    get_categories_by_priority,
+    StrategyCategory,
     get_all_queries,
+    get_categories_by_priority,
+    get_total_strategies_needed,
 )
 
 
@@ -27,7 +27,7 @@ class TestStrategyCategory:
             queries=["query1", "query2"],
             min_strategies=5,
             priority="high",
-            description="Test description"
+            description="Test description",
         )
 
         assert category.name == "test_category"
@@ -73,11 +73,11 @@ class TestStrategyTaxonomy:
         low = get_categories_by_priority("low")
 
         # All returned categories should have matching priority
-        for name, cat in high.items():
+        for _name, cat in high.items():
             assert cat.priority == "high"
-        for name, cat in medium.items():
+        for _name, cat in medium.items():
             assert cat.priority == "medium"
-        for name, cat in low.items():
+        for _name, cat in low.items():
             assert cat.priority == "low"
 
     def test_get_all_queries(self):
@@ -95,10 +95,7 @@ class TestCategoryProgress:
 
     def test_create_progress(self):
         """Test creating category progress."""
-        progress = CategoryProgress(
-            category="momentum",
-            target=10
-        )
+        progress = CategoryProgress(category="momentum", target=10)
 
         assert progress.category == "momentum"
         assert progress.target == 10
@@ -297,11 +294,11 @@ class TestCoverageTracker:
         tracker = CoverageTracker()
         tracker.update("momentum", success=True, sharpe=1.5)
 
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as f:
             tracker.save_checkpoint(f.name)
 
             # Read and verify
-            with open(f.name, 'r') as rf:
+            with open(f.name) as rf:
                 data = json.load(rf)
 
             assert data["total_strategies"] == 1
@@ -315,7 +312,7 @@ class TestCoverageTracker:
         tracker.update("momentum", success=True, sharpe=1.5)
         tracker.update("momentum", success=True, sharpe=2.5)
 
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as f:
             tracker.save_checkpoint(f.name)
 
             # Load into new tracker
@@ -333,5 +330,5 @@ class TestCoverageTracker:
         tracker.update("momentum", success=True, sharpe=1.0)
 
         # Should not raise an error (captures console output)
-        with patch('quantcoder.library.coverage.console.print'):
+        with patch("quantcoder.library.coverage.console.print"):
             tracker.display_progress()

@@ -1,7 +1,7 @@
 """LLM handler for interacting with OpenAI API."""
 
 import logging
-from typing import Dict, List, Optional
+
 from openai import OpenAI
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ class LLMHandler:
         self.temperature = config.model.temperature
         self.max_tokens = config.model.max_tokens
 
-    def generate_summary(self, extracted_data: Dict[str, List[str]]) -> Optional[str]:
+    def generate_summary(self, extracted_data: dict[str, list[str]]) -> str | None:
         """
         Generate a summary of the trading strategy and risk management.
 
@@ -33,8 +33,8 @@ class LLMHandler:
         """
         self.logger.info("Generating summary using OpenAI")
 
-        trading_signals = '\n'.join(extracted_data.get('trading_signal', []))
-        risk_management = '\n'.join(extracted_data.get('risk_management', []))
+        trading_signals = "\n".join(extracted_data.get("trading_signal", []))
+        risk_management = "\n".join(extracted_data.get("risk_management", []))
 
         prompt = f"""Provide a clear and concise summary of the following trading strategy and its associated risk management rules. Ensure the explanation is understandable to traders familiar with basic trading concepts and is no longer than 300 words.
 
@@ -60,10 +60,10 @@ class LLMHandler:
                 model=self.model,
                 messages=[
                     {"role": "system", "content": "You are an algorithmic trading expert."},
-                    {"role": "user", "content": prompt}
+                    {"role": "user", "content": prompt},
                 ],
                 max_tokens=self.max_tokens,
-                temperature=self.temperature
+                temperature=self.temperature,
             )
 
             summary = response.choices[0].message.content.strip()
@@ -74,7 +74,7 @@ class LLMHandler:
             self.logger.error(f"Error during summary generation: {e}")
             return None
 
-    def generate_qc_code(self, summary: str) -> Optional[str]:
+    def generate_qc_code(self, summary: str) -> str | None:
         """
         Generate QuantConnect Python code based on strategy summary.
 
@@ -114,11 +114,14 @@ class LLMHandler:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are a helpful assistant specialized in generating QuantConnect algorithms in Python."},
-                    {"role": "user", "content": prompt}
+                    {
+                        "role": "system",
+                        "content": "You are a helpful assistant specialized in generating QuantConnect algorithms in Python.",
+                    },
+                    {"role": "user", "content": prompt},
                 ],
                 max_tokens=self.max_tokens,
-                temperature=0.3
+                temperature=0.3,
             )
 
             generated_code = response.choices[0].message.content.strip()
@@ -136,7 +139,7 @@ class LLMHandler:
             self.logger.error(f"Error during code generation: {e}")
             return None
 
-    def refine_code(self, code: str) -> Optional[str]:
+    def refine_code(self, code: str) -> str | None:
         """
         Ask the LLM to fix syntax errors in the generated code.
 
@@ -159,11 +162,14 @@ class LLMHandler:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are an expert in QuantConnect Python algorithms."},
-                    {"role": "user", "content": prompt}
+                    {
+                        "role": "system",
+                        "content": "You are an expert in QuantConnect Python algorithms.",
+                    },
+                    {"role": "user", "content": prompt},
                 ],
                 max_tokens=self.max_tokens,
-                temperature=0.2
+                temperature=0.2,
             )
 
             corrected_code = response.choices[0].message.content.strip()
@@ -181,7 +187,7 @@ class LLMHandler:
             self.logger.error(f"Error during code refinement: {e}")
             return None
 
-    def chat(self, message: str, context: Optional[List[Dict]] = None) -> Optional[str]:
+    def chat(self, message: str, context: list[dict] | None = None) -> str | None:
         """
         Have a chat conversation with the LLM.
 
@@ -202,7 +208,7 @@ class LLMHandler:
                 model=self.model,
                 messages=messages,
                 max_tokens=self.max_tokens,
-                temperature=self.temperature
+                temperature=self.temperature,
             )
 
             return response.choices[0].message.content.strip()

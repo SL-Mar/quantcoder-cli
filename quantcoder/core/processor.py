@@ -1,12 +1,13 @@
 """Article processing module - adapted from legacy quantcli."""
 
-import re
 import ast
 import logging
+import re
+from collections import defaultdict
+
 import pdfplumber
 import spacy
-from collections import defaultdict
-from typing import Dict, List, Optional
+
 from .llm import LLMHandler
 
 logger = logging.getLogger(__name__)
@@ -42,13 +43,12 @@ class TextPreprocessor:
 
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.url_pattern = re.compile(r'https?://\S+')
-        self.phrase_pattern = re.compile(r'Electronic copy available at: .*', re.IGNORECASE)
-        self.number_pattern = re.compile(r'^\d+\s*$', re.MULTILINE)
-        self.multinew_pattern = re.compile(r'\n+')
+        self.url_pattern = re.compile(r"https?://\S+")
+        self.phrase_pattern = re.compile(r"Electronic copy available at: .*", re.IGNORECASE)
+        self.number_pattern = re.compile(r"^\d+\s*$", re.MULTILINE)
+        self.multinew_pattern = re.compile(r"\n+")
         self.header_footer_pattern = re.compile(
-            r'^\s*(Author|Title|Abstract)\s*$',
-            re.MULTILINE | re.IGNORECASE
+            r"^\s*(Author|Title|Abstract)\s*$", re.MULTILINE | re.IGNORECASE
         )
 
     def preprocess_text(self, text: str) -> str:
@@ -56,11 +56,11 @@ class TextPreprocessor:
         self.logger.info("Starting text preprocessing")
         try:
             original_length = len(text)
-            text = self.url_pattern.sub('', text)
-            text = self.phrase_pattern.sub('', text)
-            text = self.number_pattern.sub('', text)
-            text = self.multinew_pattern.sub('\n', text)
-            text = self.header_footer_pattern.sub('', text)
+            text = self.url_pattern.sub("", text)
+            text = self.phrase_pattern.sub("", text)
+            text = self.number_pattern.sub("", text)
+            text = self.multinew_pattern.sub("\n", text)
+            text = self.header_footer_pattern.sub("", text)
             text = text.strip()
             processed_length = len(text)
             self.logger.info(
@@ -84,7 +84,7 @@ class HeadingDetector:
             self.logger.error(f"Failed to load SpaCy model '{model}': {e}")
             raise
 
-    def detect_headings(self, text: str) -> List[str]:
+    def detect_headings(self, text: str) -> list[str]:
         """Detect potential headings using NLP."""
         self.logger.info("Starting heading detection")
         headings = []
@@ -107,13 +107,13 @@ class SectionSplitter:
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
 
-    def split_into_sections(self, text: str, headings: List[str]) -> Dict[str, str]:
+    def split_into_sections(self, text: str, headings: list[str]) -> dict[str, str]:
         """Split text into sections based on headings."""
         self.logger.info("Starting section splitting")
         sections = defaultdict(str)
         current_section = "Introduction"
 
-        lines = text.split('\n')
+        lines = text.split("\n")
         for line_number, line in enumerate(lines, start=1):
             line = line.strip()
             if line in headings:
@@ -159,35 +159,64 @@ class KeywordAnalyzer:
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.risk_management_keywords = {
-            "drawdown", "volatility", "reduce", "limit", "risk", "risk-adjusted",
-            "maximal drawdown", "market volatility", "bear markets", "stability",
-            "sidestep", "reduce drawdown", "stop-loss", "position sizing", "hedging"
+            "drawdown",
+            "volatility",
+            "reduce",
+            "limit",
+            "risk",
+            "risk-adjusted",
+            "maximal drawdown",
+            "market volatility",
+            "bear markets",
+            "stability",
+            "sidestep",
+            "reduce drawdown",
+            "stop-loss",
+            "position sizing",
+            "hedging",
         }
         self.trading_signal_keywords = {
-            "buy", "sell", "signal", "indicator", "trend", "sma", "moving average",
-            "momentum", "rsi", "macd", "bollinger bands", "rachev ratio", "stay long",
-            "exit", "market timing", "yield curve", "recession", "unemployment",
-            "housing starts", "treasuries", "economic indicator"
+            "buy",
+            "sell",
+            "signal",
+            "indicator",
+            "trend",
+            "sma",
+            "moving average",
+            "momentum",
+            "rsi",
+            "macd",
+            "bollinger bands",
+            "rachev ratio",
+            "stay long",
+            "exit",
+            "market timing",
+            "yield curve",
+            "recession",
+            "unemployment",
+            "housing starts",
+            "treasuries",
+            "economic indicator",
         }
         self.irrelevant_patterns = [
-            re.compile(r'figure \d+', re.IGNORECASE),
-            re.compile(r'\[\d+\]'),
-            re.compile(r'\(.*?\)'),
-            re.compile(r'chart', re.IGNORECASE),
-            re.compile(r'\bfigure\b', re.IGNORECASE),
-            re.compile(r'performance chart', re.IGNORECASE),
-            re.compile(r'\d{4}-\d{4}'),
-            re.compile(r'^\s*$')
+            re.compile(r"figure \d+", re.IGNORECASE),
+            re.compile(r"\[\d+\]"),
+            re.compile(r"\(.*?\)"),
+            re.compile(r"chart", re.IGNORECASE),
+            re.compile(r"\bfigure\b", re.IGNORECASE),
+            re.compile(r"performance chart", re.IGNORECASE),
+            re.compile(r"\d{4}-\d{4}"),
+            re.compile(r"^\s*$"),
         ]
 
-    def keyword_analysis(self, sections: Dict[str, str]) -> Dict[str, List[str]]:
+    def keyword_analysis(self, sections: dict[str, str]) -> dict[str, list[str]]:
         """Categorize sentences into trading signals and risk management."""
         self.logger.info("Starting keyword analysis")
         keyword_map = defaultdict(list)
         processed_sentences = set()
 
-        for section, content in sections.items():
-            for sent in content.split('. '):
+        for _section, content in sections.items():
+            for sent in content.split(". "):
                 sent_text = sent.lower().strip()
 
                 if any(pattern.search(sent_text) for pattern in self.irrelevant_patterns):
@@ -197,9 +226,9 @@ class KeywordAnalyzer:
                 processed_sentences.add(sent_text)
 
                 if any(kw in sent_text for kw in self.trading_signal_keywords):
-                    keyword_map['trading_signal'].append(sent.strip())
+                    keyword_map["trading_signal"].append(sent.strip())
                 elif any(kw in sent_text for kw in self.risk_management_keywords):
-                    keyword_map['risk_management'].append(sent.strip())
+                    keyword_map["risk_management"].append(sent.strip())
 
         # Remove duplicates and sort
         for category, sentences in keyword_map.items():
@@ -224,7 +253,7 @@ class ArticleProcessor:
         self.llm_handler = LLMHandler(config)
         self.max_refine_attempts = max_refine_attempts
 
-    def extract_structure(self, pdf_path: str) -> Dict[str, List[str]]:
+    def extract_structure(self, pdf_path: str) -> dict[str, list[str]]:
         """Extract structured data from PDF."""
         self.logger.info(f"Starting extraction for PDF: {pdf_path}")
 
@@ -247,11 +276,11 @@ class ArticleProcessor:
 
         return keyword_analysis
 
-    def generate_summary(self, extracted_data: Dict[str, List[str]]) -> Optional[str]:
+    def generate_summary(self, extracted_data: dict[str, list[str]]) -> str | None:
         """Generate summary from extracted data."""
         return self.llm_handler.generate_summary(extracted_data)
 
-    def extract_structure_and_generate_code(self, pdf_path: str) -> Dict:
+    def extract_structure_and_generate_code(self, pdf_path: str) -> dict:
         """Extract structure and generate QuantConnect code."""
         self.logger.info("Starting extraction and code generation")
 

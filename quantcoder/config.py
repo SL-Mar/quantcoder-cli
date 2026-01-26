@@ -1,11 +1,12 @@
 """Configuration management for QuantCoder CLI."""
 
-import os
-import toml
-from pathlib import Path
-from typing import Optional, Dict, Any
-from dataclasses import dataclass, field
 import logging
+import os
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import toml
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ModelConfig:
     """Configuration for the AI model."""
+
     provider: str = "anthropic"  # anthropic, mistral, deepseek, openai, ollama
     model: str = "claude-sonnet-4-5-20250929"
     temperature: float = 0.5
@@ -31,6 +33,7 @@ class ModelConfig:
 @dataclass
 class UIConfig:
     """Configuration for the user interface."""
+
     theme: str = "monokai"
     auto_approve: bool = False
     show_token_usage: bool = True
@@ -40,6 +43,7 @@ class UIConfig:
 @dataclass
 class ToolsConfig:
     """Configuration for tools."""
+
     enabled_tools: list[str] = field(default_factory=lambda: ["*"])
     disabled_tools: list[str] = field(default_factory=list)
     downloads_dir: str = "downloads"
@@ -49,6 +53,7 @@ class ToolsConfig:
 @dataclass
 class MultiAgentConfig:
     """Configuration for multi-agent system."""
+
     enabled: bool = True
     parallel_execution: bool = True
     max_parallel_agents: int = 5
@@ -65,13 +70,13 @@ class Config:
     ui: UIConfig = field(default_factory=UIConfig)
     tools: ToolsConfig = field(default_factory=ToolsConfig)
     multi_agent: MultiAgentConfig = field(default_factory=MultiAgentConfig)
-    api_key: Optional[str] = None
-    quantconnect_api_key: Optional[str] = None
-    quantconnect_user_id: Optional[str] = None
+    api_key: str | None = None
+    quantconnect_api_key: str | None = None
+    quantconnect_user_id: str | None = None
     home_dir: Path = field(default_factory=lambda: Path.home() / ".quantcoder")
 
     @classmethod
-    def load(cls, config_path: Optional[Path] = None) -> "Config":
+    def load(cls, config_path: Path | None = None) -> "Config":
         """Load configuration from file or create default."""
         if config_path is None:
             config_path = Path.home() / ".quantcoder" / "config.toml"
@@ -91,7 +96,7 @@ class Config:
             return config
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Config":
+    def from_dict(cls, data: dict[str, Any]) -> "Config":
         """Create configuration from dictionary."""
         config = cls()
 
@@ -104,7 +109,7 @@ class Config:
 
         return config
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert configuration to dictionary."""
         return {
             "model": {
@@ -126,17 +131,17 @@ class Config:
                 "disabled_tools": self.tools.disabled_tools,
                 "downloads_dir": self.tools.downloads_dir,
                 "generated_code_dir": self.tools.generated_code_dir,
-            }
+            },
         }
 
-    def save(self, config_path: Optional[Path] = None):
+    def save(self, config_path: Path | None = None):
         """Save configuration to file."""
         if config_path is None:
             config_path = self.home_dir / "config.toml"
 
         config_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(config_path, 'w') as f:
+        with open(config_path, "w") as f:
             toml.dump(self.to_dict(), f)
 
         logger.info(f"Configuration saved to {config_path}")
@@ -152,7 +157,7 @@ class Config:
 
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            raise EnvironmentError(
+            raise OSError(
                 "OPENAI_API_KEY not found. Please set it in your environment "
                 f"or create {env_path} with OPENAI_API_KEY=your_key"
             )
@@ -172,7 +177,7 @@ class Config:
         user_id = os.getenv("QUANTCONNECT_USER_ID")
 
         if not api_key or not user_id:
-            raise EnvironmentError(
+            raise OSError(
                 "QuantConnect credentials not found. Please set QUANTCONNECT_API_KEY "
                 f"and QUANTCONNECT_USER_ID in your environment or {env_path}"
             )
@@ -198,7 +203,7 @@ class Config:
         env_path = self.home_dir / ".env"
         env_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(env_path, 'w') as f:
+        with open(env_path, "w") as f:
             f.write(f"OPENAI_API_KEY={api_key}\n")
 
         logger.info(f"API key saved to {env_path}")

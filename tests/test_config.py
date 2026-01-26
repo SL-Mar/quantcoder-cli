@@ -1,16 +1,16 @@
 """Tests for the quantcoder.config module."""
 
-import pytest
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+
+import pytest
 
 from quantcoder.config import (
     Config,
     ModelConfig,
-    UIConfig,
-    ToolsConfig,
     MultiAgentConfig,
+    ToolsConfig,
+    UIConfig,
 )
 
 

@@ -1,16 +1,16 @@
 """Tests for the quantcoder.autonomous module."""
 
-import pytest
 import tempfile
 from pathlib import Path
-from datetime import datetime
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import patch
+
+import pytest
 
 from quantcoder.autonomous.database import (
-    LearningDatabase,
     CompilationError,
-    PerformancePattern,
     GeneratedStrategy,
+    LearningDatabase,
+    PerformancePattern,
 )
 
 
@@ -20,9 +20,7 @@ class TestCompilationError:
     def test_create_with_defaults(self):
         """Test creating error with default values."""
         error = CompilationError(
-            error_type="SyntaxError",
-            error_message="Invalid syntax",
-            code_snippet="def func(:"
+            error_type="SyntaxError", error_message="Invalid syntax", code_snippet="def func(:"
         )
         assert error.error_type == "SyntaxError"
         assert error.fix_applied is None
@@ -36,7 +34,7 @@ class TestCompilationError:
             error_message="Name 'foo' is not defined",
             code_snippet="print(foo)",
             fix_applied="foo = 'bar'",
-            success=True
+            success=True,
         )
         assert error.fix_applied == "foo = 'bar'"
         assert error.success is True
@@ -52,7 +50,7 @@ class TestPerformancePattern:
             sharpe_ratio=1.5,
             max_drawdown=-0.15,
             common_issues="Overfitting to recent data",
-            success_patterns="Using longer lookback periods"
+            success_patterns="Using longer lookback periods",
         )
         assert pattern.sharpe_ratio == 1.5
         assert pattern.max_drawdown == -0.15
@@ -69,7 +67,7 @@ class TestGeneratedStrategy:
             category="Momentum",
             paper_source="arxiv:1234.5678",
             paper_title="Momentum Trading",
-            code_files={"main.py": "class Strategy: pass"}
+            code_files={"main.py": "class Strategy: pass"},
         )
         assert strategy.name == "MomentumStrategy"
         assert strategy.success is False
@@ -86,7 +84,7 @@ class TestGeneratedStrategy:
             sharpe_ratio=2.1,
             max_drawdown=-0.10,
             total_return=0.25,
-            success=True
+            success=True,
         )
         assert strategy.sharpe_ratio == 2.1
         assert strategy.success is True
@@ -120,9 +118,7 @@ class TestLearningDatabase:
     def test_add_compilation_error(self, db):
         """Test adding compilation error."""
         error = CompilationError(
-            error_type="SyntaxError",
-            error_message="Invalid syntax",
-            code_snippet="def func(:"
+            error_type="SyntaxError", error_message="Invalid syntax", code_snippet="def func(:"
         )
         error_id = db.add_compilation_error(error)
 
@@ -138,7 +134,7 @@ class TestLearningDatabase:
                 error_message=f"Error {i}",
                 code_snippet=f"code {i}",
                 fix_applied=f"fix {i}",
-                success=True
+                success=True,
             )
             db.add_compilation_error(error)
 
@@ -147,7 +143,7 @@ class TestLearningDatabase:
             error_type="NameError",
             error_message="Different error",
             code_snippet="code",
-            success=True
+            success=True,
         )
         db.add_compilation_error(error)
 
@@ -159,17 +155,13 @@ class TestLearningDatabase:
         """Test getting common error types."""
         # Add errors of different types
         for _ in range(5):
-            db.add_compilation_error(CompilationError(
-                error_type="SyntaxError",
-                error_message="msg",
-                code_snippet="code"
-            ))
+            db.add_compilation_error(
+                CompilationError(error_type="SyntaxError", error_message="msg", code_snippet="code")
+            )
         for _ in range(3):
-            db.add_compilation_error(CompilationError(
-                error_type="NameError",
-                error_message="msg",
-                code_snippet="code"
-            ))
+            db.add_compilation_error(
+                CompilationError(error_type="NameError", error_message="msg", code_snippet="code")
+            )
 
         common = db.get_common_error_types()
         assert len(common) >= 2
@@ -183,7 +175,7 @@ class TestLearningDatabase:
             sharpe_ratio=1.5,
             max_drawdown=-0.15,
             common_issues="issue1",
-            success_patterns="pattern1"
+            success_patterns="pattern1",
         )
         pattern_id = db.add_performance_pattern(pattern)
 
@@ -194,13 +186,15 @@ class TestLearningDatabase:
         """Test getting performance statistics."""
         # Add patterns
         for sharpe in [1.0, 1.5, 2.0]:
-            db.add_performance_pattern(PerformancePattern(
-                strategy_type="momentum",
-                sharpe_ratio=sharpe,
-                max_drawdown=-0.10,
-                common_issues="",
-                success_patterns=""
-            ))
+            db.add_performance_pattern(
+                PerformancePattern(
+                    strategy_type="momentum",
+                    sharpe_ratio=sharpe,
+                    max_drawdown=-0.10,
+                    common_issues="",
+                    success_patterns="",
+                )
+            )
 
         stats = db.get_performance_stats("momentum")
         assert stats["count"] == 3
@@ -215,7 +209,7 @@ class TestLearningDatabase:
             category="Momentum",
             paper_source="arxiv:1234",
             paper_title="Test Paper",
-            code_files={"main.py": "class Strategy: pass"}
+            code_files={"main.py": "class Strategy: pass"},
         )
         strategy_id = db.add_strategy(strategy)
 
@@ -226,22 +220,26 @@ class TestLearningDatabase:
         """Test getting strategies by category."""
         # Add strategies
         for i in range(3):
-            db.add_strategy(GeneratedStrategy(
-                name=f"MomentumStrategy{i}",
-                category="Momentum",
+            db.add_strategy(
+                GeneratedStrategy(
+                    name=f"MomentumStrategy{i}",
+                    category="Momentum",
+                    paper_source="source",
+                    paper_title="title",
+                    code_files={"main.py": "code"},
+                    sharpe_ratio=1.0 + i * 0.5,
+                )
+            )
+
+        db.add_strategy(
+            GeneratedStrategy(
+                name="ValueStrategy",
+                category="Value",
                 paper_source="source",
                 paper_title="title",
                 code_files={"main.py": "code"},
-                sharpe_ratio=1.0 + i * 0.5
-            ))
-
-        db.add_strategy(GeneratedStrategy(
-            name="ValueStrategy",
-            category="Value",
-            paper_source="source",
-            paper_title="title",
-            code_files={"main.py": "code"}
-        ))
+            )
+        )
 
         momentum_strategies = db.get_strategies_by_category("Momentum")
         assert len(momentum_strategies) == 3
@@ -251,15 +249,17 @@ class TestLearningDatabase:
     def test_get_top_strategies(self, db):
         """Test getting top performing strategies."""
         for sharpe in [1.0, 2.5, 1.5]:
-            db.add_strategy(GeneratedStrategy(
-                name="Strategy",
-                category="Test",
-                paper_source="source",
-                paper_title="title",
-                code_files={"main.py": "code"},
-                sharpe_ratio=sharpe,
-                success=True
-            ))
+            db.add_strategy(
+                GeneratedStrategy(
+                    name="Strategy",
+                    category="Test",
+                    paper_source="source",
+                    paper_title="title",
+                    code_files={"main.py": "code"},
+                    sharpe_ratio=sharpe,
+                    success=True,
+                )
+            )
 
         top = db.get_top_strategies(limit=2)
         assert len(top) == 2
@@ -269,32 +269,38 @@ class TestLearningDatabase:
     def test_get_library_stats(self, db):
         """Test getting library statistics."""
         # Add strategies
-        db.add_strategy(GeneratedStrategy(
-            name="S1",
-            category="Momentum",
-            paper_source="",
-            paper_title="",
-            code_files={},
-            sharpe_ratio=1.5,
-            success=True
-        ))
-        db.add_strategy(GeneratedStrategy(
-            name="S2",
-            category="Value",
-            paper_source="",
-            paper_title="",
-            code_files={},
-            sharpe_ratio=2.0,
-            success=True
-        ))
-        db.add_strategy(GeneratedStrategy(
-            name="S3",
-            category="Momentum",
-            paper_source="",
-            paper_title="",
-            code_files={},
-            success=False
-        ))
+        db.add_strategy(
+            GeneratedStrategy(
+                name="S1",
+                category="Momentum",
+                paper_source="",
+                paper_title="",
+                code_files={},
+                sharpe_ratio=1.5,
+                success=True,
+            )
+        )
+        db.add_strategy(
+            GeneratedStrategy(
+                name="S2",
+                category="Value",
+                paper_source="",
+                paper_title="",
+                code_files={},
+                sharpe_ratio=2.0,
+                success=True,
+            )
+        )
+        db.add_strategy(
+            GeneratedStrategy(
+                name="S3",
+                category="Momentum",
+                paper_source="",
+                paper_title="",
+                code_files={},
+                success=False,
+            )
+        )
 
         stats = db.get_library_stats()
         assert stats["total_strategies"] == 3
@@ -304,8 +310,7 @@ class TestLearningDatabase:
     def test_add_successful_fix(self, db):
         """Test adding successful fix."""
         db.add_successful_fix(
-            error_pattern="undefined variable",
-            solution_pattern="define variable before use"
+            error_pattern="undefined variable", solution_pattern="define variable before use"
         )
 
         fix = db.get_fix_for_error("undefined variable")
@@ -317,8 +322,7 @@ class TestLearningDatabase:
         """Test that repeated fixes increase confidence."""
         for _ in range(3):
             db.add_successful_fix(
-                error_pattern="missing import",
-                solution_pattern="add import statement"
+                error_pattern="missing import", solution_pattern="add import statement"
             )
 
         fix = db.get_fix_for_error("missing import")
@@ -346,11 +350,9 @@ class TestLearningDatabase:
             db_path = Path(tmpdir) / "test.db"
 
             with LearningDatabase(db_path) as db:
-                db.add_compilation_error(CompilationError(
-                    error_type="Test",
-                    error_message="msg",
-                    code_snippet="code"
-                ))
+                db.add_compilation_error(
+                    CompilationError(error_type="Test", error_message="msg", code_snippet="code")
+                )
 
             # Database should be closed after context manager
             # Reopening should work
@@ -360,7 +362,7 @@ class TestLearningDatabase:
 
     def test_default_path(self):
         """Test database uses default path."""
-        with patch.object(Path, 'home', return_value=Path(tempfile.gettempdir())):
+        with patch.object(Path, "home", return_value=Path(tempfile.gettempdir())):
             db = LearningDatabase()
             assert "quantcoder" in str(db.db_path)
             assert "learnings.db" in str(db.db_path)

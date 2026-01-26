@@ -10,13 +10,13 @@ Adapted for QuantCoder v2.0 with async support and multi-provider LLM.
 
 import logging
 import os
-from typing import Optional, Callable, List
+from collections.abc import Callable
 from dataclasses import asdict
 
 from .config import EvolutionConfig
-from .persistence import EvolutionState, Variant, ElitePool
-from .variation import VariationGenerator
 from .evaluator import QCEvaluator
+from .persistence import EvolutionState, Variant
+from .variation import VariationGenerator
 
 
 class EvolutionEngine:
@@ -32,11 +32,7 @@ class EvolutionEngine:
     5. Repeat until stopping condition met
     """
 
-    def __init__(
-        self,
-        config: EvolutionConfig,
-        state_dir: str = "data/evolutions"
-    ):
+    def __init__(self, config: EvolutionConfig, state_dir: str = "data/evolutions"):
         self.config = config
         self.state_dir = state_dir
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -46,11 +42,11 @@ class EvolutionEngine:
         self.evaluator = QCEvaluator(config)
 
         # State
-        self.state: Optional[EvolutionState] = None
+        self.state: EvolutionState | None = None
 
         # Callbacks for progress reporting
-        self.on_generation_complete: Optional[Callable] = None
-        self.on_variant_evaluated: Optional[Callable] = None
+        self.on_generation_complete: Callable | None = None
+        self.on_variant_evaluated: Callable | None = None
 
     def _get_state_path(self, evolution_id: str) -> str:
         """Get path for state file."""
@@ -63,10 +59,7 @@ class EvolutionEngine:
             self.state.save(path)
 
     async def evolve(
-        self,
-        baseline_code: str,
-        source_paper: str = "",
-        resume_id: Optional[str] = None
+        self, baseline_code: str, source_paper: str = "", resume_id: str | None = None
     ) -> EvolutionState:
         """
         Main evolution entry point.
@@ -86,9 +79,7 @@ class EvolutionEngine:
                 raise ValueError(f"Could not resume evolution {resume_id}")
         else:
             self.state = EvolutionState(
-                baseline_code=baseline_code,
-                source_paper=source_paper,
-                config=asdict(self.config)
+                baseline_code=baseline_code, source_paper=source_paper, config=asdict(self.config)
             )
             # Add baseline as first variant
             baseline_variant = Variant(
@@ -96,7 +87,7 @@ class EvolutionEngine:
                 generation=0,
                 code=baseline_code,
                 parent_ids=[],
-                mutation_description="Original algorithm from research paper"
+                mutation_description="Original algorithm from research paper",
             )
             self.state.all_variants["baseline"] = baseline_variant
 
@@ -104,8 +95,10 @@ class EvolutionEngine:
         self._save_state()
 
         self.logger.info(f"Starting evolution {self.state.evolution_id}")
-        self.logger.info(f"Config: {self.config.variants_per_generation} variants/gen, "
-                        f"max {self.config.max_generations} generations")
+        self.logger.info(
+            f"Config: {self.config.variants_per_generation} variants/gen, "
+            f"max {self.config.max_generations} generations"
+        )
 
         try:
             # Main evolution loop
@@ -158,14 +151,13 @@ class EvolutionEngine:
             self._save_state()
             raise
 
-    async def _generate_generation(self, generation: int) -> List[Variant]:
+    async def _generate_generation(self, generation: int) -> list[Variant]:
         """Generate variants for a new generation."""
 
         if generation == 1:
             # First generation: vary from baseline
             raw_variations = await self.variation_generator.generate_initial_variations(
-                self.state.baseline_code,
-                self.config.variants_per_generation
+                self.state.baseline_code, self.config.variants_per_generation
             )
         else:
             # Subsequent generations: vary from elite pool
@@ -181,9 +173,7 @@ class EvolutionEngine:
                     return []
 
             raw_variations = await self.variation_generator.generate_variations(
-                parents,
-                self.config.variants_per_generation,
-                generation
+                parents, self.config.variants_per_generation, generation
             )
 
         # Convert to Variant objects
@@ -195,14 +185,14 @@ class EvolutionEngine:
                 generation=generation,
                 code=code,
                 parent_ids=parent_ids,
-                mutation_description=description
+                mutation_description=description,
             )
             variants.append(variant)
             self.state.all_variants[variant_id] = variant
 
         return variants
 
-    async def _evaluate_variants(self, variants: List[Variant]):
+    async def _evaluate_variants(self, variants: list[Variant]):
         """Evaluate all variants and update their metrics/fitness."""
 
         for variant in variants:
@@ -222,7 +212,7 @@ class EvolutionEngine:
                 # Update elite pool
                 added = self.state.elite_pool.update(variant)
                 if added:
-                    self.logger.info(f"  -> Added to elite pool!")
+                    self.logger.info("  -> Added to elite pool!")
             else:
                 self.logger.warning(f"  -> Evaluation failed for {variant.id}")
                 variant.fitness = -1  # Mark as failed
@@ -238,7 +228,7 @@ class EvolutionEngine:
             old_rate = self.config.mutation_rate
             new_rate = min(
                 self.config.max_mutation_rate,
-                old_rate + 0.1 * self.state.generations_without_improvement
+                old_rate + 0.1 * self.state.generations_without_improvement,
             )
 
             if new_rate > old_rate:
@@ -248,7 +238,7 @@ class EvolutionEngine:
                     f"(stagnation: {self.state.generations_without_improvement} gens)"
                 )
 
-    def _resume(self, evolution_id: str) -> Optional[EvolutionState]:
+    def _resume(self, evolution_id: str) -> EvolutionState | None:
         """Resume a previous evolution from saved state."""
         path = self._get_state_path(evolution_id)
 
@@ -258,7 +248,9 @@ class EvolutionEngine:
 
         try:
             state = EvolutionState.load(path)
-            self.logger.info(f"Resumed evolution {evolution_id} at generation {state.current_generation}")
+            self.logger.info(
+                f"Resumed evolution {evolution_id} at generation {state.current_generation}"
+            )
             return state
         except Exception as e:
             self.logger.error(f"Failed to load state: {e}")
@@ -266,16 +258,15 @@ class EvolutionEngine:
 
     def _log_final_results(self):
         """Log final evolution results."""
-        self.logger.info("\n" + "="*60)
+        self.logger.info("\n" + "=" * 60)
         self.logger.info("EVOLUTION COMPLETE")
-        self.logger.info("="*60)
+        self.logger.info("=" * 60)
         self.logger.info(self.state.get_summary())
 
         self.logger.info("\nElite Pool:")
         for i, variant in enumerate(self.state.elite_pool.variants, 1):
             self.logger.info(
-                f"  {i}. {variant.id} (Gen {variant.generation}): "
-                f"Fitness={variant.fitness:.4f}"
+                f"  {i}. {variant.id} (Gen {variant.generation}): " f"Fitness={variant.fitness:.4f}"
             )
             if variant.metrics:
                 self.logger.info(
@@ -284,7 +275,7 @@ class EvolutionEngine:
                     f"MaxDD={variant.metrics.get('max_drawdown', 0):.1%}"
                 )
 
-    def get_best_variant(self) -> Optional[Variant]:
+    def get_best_variant(self) -> Variant | None:
         """Get the best variant from the elite pool."""
         if self.state:
             return self.state.elite_pool.get_best()
@@ -299,7 +290,7 @@ class EvolutionEngine:
 
         try:
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            with open(output_path, 'w') as f:
+            with open(output_path, "w") as f:
                 f.write(f"# Evolution: {self.state.evolution_id}\n")
                 f.write(f"# Variant: {best.id} (Generation {best.generation})\n")
                 f.write(f"# Fitness: {best.fitness:.4f}\n")
@@ -318,10 +309,7 @@ class EvolutionEngine:
 
 
 def create_evolution_engine(
-    qc_user_id: str,
-    qc_api_token: str,
-    qc_project_id: int,
-    **kwargs
+    qc_user_id: str, qc_api_token: str, qc_project_id: int, **kwargs
 ) -> EvolutionEngine:
     """
     Factory function to create a configured EvolutionEngine.
@@ -337,10 +325,7 @@ def create_evolution_engine(
         result = await engine.evolve(baseline_code)
     """
     config = EvolutionConfig(
-        qc_user_id=qc_user_id,
-        qc_api_token=qc_api_token,
-        qc_project_id=qc_project_id,
-        **kwargs
+        qc_user_id=qc_user_id, qc_api_token=qc_api_token, qc_project_id=qc_project_id, **kwargs
     )
 
     return EvolutionEngine(config)

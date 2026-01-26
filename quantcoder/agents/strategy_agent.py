@@ -1,7 +1,6 @@
 """Strategy Agent - Generates main algorithm file."""
 
-from typing import Dict
-from .base import BaseAgent, AgentResult
+from .base import AgentResult, BaseAgent
 
 
 class StrategyAgent(BaseAgent):
@@ -24,10 +23,7 @@ class StrategyAgent(BaseAgent):
         return "Generates main algorithm file integrating all components"
 
     async def execute(
-        self,
-        strategy_name: str,
-        components: Dict[str, str],
-        parameters: Dict[str, any] = None
+        self, strategy_name: str, components: dict[str, str], parameters: dict[str, any] = None
     ) -> AgentResult:
         """
         Generate main algorithm code.
@@ -97,9 +93,7 @@ Create a complete QuantConnect algorithm that:
 Generate complete Main.py code."""
 
             response = await self._generate_with_llm(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                temperature=0.3
+                system_prompt=system_prompt, user_prompt=user_prompt, temperature=0.3
             )
 
             code = self._extract_code(response)
@@ -109,20 +103,14 @@ Generate complete Main.py code."""
                 code=code,
                 filename="Main.py",
                 message=f"Generated main algorithm: {strategy_name}",
-                data={
-                    "strategy_name": strategy_name,
-                    "components": components
-                }
+                data={"strategy_name": strategy_name, "components": components},
             )
 
         except Exception as e:
             self.logger.error(f"Strategy generation error: {e}")
-            return AgentResult(
-                success=False,
-                error=str(e)
-            )
+            return AgentResult(success=False, error=str(e))
 
-    def _format_components(self, components: Dict[str, str]) -> str:
+    def _format_components(self, components: dict[str, str]) -> str:
         """Format components for prompt."""
         lines = []
         for comp_type, comp_info in components.items():

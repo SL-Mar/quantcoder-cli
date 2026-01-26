@@ -1,7 +1,8 @@
 """Pytest fixtures and configuration for quantcoder tests."""
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 
 @pytest.fixture
@@ -55,7 +56,7 @@ def sample_pdf_text():
 @pytest.fixture
 def sample_python_code():
     """Sample valid Python code for testing."""
-    return '''
+    return """
 from AlgorithmImports import *
 
 class MomentumStrategy(QCAlgorithm):
@@ -73,7 +74,7 @@ class MomentumStrategy(QCAlgorithm):
             self.SetHoldings(self.symbol, 1.0)
         elif self.rsi.Current.Value > 70:
             self.Liquidate(self.symbol)
-'''
+"""
 
 
 @pytest.fixture

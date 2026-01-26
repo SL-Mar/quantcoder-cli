@@ -1,20 +1,20 @@
 """Learning database for storing errors, fixes, and performance patterns."""
 
-import sqlite3
-from pathlib import Path
-from typing import List, Dict, Optional, Any
-from datetime import datetime
-from dataclasses import dataclass, asdict
 import json
+import sqlite3
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
 
 
 @dataclass
 class CompilationError:
     """Represents a compilation error and its solution."""
+
     error_type: str
     error_message: str
     code_snippet: str
-    fix_applied: Optional[str] = None
+    fix_applied: str | None = None
     success: bool = False
     timestamp: str = None
 
@@ -26,6 +26,7 @@ class CompilationError:
 @dataclass
 class PerformancePattern:
     """Represents a performance pattern observation."""
+
     strategy_type: str
     sharpe_ratio: float
     max_drawdown: float
@@ -41,14 +42,15 @@ class PerformancePattern:
 @dataclass
 class GeneratedStrategy:
     """Represents a generated strategy with metadata."""
+
     name: str
     category: str
     paper_source: str
     paper_title: str
-    code_files: Dict[str, str]  # filename -> content
-    sharpe_ratio: Optional[float] = None
-    max_drawdown: Optional[float] = None
-    total_return: Optional[float] = None
+    code_files: dict[str, str]  # filename -> content
+    sharpe_ratio: float | None = None
+    max_drawdown: float | None = None
+    total_return: float | None = None
     compilation_errors: int = 0
     refinement_attempts: int = 0
     success: bool = False
@@ -62,7 +64,7 @@ class GeneratedStrategy:
 class LearningDatabase:
     """SQLite database for storing learnings from autonomous mode."""
 
-    def __init__(self, db_path: Optional[Path] = None):
+    def __init__(self, db_path: Path | None = None):
         """Initialize database connection."""
         if db_path is None:
             db_path = Path.home() / ".quantcoder" / "learnings.db"
@@ -156,69 +158,82 @@ class LearningDatabase:
     def add_compilation_error(self, error: CompilationError):
         """Store a compilation error."""
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO compilation_errors
             (error_type, error_message, code_snippet, fix_applied, success, timestamp)
             VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            error.error_type,
-            error.error_message,
-            error.code_snippet,
-            error.fix_applied,
-            error.success,
-            error.timestamp
-        ))
+        """,
+            (
+                error.error_type,
+                error.error_message,
+                error.code_snippet,
+                error.fix_applied,
+                error.success,
+                error.timestamp,
+            ),
+        )
         self.conn.commit()
         return cursor.lastrowid
 
-    def get_similar_errors(self, error_type: str, limit: int = 10) -> List[Dict]:
+    def get_similar_errors(self, error_type: str, limit: int = 10) -> list[dict]:
         """Get similar errors that were successfully fixed."""
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT * FROM compilation_errors
             WHERE error_type = ? AND success = 1
             ORDER BY timestamp DESC
             LIMIT ?
-        """, (error_type, limit))
+        """,
+            (error_type, limit),
+        )
         return [dict(row) for row in cursor.fetchall()]
 
-    def get_common_error_types(self, limit: int = 10) -> List[Dict]:
+    def get_common_error_types(self, limit: int = 10) -> list[dict]:
         """Get most common error types."""
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT error_type, COUNT(*) as count,
                    SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as fixed_count
             FROM compilation_errors
             GROUP BY error_type
             ORDER BY count DESC
             LIMIT ?
-        """, (limit,))
+        """,
+            (limit,),
+        )
         return [dict(row) for row in cursor.fetchall()]
 
     # Performance Patterns
     def add_performance_pattern(self, pattern: PerformancePattern):
         """Store a performance pattern."""
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO performance_patterns
             (strategy_type, sharpe_ratio, max_drawdown, common_issues,
              success_patterns, timestamp)
             VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            pattern.strategy_type,
-            pattern.sharpe_ratio,
-            pattern.max_drawdown,
-            pattern.common_issues,
-            pattern.success_patterns,
-            pattern.timestamp
-        ))
+        """,
+            (
+                pattern.strategy_type,
+                pattern.sharpe_ratio,
+                pattern.max_drawdown,
+                pattern.common_issues,
+                pattern.success_patterns,
+                pattern.timestamp,
+            ),
+        )
         self.conn.commit()
         return cursor.lastrowid
 
-    def get_performance_stats(self, strategy_type: str) -> Dict:
+    def get_performance_stats(self, strategy_type: str) -> dict:
         """Get performance statistics for a strategy type."""
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT
                 AVG(sharpe_ratio) as avg_sharpe,
                 MAX(sharpe_ratio) as max_sharpe,
@@ -227,7 +242,9 @@ class LearningDatabase:
                 COUNT(*) as count
             FROM performance_patterns
             WHERE strategy_type = ?
-        """, (strategy_type,))
+        """,
+            (strategy_type,),
+        )
         result = cursor.fetchone()
         return dict(result) if result else {}
 
@@ -235,61 +252,70 @@ class LearningDatabase:
     def add_strategy(self, strategy: GeneratedStrategy):
         """Store a generated strategy."""
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO generated_strategies
             (name, category, paper_source, paper_title, code_files,
              sharpe_ratio, max_drawdown, total_return, compilation_errors,
              refinement_attempts, success, timestamp)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            strategy.name,
-            strategy.category,
-            strategy.paper_source,
-            strategy.paper_title,
-            json.dumps(strategy.code_files),
-            strategy.sharpe_ratio,
-            strategy.max_drawdown,
-            strategy.total_return,
-            strategy.compilation_errors,
-            strategy.refinement_attempts,
-            strategy.success,
-            strategy.timestamp
-        ))
+        """,
+            (
+                strategy.name,
+                strategy.category,
+                strategy.paper_source,
+                strategy.paper_title,
+                json.dumps(strategy.code_files),
+                strategy.sharpe_ratio,
+                strategy.max_drawdown,
+                strategy.total_return,
+                strategy.compilation_errors,
+                strategy.refinement_attempts,
+                strategy.success,
+                strategy.timestamp,
+            ),
+        )
         self.conn.commit()
         return cursor.lastrowid
 
-    def get_strategies_by_category(self, category: str) -> List[Dict]:
+    def get_strategies_by_category(self, category: str) -> list[dict]:
         """Get all strategies in a category."""
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT * FROM generated_strategies
             WHERE category = ?
             ORDER BY sharpe_ratio DESC
-        """, (category,))
+        """,
+            (category,),
+        )
         strategies = []
         for row in cursor.fetchall():
             strategy = dict(row)
-            strategy['code_files'] = json.loads(strategy['code_files'])
+            strategy["code_files"] = json.loads(strategy["code_files"])
             strategies.append(strategy)
         return strategies
 
-    def get_top_strategies(self, limit: int = 10) -> List[Dict]:
+    def get_top_strategies(self, limit: int = 10) -> list[dict]:
         """Get top performing strategies."""
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT * FROM generated_strategies
             WHERE success = 1 AND sharpe_ratio IS NOT NULL
             ORDER BY sharpe_ratio DESC
             LIMIT ?
-        """, (limit,))
+        """,
+            (limit,),
+        )
         strategies = []
         for row in cursor.fetchall():
             strategy = dict(row)
-            strategy['code_files'] = json.loads(strategy['code_files'])
+            strategy["code_files"] = json.loads(strategy["code_files"])
             strategies.append(strategy)
         return strategies
 
-    def get_library_stats(self) -> Dict:
+    def get_library_stats(self) -> dict:
         """Get overall library statistics."""
         cursor = self.conn.cursor()
         cursor.execute("""
@@ -315,14 +341,15 @@ class LearningDatabase:
         categories = [dict(row) for row in cursor.fetchall()]
 
         stats = dict(result) if result else {}
-        stats['categories'] = categories
+        stats["categories"] = categories
         return stats
 
     # Successful Fixes
     def add_successful_fix(self, error_pattern: str, solution_pattern: str):
         """Add or update a successful fix pattern."""
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO successful_fixes
             (error_pattern, solution_pattern, confidence, times_applied,
              success_count, timestamp)
@@ -331,29 +358,37 @@ class LearningDatabase:
                 times_applied = times_applied + 1,
                 success_count = success_count + 1,
                 confidence = MIN(0.99, confidence + 0.1)
-        """, (error_pattern, solution_pattern, datetime.now().isoformat()))
+        """,
+            (error_pattern, solution_pattern, datetime.now().isoformat()),
+        )
         self.conn.commit()
 
-    def get_fix_for_error(self, error_pattern: str) -> Optional[Dict]:
+    def get_fix_for_error(self, error_pattern: str) -> dict | None:
         """Get the best fix for an error pattern."""
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT * FROM successful_fixes
             WHERE error_pattern = ?
             ORDER BY confidence DESC, success_count DESC
             LIMIT 1
-        """, (error_pattern,))
+        """,
+            (error_pattern,),
+        )
         result = cursor.fetchone()
         return dict(result) if result else None
 
-    def get_all_successful_fixes(self, min_confidence: float = 0.5) -> List[Dict]:
+    def get_all_successful_fixes(self, min_confidence: float = 0.5) -> list[dict]:
         """Get all successful fixes above confidence threshold."""
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT * FROM successful_fixes
             WHERE confidence >= ?
             ORDER BY confidence DESC, success_count DESC
-        """, (min_confidence,))
+        """,
+            (min_confidence,),
+        )
         return [dict(row) for row in cursor.fetchall()]
 
     # Utility

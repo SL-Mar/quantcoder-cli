@@ -1,6 +1,6 @@
 """Universe Agent - Generates stock selection logic."""
 
-from .base import BaseAgent, AgentResult
+from .base import AgentResult, BaseAgent
 
 
 class UniverseAgent(BaseAgent):
@@ -21,11 +21,7 @@ class UniverseAgent(BaseAgent):
     def agent_description(self) -> str:
         return "Generates universe selection logic for stock screening"
 
-    async def execute(
-        self,
-        criteria: str,
-        strategy_context: str = ""
-    ) -> AgentResult:
+    async def execute(self, criteria: str, strategy_context: str = "") -> AgentResult:
         """
         Generate universe selection code.
 
@@ -69,7 +65,7 @@ Generate complete Universe.py code."""
             response = await self._generate_with_llm(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
-                temperature=0.3  # Lower for more deterministic code
+                temperature=0.3,  # Lower for more deterministic code
             )
 
             code = self._extract_code(response)
@@ -79,12 +75,9 @@ Generate complete Universe.py code."""
                 code=code,
                 filename="Universe.py",
                 message=f"Generated universe selection for: {criteria}",
-                data={"criteria": criteria}
+                data={"criteria": criteria},
             )
 
         except Exception as e:
             self.logger.error(f"Universe generation error: {e}")
-            return AgentResult(
-                success=False,
-                error=str(e)
-            )
+            return AgentResult(success=False, error=str(e))

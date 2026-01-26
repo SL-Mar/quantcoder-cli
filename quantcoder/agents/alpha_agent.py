@@ -1,6 +1,6 @@
 """Alpha Agent - Generates trading signal logic."""
 
-from .base import BaseAgent, AgentResult
+from .base import AgentResult, BaseAgent
 
 
 class AlphaAgent(BaseAgent):
@@ -23,10 +23,7 @@ class AlphaAgent(BaseAgent):
         return "Generates alpha signal generation logic"
 
     async def execute(
-        self,
-        strategy: str,
-        indicators: str = "",
-        strategy_summary: str = ""
+        self, strategy: str, indicators: str = "", strategy_summary: str = ""
     ) -> AgentResult:
         """
         Generate alpha signal code.
@@ -80,9 +77,7 @@ Create a QuantConnect alpha model that:
 Generate complete Alpha.py code."""
 
             response = await self._generate_with_llm(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                temperature=0.3
+                system_prompt=system_prompt, user_prompt=user_prompt, temperature=0.3
             )
 
             code = self._extract_code(response)
@@ -92,12 +87,9 @@ Generate complete Alpha.py code."""
                 code=code,
                 filename="Alpha.py",
                 message=f"Generated alpha signals for: {strategy}",
-                data={"strategy": strategy}
+                data={"strategy": strategy},
             )
 
         except Exception as e:
             self.logger.error(f"Alpha generation error: {e}")
-            return AgentResult(
-                success=False,
-                error=str(e)
-            )
+            return AgentResult(success=False, error=str(e))

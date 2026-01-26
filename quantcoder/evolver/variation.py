@@ -9,13 +9,12 @@ Adapted for QuantCoder v2.0 with async support and multi-provider LLM.
 """
 
 import logging
-import re
 import random
-from typing import List, Optional, Tuple
+import re
 
-from .persistence import Variant
-from .config import EvolutionConfig
 from ..llm import LLMFactory, LLMProvider
+from .config import EvolutionConfig
+from .persistence import Variant
 
 
 class VariationGenerator:
@@ -24,7 +23,7 @@ class VariationGenerator:
     Replaces traditional parameter optimization with structural exploration.
     """
 
-    def __init__(self, config: EvolutionConfig, llm: Optional[LLMProvider] = None):
+    def __init__(self, config: EvolutionConfig, llm: LLMProvider | None = None):
         self.config = config
         self.logger = logging.getLogger(self.__class__.__name__)
 
@@ -34,30 +33,24 @@ class VariationGenerator:
         else:
             # Get API key from environment
             import os
-            api_key = os.getenv('OPENAI_API_KEY', '')
-            self.llm = LLMFactory.create(
-                config.llm_provider,
-                api_key,
-                config.model
-            )
+
+            api_key = os.getenv("OPENAI_API_KEY", "")
+            self.llm = LLMFactory.create(config.llm_provider, api_key, config.model)
 
         # Variation strategies for mutation
         self.mutation_strategies = [
-            "indicator_change",      # Swap SMA->EMA, add RSI, change MACD params
-            "risk_management",       # Modify stop-loss, position sizing, leverage
-            "entry_exit_logic",      # Change entry/exit conditions
-            "universe_selection",    # Modify stock filtering criteria
-            "timeframe_change",      # Change rebalance frequency
-            "add_filter",            # Add volatility filter, trend filter, etc.
-            "parameter_tune",        # Adjust numeric parameters
+            "indicator_change",  # Swap SMA->EMA, add RSI, change MACD params
+            "risk_management",  # Modify stop-loss, position sizing, leverage
+            "entry_exit_logic",  # Change entry/exit conditions
+            "universe_selection",  # Modify stock filtering criteria
+            "timeframe_change",  # Change rebalance frequency
+            "add_filter",  # Add volatility filter, trend filter, etc.
+            "parameter_tune",  # Adjust numeric parameters
         ]
 
     async def generate_variations(
-        self,
-        parents: List[Variant],
-        num_variations: int,
-        generation: int
-    ) -> List[Tuple[str, str, List[str]]]:
+        self, parents: list[Variant], num_variations: int, generation: int
+    ) -> list[tuple[str, str, list[str]]]:
         """
         Generate N variations from parent algorithms.
 
@@ -91,7 +84,7 @@ class VariationGenerator:
 
         return variations
 
-    async def _mutate(self, parent: Variant, strategy: str) -> Tuple[Optional[str], str]:
+    async def _mutate(self, parent: Variant, strategy: str) -> tuple[str | None, str]:
         """
         Generate a mutation of a single parent using specified strategy.
         """
@@ -105,15 +98,13 @@ class VariationGenerator:
                         "You are a QuantConnect algorithm expert. Generate variations of "
                         "trading strategies by modifying specific aspects while keeping "
                         "the core strategy concept intact. Always output valid Python code."
-                    )
+                    ),
                 },
-                {"role": "user", "content": prompt}
+                {"role": "user", "content": prompt},
             ]
 
             response = await self.llm.chat(
-                messages=messages,
-                temperature=self.config.temperature_variation,
-                max_tokens=2000
+                messages=messages, temperature=self.config.temperature_variation, max_tokens=2000
             )
 
             code = self._extract_code(response)
@@ -125,7 +116,7 @@ class VariationGenerator:
             self.logger.error(f"LLM error during mutation: {e}")
             return None, f"Failed: {e}"
 
-    async def _crossover(self, parent1: Variant, parent2: Variant) -> Tuple[Optional[str], str]:
+    async def _crossover(self, parent1: Variant, parent2: Variant) -> tuple[str | None, str]:
         """
         Generate a crossover combining features of two parents.
         """
@@ -139,19 +130,19 @@ class VariationGenerator:
                         "You are a QuantConnect algorithm expert. Combine the best features "
                         "of two trading strategies into a single coherent algorithm. "
                         "Always output valid Python code."
-                    )
+                    ),
                 },
-                {"role": "user", "content": prompt}
+                {"role": "user", "content": prompt},
             ]
 
             response = await self.llm.chat(
-                messages=messages,
-                temperature=self.config.temperature_variation,
-                max_tokens=2000
+                messages=messages, temperature=self.config.temperature_variation, max_tokens=2000
             )
 
             code = self._extract_code(response)
-            description = f"Crossover ({parent1.id} x {parent2.id}): {self._extract_description(response)}"
+            description = (
+                f"Crossover ({parent1.id} x {parent2.id}): {self._extract_description(response)}"
+            )
 
             return code, description
 
@@ -211,7 +202,7 @@ class VariationGenerator:
                 - Adjust threshold values
                 - Modify allocation percentages
                 - Tune indicator parameters
-            """
+            """,
         }
 
         instruction = strategy_instructions.get(strategy, strategy_instructions["parameter_tune"])
@@ -288,15 +279,15 @@ CHANGES: [What was combined from each parent]
 ```
 """
 
-    def _extract_code(self, content: str) -> Optional[str]:
+    def _extract_code(self, content: str) -> str | None:
         """Extract Python code from LLM response."""
         # Try to find code block
-        code_match = re.search(r'```python(.*?)```', content, re.DOTALL | re.IGNORECASE)
+        code_match = re.search(r"```python(.*?)```", content, re.DOTALL | re.IGNORECASE)
         if code_match:
             return code_match.group(1).strip()
 
         # Try generic code block
-        code_match = re.search(r'```(.*?)```', content, re.DOTALL)
+        code_match = re.search(r"```(.*?)```", content, re.DOTALL)
         if code_match:
             return code_match.group(1).strip()
 
@@ -305,19 +296,17 @@ CHANGES: [What was combined from each parent]
     def _extract_description(self, content: str) -> str:
         """Extract the change description from LLM response."""
         # Look for CHANGES: line
-        match = re.search(r'CHANGES?:\s*(.+?)(?:\n|```)', content, re.IGNORECASE)
+        match = re.search(r"CHANGES?:\s*(.+?)(?:\n|```)", content, re.IGNORECASE)
         if match:
             return match.group(1).strip()
 
         # Fallback: first line
-        first_line = content.split('\n')[0]
+        first_line = content.split("\n")[0]
         return first_line[:100] if first_line else "Variation generated"
 
     async def generate_initial_variations(
-        self,
-        baseline_code: str,
-        num_variations: int
-    ) -> List[Tuple[str, str, List[str]]]:
+        self, baseline_code: str, num_variations: int
+    ) -> list[tuple[str, str, list[str]]]:
         """
         Generate initial variations from baseline (generation 0 -> 1).
         Uses diverse mutation strategies to explore the space.
@@ -330,7 +319,7 @@ CHANGES: [What was combined from each parent]
             generation=0,
             code=baseline_code,
             parent_ids=[],
-            mutation_description="Original algorithm from research paper"
+            mutation_description="Original algorithm from research paper",
         )
 
         variations = []

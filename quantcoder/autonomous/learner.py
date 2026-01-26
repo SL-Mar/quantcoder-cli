@@ -1,14 +1,13 @@
 """Learning systems for error patterns and performance analysis."""
 
-import re
-from typing import List, Dict, Optional, Tuple
-from dataclasses import dataclass
-from collections import Counter
 import hashlib
+import re
+from collections import Counter
+from dataclasses import dataclass
 
 from quantcoder.autonomous.database import (
-    LearningDatabase,
     CompilationError,
+    LearningDatabase,
     PerformancePattern,
 )
 
@@ -16,19 +15,21 @@ from quantcoder.autonomous.database import (
 @dataclass
 class ErrorPattern:
     """Represents an identified error pattern."""
+
     pattern_type: str
     description: str
     code_snippet: str
-    suggested_fix: Optional[str] = None
+    suggested_fix: str | None = None
     confidence: float = 0.5
 
 
 @dataclass
 class SuccessPattern:
     """Represents a successful strategy pattern."""
+
     pattern_type: str
     description: str
-    examples: List[str]
+    examples: list[str]
     avg_sharpe: float
 
 
@@ -68,8 +69,8 @@ class ErrorLearner:
         confidence = 0.5
 
         if known_fix:
-            suggested_fix = known_fix['solution_pattern']
-            confidence = known_fix['confidence']
+            suggested_fix = known_fix["solution_pattern"]
+            confidence = known_fix["confidence"]
         elif similar_errors:
             # Use most common fix from similar errors
             suggested_fix = self._get_most_common_fix(similar_errors)
@@ -80,15 +81,11 @@ class ErrorLearner:
             description=error_message,
             code_snippet=code_snippet,
             suggested_fix=suggested_fix,
-            confidence=confidence
+            confidence=confidence,
         )
 
     def learn_from_fix(
-        self,
-        error_message: str,
-        original_code: str,
-        fixed_code: str,
-        success: bool
+        self, error_message: str, original_code: str, fixed_code: str, success: bool
     ):
         """Learn from a successful or failed fix attempt."""
         error_type = self._classify_error(error_message)
@@ -103,7 +100,7 @@ class ErrorLearner:
             error_message=error_message,
             code_snippet=code_snippet,
             fix_applied=fix_applied,
-            success=success
+            success=success,
         )
         self.db.add_compilation_error(error)
 
@@ -112,7 +109,7 @@ class ErrorLearner:
             error_hash = self._hash_error(error_message)
             self.db.add_successful_fix(error_hash, fix_applied)
 
-    def get_common_errors(self, limit: int = 10) -> List[Dict]:
+    def get_common_errors(self, limit: int = 10) -> list[dict]:
         """Get most common error types and their fix rates."""
         return self.db.get_common_error_types(limit)
 
@@ -122,8 +119,8 @@ class ErrorLearner:
         if not common_errors:
             return 0.0
 
-        total = sum(e['count'] for e in common_errors)
-        fixed = sum(e['fixed_count'] for e in common_errors)
+        total = sum(e["count"] for e in common_errors)
+        fixed = sum(e["fixed_count"] for e in common_errors)
 
         return fixed / total if total > 0 else 0.0
 
@@ -137,27 +134,27 @@ class ErrorLearner:
     def _extract_relevant_code(self, error_message: str, code: str) -> str:
         """Extract the code snippet relevant to the error."""
         # Try to extract line number from error
-        line_match = re.search(r'line (\d+)', error_message)
+        line_match = re.search(r"line (\d+)", error_message)
         if line_match:
             line_num = int(line_match.group(1))
-            lines = code.split('\n')
+            lines = code.split("\n")
             start = max(0, line_num - 3)
             end = min(len(lines), line_num + 2)
-            return '\n'.join(lines[start:end])
+            return "\n".join(lines[start:end])
 
         # Return first 10 lines as fallback
-        return '\n'.join(code.split('\n')[:10])
+        return "\n".join(code.split("\n")[:10])
 
     def _hash_error(self, error_message: str) -> str:
         """Create a hash for error pattern matching."""
         # Normalize error message (remove line numbers, variable names)
-        normalized = re.sub(r'\d+', 'N', error_message)
-        normalized = re.sub(r"'[^']*'", 'VAR', normalized)
+        normalized = re.sub(r"\d+", "N", error_message)
+        normalized = re.sub(r"'[^']*'", "VAR", normalized)
         return hashlib.md5(normalized.encode()).hexdigest()[:16]
 
-    def _get_most_common_fix(self, similar_errors: List[Dict]) -> str:
+    def _get_most_common_fix(self, similar_errors: list[dict]) -> str:
         """Get most common fix from similar errors."""
-        fixes = [e['fix_applied'] for e in similar_errors if e['fix_applied']]
+        fixes = [e["fix_applied"] for e in similar_errors if e["fix_applied"]]
         if not fixes:
             return None
         counter = Counter(fixes)
@@ -170,8 +167,8 @@ class ErrorLearner:
             return "no_change"
 
         # Extract added lines
-        original_lines = set(original.split('\n'))
-        fixed_lines = set(fixed.split('\n'))
+        original_lines = set(original.split("\n"))
+        fixed_lines = set(fixed.split("\n"))
         added = fixed_lines - original_lines
 
         if added:
@@ -192,12 +189,8 @@ class PerformanceLearner:
         self.max_acceptable_drawdown = -0.30
 
     def analyze_poor_performance(
-        self,
-        strategy_code: str,
-        strategy_type: str,
-        sharpe: float,
-        drawdown: float
-    ) -> Dict[str, str]:
+        self, strategy_code: str, strategy_type: str, sharpe: float, drawdown: float
+    ) -> dict[str, str]:
         """Analyze why a strategy performed poorly."""
         issues = []
 
@@ -207,10 +200,9 @@ class PerformanceLearner:
 
             # Check if this strategy type typically performs better
             stats = self.db.get_performance_stats(strategy_type)
-            if stats and stats.get('avg_sharpe', 0) > sharpe + 0.3:
+            if stats and stats.get("avg_sharpe", 0) > sharpe + 0.3:
                 issues.append(
-                    f"Below average for {strategy_type} "
-                    f"(avg: {stats['avg_sharpe']:.2f})"
+                    f"Below average for {strategy_type} " f"(avg: {stats['avg_sharpe']:.2f})"
                 )
 
         # Check drawdown
@@ -227,21 +219,17 @@ class PerformanceLearner:
             sharpe_ratio=sharpe,
             max_drawdown=drawdown,
             common_issues="; ".join(issues),
-            success_patterns=""
+            success_patterns="",
         )
         self.db.add_performance_pattern(pattern)
 
         return {
             "issues": issues,
-            "recommendations": self._generate_recommendations(issues, strategy_type)
+            "recommendations": self._generate_recommendations(issues, strategy_type),
         }
 
     def identify_success_patterns(
-        self,
-        strategy_code: str,
-        strategy_type: str,
-        sharpe: float,
-        drawdown: float
+        self, strategy_code: str, strategy_type: str, sharpe: float, drawdown: float
     ) -> SuccessPattern:
         """Identify what made a strategy successful."""
         success_indicators = []
@@ -256,7 +244,7 @@ class PerformanceLearner:
         if "Insight" in strategy_code:
             success_indicators.append("Uses Insight-based signals")
 
-        if re.search(r'def.*Update.*:', strategy_code):
+        if re.search(r"def.*Update.*:", strategy_code):
             success_indicators.append("Has Update method")
 
         # Store success pattern
@@ -265,7 +253,7 @@ class PerformanceLearner:
             sharpe_ratio=sharpe,
             max_drawdown=drawdown,
             common_issues="",
-            success_patterns="; ".join(success_indicators)
+            success_patterns="; ".join(success_indicators),
         )
         self.db.add_performance_pattern(pattern)
 
@@ -273,30 +261,32 @@ class PerformanceLearner:
             pattern_type=strategy_type,
             description=f"Successful {strategy_type} strategy",
             examples=success_indicators,
-            avg_sharpe=sharpe
+            avg_sharpe=sharpe,
         )
 
-    def get_best_practices(self, strategy_type: str) -> List[str]:
+    def get_best_practices(self, strategy_type: str) -> list[str]:
         """Get best practices for a strategy type based on learnings."""
         stats = self.db.get_performance_stats(strategy_type)
 
         practices = []
-        if stats and stats.get('avg_sharpe', 0) >= self.good_sharpe:
+        if stats and stats.get("avg_sharpe", 0) >= self.good_sharpe:
             practices.append(f"Average Sharpe ratio: {stats['avg_sharpe']:.2f}")
 
         # Get common success patterns
         # In production, you'd query successful strategies and extract patterns
-        practices.extend([
-            "Use proper warm-up periods",
-            "Implement risk management",
-            "Use Insight-based signals",
-            "Include position sizing logic",
-            "Add proper universe filtering"
-        ])
+        practices.extend(
+            [
+                "Use proper warm-up periods",
+                "Implement risk management",
+                "Use Insight-based signals",
+                "Include position sizing logic",
+                "Add proper universe filtering",
+            ]
+        )
 
         return practices
 
-    def _analyze_code_issues(self, code: str) -> List[str]:
+    def _analyze_code_issues(self, code: str) -> list[str]:
         """Analyze code for common performance issues."""
         issues = []
 
@@ -311,17 +301,13 @@ class PerformanceLearner:
             issues.append("Poor universe selection")
 
         # Check for potential overfitting
-        magic_numbers = len(re.findall(r'\b\d+\.\d+\b', code))
+        magic_numbers = len(re.findall(r"\b\d+\.\d+\b", code))
         if magic_numbers > 10:
             issues.append("Too many magic numbers (potential overfitting)")
 
         return issues
 
-    def _generate_recommendations(
-        self,
-        issues: List[str],
-        strategy_type: str
-    ) -> List[str]:
+    def _generate_recommendations(self, issues: list[str], strategy_type: str) -> list[str]:
         """Generate recommendations based on identified issues."""
         recommendations = []
 

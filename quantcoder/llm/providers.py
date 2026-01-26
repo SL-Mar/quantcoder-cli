@@ -1,9 +1,8 @@
 """LLM provider abstraction for multiple backends."""
 
-import os
 import logging
+import os
 from abc import ABC, abstractmethod
-from typing import List, Dict, Optional, AsyncIterator
 
 logger = logging.getLogger(__name__)
 
@@ -14,10 +13,10 @@ class LLMProvider(ABC):
     @abstractmethod
     async def chat(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         temperature: float = 0.7,
         max_tokens: int = 2000,
-        **kwargs
+        **kwargs,
     ) -> str:
         """
         Generate chat completion.
@@ -47,11 +46,7 @@ class LLMProvider(ABC):
 class AnthropicProvider(LLMProvider):
     """Anthropic (Claude) provider - Sonnet 4.5 for best reasoning."""
 
-    def __init__(
-        self,
-        api_key: str,
-        model: str = "claude-sonnet-4-5-20250929"
-    ):
+    def __init__(self, api_key: str, model: str = "claude-sonnet-4-5-20250929"):
         """
         Initialize Anthropic provider.
 
@@ -61,6 +56,7 @@ class AnthropicProvider(LLMProvider):
         """
         try:
             from anthropic import AsyncAnthropic
+
             self.client = AsyncAnthropic(api_key=api_key)
             self.model = model
             self.logger = logging.getLogger(self.__class__.__name__)
@@ -69,10 +65,10 @@ class AnthropicProvider(LLMProvider):
 
     async def chat(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         temperature: float = 0.7,
         max_tokens: int = 2000,
-        **kwargs
+        **kwargs,
     ) -> str:
         """Generate chat completion with Claude."""
         try:
@@ -81,7 +77,7 @@ class AnthropicProvider(LLMProvider):
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                **kwargs
+                **kwargs,
             )
             return response.content[0].text
         except Exception as e:
@@ -98,11 +94,7 @@ class AnthropicProvider(LLMProvider):
 class MistralProvider(LLMProvider):
     """Mistral provider - Devstral for code generation."""
 
-    def __init__(
-        self,
-        api_key: str,
-        model: str = "devstral-2-123b"
-    ):
+    def __init__(self, api_key: str, model: str = "devstral-2-123b"):
         """
         Initialize Mistral provider.
 
@@ -112,6 +104,7 @@ class MistralProvider(LLMProvider):
         """
         try:
             from mistralai.async_client import MistralAsyncClient
+
             self.client = MistralAsyncClient(api_key=api_key)
             self.model = model
             self.logger = logging.getLogger(self.__class__.__name__)
@@ -120,10 +113,10 @@ class MistralProvider(LLMProvider):
 
     async def chat(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         temperature: float = 0.7,
         max_tokens: int = 2000,
-        **kwargs
+        **kwargs,
     ) -> str:
         """Generate chat completion with Mistral."""
         try:
@@ -132,7 +125,7 @@ class MistralProvider(LLMProvider):
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                **kwargs
+                **kwargs,
             )
             return response.choices[0].message.content
         except Exception as e:
@@ -149,11 +142,7 @@ class MistralProvider(LLMProvider):
 class DeepSeekProvider(LLMProvider):
     """DeepSeek provider - Efficient open-source alternative."""
 
-    def __init__(
-        self,
-        api_key: str,
-        model: str = "deepseek-chat"
-    ):
+    def __init__(self, api_key: str, model: str = "deepseek-chat"):
         """
         Initialize DeepSeek provider.
 
@@ -163,10 +152,8 @@ class DeepSeekProvider(LLMProvider):
         """
         try:
             from openai import AsyncOpenAI
-            self.client = AsyncOpenAI(
-                api_key=api_key,
-                base_url="https://api.deepseek.com"
-            )
+
+            self.client = AsyncOpenAI(api_key=api_key, base_url="https://api.deepseek.com")
             self.model = model
             self.logger = logging.getLogger(self.__class__.__name__)
         except ImportError:
@@ -174,10 +161,10 @@ class DeepSeekProvider(LLMProvider):
 
     async def chat(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         temperature: float = 0.7,
         max_tokens: int = 2000,
-        **kwargs
+        **kwargs,
     ) -> str:
         """Generate chat completion with DeepSeek."""
         try:
@@ -186,7 +173,7 @@ class DeepSeekProvider(LLMProvider):
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                **kwargs
+                **kwargs,
             )
             return response.choices[0].message.content
         except Exception as e:
@@ -203,11 +190,7 @@ class DeepSeekProvider(LLMProvider):
 class OpenAIProvider(LLMProvider):
     """OpenAI provider - GPT-4/GPT-4o fallback."""
 
-    def __init__(
-        self,
-        api_key: str,
-        model: str = "gpt-4o-2024-11-20"
-    ):
+    def __init__(self, api_key: str, model: str = "gpt-4o-2024-11-20"):
         """
         Initialize OpenAI provider.
 
@@ -217,6 +200,7 @@ class OpenAIProvider(LLMProvider):
         """
         try:
             from openai import AsyncOpenAI
+
             self.client = AsyncOpenAI(api_key=api_key)
             self.model = model
             self.logger = logging.getLogger(self.__class__.__name__)
@@ -225,10 +209,10 @@ class OpenAIProvider(LLMProvider):
 
     async def chat(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         temperature: float = 0.7,
         max_tokens: int = 2000,
-        **kwargs
+        **kwargs,
     ) -> str:
         """Generate chat completion with OpenAI."""
         try:
@@ -237,7 +221,7 @@ class OpenAIProvider(LLMProvider):
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                **kwargs
+                **kwargs,
             )
             return response.choices[0].message.content
         except Exception as e:
@@ -258,7 +242,7 @@ class OllamaProvider(LLMProvider):
         self,
         api_key: str = "",  # Not used, kept for interface compatibility
         model: str = "llama3.2",
-        base_url: str = None
+        base_url: str = None,
     ):
         """
         Initialize Ollama provider.
@@ -269,18 +253,16 @@ class OllamaProvider(LLMProvider):
             base_url: Ollama server URL (default: http://localhost:11434)
         """
         self.model = model
-        self.base_url = base_url or os.environ.get(
-            'OLLAMA_BASE_URL', 'http://localhost:11434'
-        )
+        self.base_url = base_url or os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.info(f"Initialized OllamaProvider: {self.base_url}, model={self.model}")
 
     async def chat(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         temperature: float = 0.7,
         max_tokens: int = 2000,
-        **kwargs
+        **kwargs,
     ) -> str:
         """Generate chat completion with Ollama."""
         try:
@@ -293,23 +275,22 @@ class OllamaProvider(LLMProvider):
             "model": self.model,
             "messages": messages,
             "stream": False,
-            "options": {
-                "temperature": temperature,
-                "num_predict": max_tokens
-            }
+            "options": {"temperature": temperature, "num_predict": max_tokens},
         }
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=300)) as response:
+                async with session.post(
+                    url, json=payload, timeout=aiohttp.ClientTimeout(total=300)
+                ) as response:
                     response.raise_for_status()
                     result = await response.json()
 
                     # Extract response text
-                    if 'message' in result and 'content' in result['message']:
-                        text = result['message']['content']
-                    elif 'response' in result:
-                        text = result['response']
+                    if "message" in result and "content" in result["message"]:
+                        text = result["message"]["content"]
+                    elif "response" in result:
+                        text = result["response"]
                     else:
                         raise ValueError(f"Unexpected response format: {list(result.keys())}")
 
@@ -317,7 +298,9 @@ class OllamaProvider(LLMProvider):
                     return text.strip()
 
         except aiohttp.ClientConnectorError as e:
-            error_msg = f"Failed to connect to Ollama at {self.base_url}. Is Ollama running? Error: {e}"
+            error_msg = (
+                f"Failed to connect to Ollama at {self.base_url}. Is Ollama running? Error: {e}"
+            )
             self.logger.error(error_msg)
             raise ConnectionError(error_msg) from e
         except aiohttp.ClientResponseError as e:
@@ -359,8 +342,8 @@ class LLMFactory:
         cls,
         provider: str,
         api_key: str = "",
-        model: Optional[str] = None,
-        base_url: Optional[str] = None
+        model: str | None = None,
+        base_url: str | None = None,
     ) -> LLMProvider:
         """
         Create LLM provider instance.
@@ -382,8 +365,7 @@ class LLMFactory:
 
         if provider not in cls.PROVIDERS:
             raise ValueError(
-                f"Unknown provider: {provider}. "
-                f"Available: {list(cls.PROVIDERS.keys())}"
+                f"Unknown provider: {provider}. " f"Available: {list(cls.PROVIDERS.keys())}"
             )
 
         provider_class = cls.PROVIDERS[provider]
@@ -413,11 +395,11 @@ class LLMFactory:
         """
         recommendations = {
             "reasoning": "anthropic",  # Sonnet 4.5 for complex reasoning
-            "coding": "mistral",       # Devstral for code generation
-            "general": "deepseek",     # Cost-effective for general tasks
+            "coding": "mistral",  # Devstral for code generation
+            "general": "deepseek",  # Cost-effective for general tasks
             "coordination": "anthropic",  # Sonnet for orchestration
-            "risk": "anthropic",       # Sonnet for nuanced risk decisions
-            "local": "ollama",         # Local LLM, no API key required
+            "risk": "anthropic",  # Sonnet for nuanced risk decisions
+            "local": "ollama",  # Local LLM, no API key required
         }
 
         return recommendations.get(task_type, "anthropic")
