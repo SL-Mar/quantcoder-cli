@@ -1,10 +1,15 @@
-# QuantCoder 2.1.0
+# QuantCoder 2.0.0
 
-[![Version](https://img.shields.io/badge/version-2.1.0-green)](https://github.com/SL-Mar/quantcoder-cli)
+[![Version](https://img.shields.io/badge/version-2.0.0-green)](https://github.com/SL-Mar/quantcoder-cli)
 [![Python](https://img.shields.io/badge/python-3.10+-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
 > **AI-powered CLI for generating QuantConnect trading algorithms from research articles**
+
+> **Note**
+> This version (v2.0.0) has not been systematically tested yet.
+> It represents a complete architectural rewrite from the legacy v1.x codebase.
+> Use with caution and report any issues.
 
 Features: Multi-agent system, AlphaEvolve-inspired evolution, autonomous learning, MCP integration.
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "quantcoder-cli"
-version = "2.1.0-alpha.1"
+version = "2.0.0"
 description = "A modern CLI coding assistant for generating QuantConnect trading algorithms from research articles with AlphaEvolve-inspired evolution"
 readme = "README.md"
 requires-python = ">=3.10"
