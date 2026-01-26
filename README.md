@@ -9,7 +9,6 @@
 **This is QuantCoder 2.0 (GAMMA)** - The primary development branch with autonomous mode & library builder
 
 **Want the original stable version?** → [QuantCoder 1.0 (main branch)](https://github.com/SL-Mar/quantcoder-cli/tree/main)
-**Want improved legacy?** → [QuantCoder 1.1 (beta branch)](https://github.com/SL-Mar/quantcoder-cli/tree/beta)
 
 📖 **[Version Comparison Guide](docs/VERSION_COMPARISON.md)** | **[Branch Map](docs/BRANCH_VERSION_MAP.md)**
 
@@ -480,18 +479,6 @@ These options can be used with any command:
 quantcoder --verbose search "algorithmic trading"
 quantcoder --config my_config.toml generate 1
 ```
-
----
-
-## 📚 Legacy Version (v0.3)
-
-For the original version with OpenAI SDK v0.28:
-
-```bash
-git checkout quantcoder-legacy
-```
-
-See legacy documentation for setup instructions.
 
 ---
 
