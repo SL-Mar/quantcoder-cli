@@ -358,8 +358,9 @@ class LLMFactory:
     def create(
         cls,
         provider: str,
-        api_key: str,
-        model: Optional[str] = None
+        api_key: str = "",
+        model: Optional[str] = None,
+        base_url: Optional[str] = None
     ) -> LLMProvider:
         """
         Create LLM provider instance.
@@ -368,13 +369,14 @@ class LLMFactory:
             provider: Provider name (anthropic, mistral, deepseek, openai, ollama)
             api_key: API key for the provider (not required for ollama)
             model: Optional model identifier (uses default if not specified)
+            base_url: Optional base URL for local providers (ollama)
 
         Returns:
             LLMProvider instance
 
         Example:
             >>> llm = LLMFactory.create("anthropic", api_key="sk-...")
-            >>> llm = LLMFactory.create("ollama", api_key="", model="llama3.2")
+            >>> llm = LLMFactory.create("ollama", model="llama3.2")
         """
         provider = provider.lower()
 
@@ -386,6 +388,15 @@ class LLMFactory:
 
         provider_class = cls.PROVIDERS[provider]
         model = model or cls.DEFAULT_MODELS[provider]
+
+        # Ollama doesn't require API key
+        if provider == "ollama":
+            if base_url:
+                return provider_class(model=model, base_url=base_url)
+            return provider_class(model=model)
+
+        if not api_key:
+            raise ValueError(f"API key required for provider: {provider}")
 
         return provider_class(api_key=api_key, model=model)
 
