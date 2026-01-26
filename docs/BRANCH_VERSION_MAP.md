@@ -1,16 +1,16 @@
 # QuantCoder-CLI Branch & Version Map
 
-**Last Updated**: 2025-01-15 (**RESTRUCTURED**)
+**Last Updated**: 2026-01-26 (**DEFAULT BRANCH: GAMMA**)
 **Repository**: SL-Mar/quantcoder-cli
 
 ## ⚡ Quick Reference
 
-After restructuring, QuantCoder now has **3 active branches**:
+QuantCoder has **3 active branches** with **gamma as the default**:
 
 ```
-main  (1.0)   → Stable production
+gamma (2.0)   → Default branch - Latest development ⭐
+main  (1.0)   → Original stable
 beta  (1.1)   → Improved legacy (testing)
-gamma (2.0)   → Complete rewrite (alpha)
 ```
 
 ---
@@ -19,9 +19,9 @@ gamma (2.0)   → Complete rewrite (alpha)
 
 | Branch | Version | Package | Status | Use Case |
 |--------|---------|---------|--------|----------|
-| **main** | 1.0.0 | `quantcli` | 🟢 Stable | Production, simple workflows |
+| **gamma** ⭐ | 2.0.0-alpha.1 | `quantcoder` | 🚀 Default | Autonomous mode, library builder |
+| **main** | 1.0.0 | `quantcli` | 🟢 Legacy Stable | Production, simple workflows |
 | **beta** | 1.1.0-beta.1 | `quantcli` | 🧪 Testing | Improved legacy, not tested |
-| **gamma** | 2.0.0-alpha.1 | `quantcoder` | 🚀 Alpha | Autonomous mode, library builder |
 
 **Archived**: `feature/enhanced-help-command`, `revert-3-feature/enhanced-help-command`
 

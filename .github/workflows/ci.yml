@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, master, develop, gamma, beta, "feature/*", "claude/*"]
+    branches: [gamma, main, master, develop, beta, "feature/*", "claude/*"]
   pull_request:
-    branches: [main, master, develop, gamma, beta]
+    branches: [gamma, main, master, develop, beta]
 
 jobs:
   lint:
