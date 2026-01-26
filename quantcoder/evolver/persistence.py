@@ -260,13 +260,15 @@ class EvolutionState:
     def get_summary(self) -> str:
         """Get a human-readable summary of the evolution state."""
         best = self.elite_pool.get_best()
+        best_fitness = f"{best.fitness:.4f}" if best and best.fitness is not None else "N/A"
+        best_variant = best.id if best else "N/A"
         return f"""
 Evolution: {self.evolution_id}
 Status: {self.status}
 Generation: {self.current_generation}
 Total Variants: {len(self.all_variants)}
 Elite Pool Size: {len(self.elite_pool.variants)}
-Best Fitness: {best.fitness:.4f if best and best.fitness else 'N/A'}
-Best Variant: {best.id if best else 'N/A'}
+Best Fitness: {best_fitness}
+Best Variant: {best_variant}
 Stagnation: {self.generations_without_improvement} generations
 """

@@ -1,5 +1,6 @@
 """Tests for the quantcoder.llm.providers module."""
 
+import sys
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -11,6 +12,31 @@ from quantcoder.llm.providers import (
     OpenAIProvider,
     OllamaProvider,
     LLMFactory,
+)
+
+
+# Helper to check if SDK is available
+def sdk_available(sdk_name):
+    """Check if an SDK is available."""
+    try:
+        __import__(sdk_name)
+        return True
+    except ImportError:
+        return False
+
+
+# Skip markers for missing SDKs
+requires_anthropic = pytest.mark.skipif(
+    not sdk_available('anthropic'),
+    reason="anthropic SDK not installed"
+)
+requires_mistral = pytest.mark.skipif(
+    not sdk_available('mistralai'),
+    reason="mistralai SDK not installed"
+)
+requires_openai = pytest.mark.skipif(
+    not sdk_available('openai'),
+    reason="openai SDK not installed"
 )
 
 
@@ -88,6 +114,7 @@ class TestLLMFactory:
         assert LLMFactory.get_recommended_for_task("unknown") == "anthropic"
 
 
+@requires_anthropic
 class TestAnthropicProvider:
     """Tests for AnthropicProvider class."""
 
@@ -138,6 +165,7 @@ class TestAnthropicProvider:
         assert "API Error" in str(exc_info.value)
 
 
+@requires_mistral
 class TestMistralProvider:
     """Tests for MistralProvider class."""
 
@@ -172,6 +200,7 @@ class TestMistralProvider:
         assert result == "Mistral response"
 
 
+@requires_openai
 class TestDeepSeekProvider:
     """Tests for DeepSeekProvider class."""
 
@@ -204,6 +233,7 @@ class TestDeepSeekProvider:
         assert result == "DeepSeek response"
 
 
+@requires_openai
 class TestOpenAIProvider:
     """Tests for OpenAIProvider class."""
 

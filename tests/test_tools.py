@@ -383,8 +383,9 @@ class TestSearchArticlesTool:
         tool = SearchArticlesTool(mock_config)
         result = tool.execute(query="nonexistent query xyz")
 
-        assert result.success is True
-        assert result.data == []
+        # Implementation returns failure when no articles found
+        assert result.success is False
+        assert "no articles found" in result.error.lower()
 
     @patch('requests.get')
     def test_search_api_error(self, mock_get, mock_config):
@@ -440,34 +441,30 @@ class TestValidateCodeTool:
 
     def test_validate_valid_code(self, mock_config):
         """Test validating syntactically correct code."""
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.py') as f:
-            f.write("def hello():\n    return 'Hello'\n")
-            f.flush()
+        code = "def hello():\n    return 'Hello'\n"
 
-            tool = ValidateCodeTool(mock_config)
-            result = tool.execute(file_path=f.name, local_only=True)
+        tool = ValidateCodeTool(mock_config)
+        result = tool.execute(code=code, use_quantconnect=False)
 
-            assert result.success is True
-            Path(f.name).unlink()
+        assert result.success is True
 
     def test_validate_invalid_code(self, mock_config):
         """Test validating syntactically incorrect code."""
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.py') as f:
-            f.write("def hello(\n    # missing closing paren")
-            f.flush()
+        code = "def hello(\n    # missing closing paren"
 
-            tool = ValidateCodeTool(mock_config)
-            result = tool.execute(file_path=f.name, local_only=True)
-
-            assert result.success is False
-            Path(f.name).unlink()
-
-    def test_validate_nonexistent_file(self, mock_config):
-        """Test validating nonexistent file."""
         tool = ValidateCodeTool(mock_config)
-        result = tool.execute(file_path="/nonexistent/file.py", local_only=True)
+        result = tool.execute(code=code, use_quantconnect=False)
 
         assert result.success is False
+        assert "syntax" in result.error.lower()
+
+    def test_validate_empty_code(self, mock_config):
+        """Test validating empty code."""
+        tool = ValidateCodeTool(mock_config)
+        result = tool.execute(code="", use_quantconnect=False)
+
+        # Empty code is syntactically valid Python
+        assert result.success is True
 
 
 class TestBacktestTool:

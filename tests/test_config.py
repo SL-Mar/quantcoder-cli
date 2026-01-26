@@ -178,7 +178,8 @@ class TestConfig:
             config = Config.load(config_path)
             assert config.model.provider == "anthropic"
 
-    def test_load_api_key_from_env(self, monkeypatch):
+    @patch('dotenv.load_dotenv')
+    def test_load_api_key_from_env(self, mock_load_dotenv, monkeypatch):
         """Test loading API key from environment."""
         monkeypatch.setenv("OPENAI_API_KEY", "test-api-key")
 
@@ -190,7 +191,8 @@ class TestConfig:
             assert api_key == "test-api-key"
             assert config.api_key == "test-api-key"
 
-    def test_load_api_key_raises_without_key(self, monkeypatch):
+    @patch('dotenv.load_dotenv')
+    def test_load_api_key_raises_without_key(self, mock_load_dotenv, monkeypatch):
         """Test that missing API key raises error."""
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
@@ -213,7 +215,8 @@ class TestConfig:
             assert env_path.exists()
             assert "my-secret-key" in env_path.read_text()
 
-    def test_has_quantconnect_credentials(self, monkeypatch):
+    @patch('dotenv.load_dotenv')
+    def test_has_quantconnect_credentials(self, mock_load_dotenv, monkeypatch):
         """Test checking for QuantConnect credentials."""
         monkeypatch.setenv("QUANTCONNECT_API_KEY", "qc-key")
         monkeypatch.setenv("QUANTCONNECT_USER_ID", "qc-user")
@@ -224,7 +227,8 @@ class TestConfig:
 
             assert config.has_quantconnect_credentials() is True
 
-    def test_has_quantconnect_credentials_missing(self, monkeypatch):
+    @patch('dotenv.load_dotenv')
+    def test_has_quantconnect_credentials_missing(self, mock_load_dotenv, monkeypatch):
         """Test missing QuantConnect credentials."""
         monkeypatch.delenv("QUANTCONNECT_API_KEY", raising=False)
         monkeypatch.delenv("QUANTCONNECT_USER_ID", raising=False)
@@ -235,7 +239,8 @@ class TestConfig:
 
             assert config.has_quantconnect_credentials() is False
 
-    def test_load_quantconnect_credentials(self, monkeypatch):
+    @patch('dotenv.load_dotenv')
+    def test_load_quantconnect_credentials(self, mock_load_dotenv, monkeypatch):
         """Test loading QuantConnect credentials."""
         monkeypatch.setenv("QUANTCONNECT_API_KEY", "qc-api-key")
         monkeypatch.setenv("QUANTCONNECT_USER_ID", "qc-user-id")
@@ -248,7 +253,8 @@ class TestConfig:
             assert api_key == "qc-api-key"
             assert user_id == "qc-user-id"
 
-    def test_load_quantconnect_credentials_raises_without_creds(self, monkeypatch):
+    @patch('dotenv.load_dotenv')
+    def test_load_quantconnect_credentials_raises_without_creds(self, mock_load_dotenv, monkeypatch):
         """Test that missing QC credentials raises error."""
         monkeypatch.delenv("QUANTCONNECT_API_KEY", raising=False)
         monkeypatch.delenv("QUANTCONNECT_USER_ID", raising=False)

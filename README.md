@@ -3,13 +3,9 @@
 [![Version](https://img.shields.io/badge/version-2.0.0-green)](https://github.com/SL-Mar/quantcoder-cli)
 [![Python](https://img.shields.io/badge/python-3.10+-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
+[![Docker](https://img.shields.io/badge/docker-available-blue)](https://github.com/SL-Mar/quantcoder-cli)
 
 > **AI-powered CLI for generating QuantConnect trading algorithms from research articles**
-
-> **Note**
-> This version (v2.0.0) has not been systematically tested yet.
-> It represents a complete architectural rewrite from the legacy v1.x codebase.
-> Use with caution and report any issues.
 
 Features: Multi-agent system, AlphaEvolve-inspired evolution, autonomous learning, MCP integration.
 
@@ -55,6 +51,23 @@ pip install -e .
 
 # Download SpaCy model
 python -m spacy download en_core_web_sm
+```
+
+### Docker Installation
+
+```bash
+# Build the Docker image
+docker build -t quantcoder-cli:2.0.0 .
+
+# Run with environment variables
+docker run -it --rm \
+  -e OPENAI_API_KEY=your-key \
+  -e ANTHROPIC_API_KEY=your-key \
+  -v quantcoder-config:/home/quantcoder/.quantcoder \
+  quantcoder-cli:2.0.0
+
+# Or use docker-compose
+docker-compose run quantcoder
 ```
 
 ### First Run

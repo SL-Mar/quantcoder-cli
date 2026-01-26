@@ -135,12 +135,19 @@ class TestQuantConnectMCPClient:
     @pytest.mark.asyncio
     async def test_get_api_docs_with_topic(self, client):
         """Test getting API docs for known topic."""
-        with patch('aiohttp.ClientSession') as mock_session:
+        with patch('aiohttp.ClientSession') as mock_session_cls:
+            # Create proper async context manager mocks
             mock_response = MagicMock()
             mock_response.status = 200
-            mock_context = AsyncMock()
-            mock_context.__aenter__.return_value = mock_response
-            mock_session.return_value.__aenter__.return_value.get.return_value = mock_context
+
+            # Mock for session.get() context manager
+            mock_get_cm = AsyncMock()
+            mock_get_cm.__aenter__.return_value = mock_response
+
+            # Mock for ClientSession context manager
+            mock_session = AsyncMock()
+            mock_session.get.return_value = mock_get_cm
+            mock_session_cls.return_value.__aenter__.return_value = mock_session
 
             result = await client.get_api_docs("indicators")
 
@@ -149,12 +156,19 @@ class TestQuantConnectMCPClient:
     @pytest.mark.asyncio
     async def test_get_api_docs_unknown_topic(self, client):
         """Test getting API docs for unknown topic."""
-        with patch('aiohttp.ClientSession') as mock_session:
+        with patch('aiohttp.ClientSession') as mock_session_cls:
+            # Create proper async context manager mocks
             mock_response = MagicMock()
             mock_response.status = 200
-            mock_context = AsyncMock()
-            mock_context.__aenter__.return_value = mock_response
-            mock_session.return_value.__aenter__.return_value.get.return_value = mock_context
+
+            # Mock for session.get() context manager
+            mock_get_cm = AsyncMock()
+            mock_get_cm.__aenter__.return_value = mock_response
+
+            # Mock for ClientSession context manager
+            mock_session = AsyncMock()
+            mock_session.get.return_value = mock_get_cm
+            mock_session_cls.return_value.__aenter__.return_value = mock_session
 
             result = await client.get_api_docs("unknown topic xyz")
 

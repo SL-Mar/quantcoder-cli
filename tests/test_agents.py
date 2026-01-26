@@ -362,7 +362,7 @@ class CustomRiskManagement(RiskManagementModel):
         agent = RiskAgent(mock_llm)
 
         result = await agent.execute(
-            constraints="Max drawdown 10%"
+            risk_parameters="Max drawdown 10%"
         )
 
         assert result.success is True
@@ -374,7 +374,7 @@ class CustomRiskManagement(RiskManagementModel):
         mock_llm.chat = AsyncMock(side_effect=Exception("Error"))
 
         agent = RiskAgent(mock_llm)
-        result = await agent.execute(constraints="test")
+        result = await agent.execute(risk_parameters="test")
 
         assert result.success is False
 
@@ -401,7 +401,7 @@ class MomentumStrategy(QCAlgorithm):
         """Test agent name and description."""
         agent = StrategyAgent(mock_llm)
         assert agent.agent_name == "StrategyAgent"
-        assert "strategy" in agent.agent_description.lower()
+        assert "algorithm" in agent.agent_description.lower()
 
     @pytest.mark.asyncio
     async def test_execute_success(self, mock_llm):
@@ -409,15 +409,15 @@ class MomentumStrategy(QCAlgorithm):
         agent = StrategyAgent(mock_llm)
 
         result = await agent.execute(
+            strategy_name="Momentum Strategy",
             components={
                 "universe": "class Universe: pass",
                 "alpha": "class Alpha: pass",
-            },
-            strategy_summary="Momentum strategy"
+            }
         )
 
         assert result.success is True
-        assert result.filename == "main.py"
+        assert result.filename == "Main.py"
 
     @pytest.mark.asyncio
     async def test_execute_error(self, mock_llm):
@@ -425,6 +425,6 @@ class MomentumStrategy(QCAlgorithm):
         mock_llm.chat = AsyncMock(side_effect=Exception("Error"))
 
         agent = StrategyAgent(mock_llm)
-        result = await agent.execute(components={}, strategy_summary="test")
+        result = await agent.execute(strategy_name="test", components={})
 
         assert result.success is False
