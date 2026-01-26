@@ -1,6 +1,6 @@
 # QuantCoder Version Comparison Guide
 
-**Last Updated:** 2025-01-15
+**Last Updated:** 2026-01-26 (**DEFAULT BRANCH: GAMMA**)
 **Repository:** SL-Mar/quantcoder-cli
 
 This guide helps you choose the right version of QuantCoder for your needs.
@@ -10,15 +10,14 @@ This guide helps you choose the right version of QuantCoder for your needs.
 ## 🎯 Quick Decision Tree
 
 ```
-Do you need the latest cutting-edge features?
-    └─ YES → QuantCoder 2.0 (gamma branch) ⭐
-    └─ NO ↓
+Start here → QuantCoder 2.0 (gamma branch - DEFAULT) ⭐
+    └─ Want simpler legacy versions? ↓
 
 Do you want improved legacy with testing?
     └─ YES → QuantCoder 1.1 (beta branch)
     └─ NO ↓
 
-Do you need stable, proven production CLI?
+Do you need the original stable production CLI?
     └─ YES → QuantCoder 1.0 (main branch)
 ```
 
@@ -28,19 +27,19 @@ Do you need stable, proven production CLI?
 
 | Version | Branch | Package | Status | Best For |
 |---------|--------|---------|--------|----------|
-| **1.0** | `main` | `quantcli` | ✅ Stable | Production, simple workflows |
+| **2.0** ⭐ | `gamma` | `quantcoder` | 🚀 Default | Latest development, autonomous features |
+| **1.0** | `main` | `quantcli` | ✅ Legacy Stable | Original production, simple workflows |
 | **1.1** | `beta` | `quantcli` | 🧪 Testing | Improved legacy, not yet tested |
-| **2.0** | `gamma` | `quantcoder` | 🚀 Alpha | Cutting edge, autonomous features |
 
 ---
 
 ## 🔍 Detailed Comparison
 
-### QuantCoder 1.0 (Stable)
+### QuantCoder 1.0 (Legacy Stable)
 
 **Branch:** `main`
 **Package:** `quantcli`
-**Status:** ✅ Production stable
+**Status:** ✅ Original production version
 **First Released:** November 2023
 
 #### Installation
@@ -137,11 +136,11 @@ pip install -e .
 
 ---
 
-### QuantCoder 2.0 (Alpha)
+### QuantCoder 2.0 (Default Branch)
 
-**Branch:** `gamma`
+**Branch:** `gamma` (DEFAULT) ⭐
 **Package:** `quantcoder` (NEW - different from quantcli!)
-**Status:** 🚀 Alpha development
+**Status:** 🚀 Primary development branch
 **Version:** 2.0.0-alpha.1
 
 #### Installation
@@ -322,9 +321,16 @@ quantcoder library export
 
 ## 🎓 Recommendations
 
-### For Production Use
+### For Latest Features (Default)
+**→ Use 2.0 (gamma - DEFAULT)**
+- Autonomous learning
+- Library building
+- Multi-agent system
+- Cutting edge features
+
+### For Legacy Production Use
 **→ Use 1.0 (main)**
-- Stable and proven
+- Original stable version
 - Low cost
 - Simple workflows
 - Known limitations
@@ -336,18 +342,11 @@ quantcoder library export
 - Security improvements
 - Help test before release!
 
-### For Advanced Features
-**→ Use 2.0 (gamma)**
-- Autonomous learning
-- Library building
-- Multi-agent system
-- Cutting edge
-
 ### For Beginners
-**→ Start with 1.0, upgrade later**
-1. Learn with 1.0 (simple)
-2. Try 1.1 (improvements)
-3. Explore 2.0 (advanced)
+**→ Start with 2.0, explore legacy if needed**
+1. Start with 2.0 (default, most features)
+2. Try 1.1 or 1.0 if you need simplicity
+3. Learn at your own pace
 
 ---
 
@@ -407,7 +406,7 @@ pip install -e .
 - Advanced features → 2.0
 
 ### Q: Is 2.0 production-ready?
-**A:** Alpha status - architecture is solid, but testing needed. Use with caution.
+**A:** It's the default development branch with solid architecture. While marked as alpha for cautious users, it represents the latest and most advanced features.
 
 ### Q: Will 1.0 be maintained?
 **A:** Yes, as stable legacy version. Critical bugs will be fixed.
@@ -419,26 +418,26 @@ pip install -e .
 **A:** Specify version number in issues: "Bug in 1.0" vs "Bug in 2.0"
 
 ### Q: When will 2.0 be stable?
-**A:** After testing phase. Help us test to speed this up!
+**A:** 2.0 is already the default branch. The version numbering indicates development stage, but it's the primary branch for active development and new features.
 
 ---
 
 ## 🎯 Summary Table
 
-| Criteria | Choose 1.0 | Choose 1.1 | Choose 2.0 |
+| Criteria | Choose 2.0 | Choose 1.1 | Choose 1.0 |
 |----------|------------|------------|------------|
-| Stability needed | ✅ | ⚠️ | ❌ |
-| Want latest features | ❌ | ❌ | ✅ |
-| Low cost priority | ✅ | ✅ | ❌ |
-| Simple workflows | ✅ | ✅ | ❌ |
-| Complex workflows | ❌ | ❌ | ✅ |
-| Autonomous generation | ❌ | ❌ | ✅ |
-| Library building | ❌ | ❌ | ✅ |
-| Production use | ✅ | ⚠️ | ⚠️ |
+| Default choice | ✅ | ❌ | ❌ |
+| Latest features | ✅ | ❌ | ❌ |
+| Legacy stability | ⚠️ | ⚠️ | ✅ |
+| Simple workflows | ⚠️ | ✅ | ✅ |
+| Complex workflows | ✅ | ❌ | ❌ |
+| Autonomous generation | ✅ | ❌ | ❌ |
+| Library building | ✅ | ❌ | ❌ |
+| Active development | ✅ | ⚠️ | ❌ |
 
 ---
 
 **Need help choosing?** Open an issue with your use case!
 
-**Last Updated:** 2025-01-15
+**Last Updated:** 2026-01-26 (**DEFAULT BRANCH: GAMMA**)
 **Maintained by:** SL-MAR

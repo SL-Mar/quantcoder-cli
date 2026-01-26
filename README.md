@@ -6,9 +6,9 @@
 
 > **AI-powered CLI for generating QuantConnect trading algorithms from research articles**
 
-⚠️ **This is the GAMMA branch (2.0.0-alpha.1)** - Cutting edge with autonomous mode & library builder
+**This is QuantCoder 2.0 (GAMMA)** - The primary development branch with autonomous mode & library builder
 
-**Looking for stable version?** → [QuantCoder 1.0 (main branch)](https://github.com/SL-Mar/quantcoder-cli/tree/main)
+**Want the original stable version?** → [QuantCoder 1.0 (main branch)](https://github.com/SL-Mar/quantcoder-cli/tree/main)
 **Want improved legacy?** → [QuantCoder 1.1 (beta branch)](https://github.com/SL-Mar/quantcoder-cli/tree/beta)
 
 📖 **[Version Comparison Guide](docs/VERSION_COMPARISON.md)** | **[Branch Map](docs/BRANCH_VERSION_MAP.md)**
