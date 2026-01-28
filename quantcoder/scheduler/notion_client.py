@@ -1,0 +1,433 @@
+"""Notion integration client for publishing strategy articles."""
+
+import os
+import logging
+from typing import Optional, Dict, Any, List
+from dataclasses import dataclass
+from datetime import datetime
+
+import requests
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class NotionPage:
+    """Represents a Notion page."""
+    id: str
+    title: str
+    url: str
+    created_time: str
+
+
+@dataclass
+class StrategyArticle:
+    """Strategy article content for Notion."""
+    title: str
+    paper_title: str
+    paper_url: str
+    paper_authors: List[str]
+    strategy_summary: str
+    strategy_type: str
+    backtest_results: Dict[str, Any]
+    code_snippet: Optional[str] = None
+    quantconnect_project_url: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+    def to_notion_blocks(self) -> List[Dict]:
+        """Convert article to Notion block format."""
+        blocks = []
+
+        # Header with paper info
+        blocks.append({
+            "object": "block",
+            "type": "callout",
+            "callout": {
+                "rich_text": [{"type": "text", "text": {"content": f"Based on: {self.paper_title}"}}],
+                "icon": {"type": "emoji", "emoji": "📄"},
+                "color": "blue_background"
+            }
+        })
+
+        # Paper link
+        if self.paper_url:
+            blocks.append({
+                "object": "block",
+                "type": "bookmark",
+                "bookmark": {"url": self.paper_url}
+            })
+
+        # Strategy Summary heading
+        blocks.append({
+            "object": "block",
+            "type": "heading_2",
+            "heading_2": {
+                "rich_text": [{"type": "text", "text": {"content": "Strategy Summary"}}]
+            }
+        })
+
+        # Strategy summary content
+        blocks.append({
+            "object": "block",
+            "type": "paragraph",
+            "paragraph": {
+                "rich_text": [{"type": "text", "text": {"content": self.strategy_summary}}]
+            }
+        })
+
+        # Backtest Results heading
+        blocks.append({
+            "object": "block",
+            "type": "heading_2",
+            "heading_2": {
+                "rich_text": [{"type": "text", "text": {"content": "Backtest Results"}}]
+            }
+        })
+
+        # Results table
+        results = self.backtest_results
+        metrics_text = f"""Sharpe Ratio: {results.get('sharpe_ratio', 'N/A'):.2f}
+Total Return: {results.get('total_return', 0):.2%}
+Max Drawdown: {results.get('max_drawdown', 0):.2%}
+Win Rate: {results.get('win_rate', 'N/A')}
+Backtest Period: {results.get('start_date', 'N/A')} to {results.get('end_date', 'N/A')}"""
+
+        blocks.append({
+            "object": "block",
+            "type": "code",
+            "code": {
+                "rich_text": [{"type": "text", "text": {"content": metrics_text}}],
+                "language": "plain text"
+            }
+        })
+
+        # QuantConnect link if available
+        if self.quantconnect_project_url:
+            blocks.append({
+                "object": "block",
+                "type": "heading_2",
+                "heading_2": {
+                    "rich_text": [{"type": "text", "text": {"content": "Algorithm"}}]
+                }
+            })
+
+            blocks.append({
+                "object": "block",
+                "type": "callout",
+                "callout": {
+                    "rich_text": [
+                        {"type": "text", "text": {"content": "View on QuantConnect: "}},
+                        {"type": "text", "text": {"content": self.quantconnect_project_url, "link": {"url": self.quantconnect_project_url}}}
+                    ],
+                    "icon": {"type": "emoji", "emoji": "🔗"},
+                    "color": "green_background"
+                }
+            })
+
+        # Code snippet if provided
+        if self.code_snippet:
+            blocks.append({
+                "object": "block",
+                "type": "heading_2",
+                "heading_2": {
+                    "rich_text": [{"type": "text", "text": {"content": "Code Preview"}}]
+                }
+            })
+
+            # Truncate code if too long for Notion (2000 char limit per block)
+            code = self.code_snippet[:1900] + "..." if len(self.code_snippet) > 1900 else self.code_snippet
+
+            blocks.append({
+                "object": "block",
+                "type": "code",
+                "code": {
+                    "rich_text": [{"type": "text", "text": {"content": code}}],
+                    "language": "python"
+                }
+            })
+
+        # Divider
+        blocks.append({"object": "block", "type": "divider", "divider": {}})
+
+        # Footer with metadata
+        blocks.append({
+            "object": "block",
+            "type": "paragraph",
+            "paragraph": {
+                "rich_text": [
+                    {"type": "text", "text": {"content": f"Generated by QuantCoder on {datetime.now().strftime('%Y-%m-%d %H:%M')}", "annotations": {"italic": True, "color": "gray"}}}
+                ]
+            }
+        })
+
+        return blocks
+
+
+class NotionClient:
+    """Client for interacting with Notion API."""
+
+    NOTION_API_VERSION = "2022-06-28"
+    BASE_URL = "https://api.notion.com/v1"
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        database_id: Optional[str] = None
+    ):
+        """Initialize Notion client.
+
+        Args:
+            api_key: Notion integration API key. Falls back to NOTION_API_KEY env var.
+            database_id: Target database ID for strategy articles. Falls back to NOTION_DATABASE_ID env var.
+        """
+        self.api_key = api_key or os.getenv("NOTION_API_KEY")
+        self.database_id = database_id or os.getenv("NOTION_DATABASE_ID")
+
+        if not self.api_key:
+            logger.warning("Notion API key not configured. Set NOTION_API_KEY environment variable.")
+
+        self.headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "Notion-Version": self.NOTION_API_VERSION
+        }
+
+    def is_configured(self) -> bool:
+        """Check if Notion client is properly configured."""
+        return bool(self.api_key and self.database_id)
+
+    def test_connection(self) -> bool:
+        """Test connection to Notion API."""
+        if not self.api_key:
+            return False
+
+        try:
+            response = requests.get(
+                f"{self.BASE_URL}/users/me",
+                headers=self.headers,
+                timeout=10
+            )
+            return response.status_code == 200
+        except Exception as e:
+            logger.error(f"Notion connection test failed: {e}")
+            return False
+
+    def create_strategy_page(
+        self,
+        article: StrategyArticle,
+        parent_database_id: Optional[str] = None
+    ) -> Optional[NotionPage]:
+        """Create a new strategy article page in Notion.
+
+        Args:
+            article: The strategy article to publish
+            parent_database_id: Database to create page in (overrides default)
+
+        Returns:
+            NotionPage if successful, None otherwise
+        """
+        database_id = parent_database_id or self.database_id
+
+        if not database_id:
+            logger.error("No database ID configured for Notion")
+            return None
+
+        if not self.api_key:
+            logger.error("No Notion API key configured")
+            return None
+
+        # Build properties for database page
+        properties = {
+            "Name": {
+                "title": [{"text": {"content": article.title}}]
+            },
+            "Strategy Type": {
+                "select": {"name": article.strategy_type.replace("_", " ").title()}
+            },
+            "Sharpe Ratio": {
+                "number": article.backtest_results.get("sharpe_ratio", 0)
+            },
+            "Status": {
+                "status": {"name": "Published"}
+            }
+        }
+
+        # Add tags if available
+        if article.tags:
+            properties["Tags"] = {
+                "multi_select": [{"name": tag} for tag in article.tags[:5]]
+            }
+
+        # Add paper URL if available
+        if article.paper_url:
+            properties["Paper URL"] = {
+                "url": article.paper_url
+            }
+
+        # Add QuantConnect URL if available
+        if article.quantconnect_project_url:
+            properties["QuantConnect"] = {
+                "url": article.quantconnect_project_url
+            }
+
+        # Create page with content blocks
+        payload = {
+            "parent": {"database_id": database_id},
+            "properties": properties,
+            "children": article.to_notion_blocks()
+        }
+
+        try:
+            response = requests.post(
+                f"{self.BASE_URL}/pages",
+                headers=self.headers,
+                json=payload,
+                timeout=30
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                logger.info(f"Created Notion page: {data['id']}")
+                return NotionPage(
+                    id=data["id"],
+                    title=article.title,
+                    url=data["url"],
+                    created_time=data["created_time"]
+                )
+            else:
+                error_msg = response.json().get("message", response.text)
+                logger.error(f"Failed to create Notion page: {error_msg}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Error creating Notion page: {e}")
+            return None
+
+    def update_page(
+        self,
+        page_id: str,
+        properties: Optional[Dict] = None,
+        content_blocks: Optional[List[Dict]] = None
+    ) -> bool:
+        """Update an existing Notion page.
+
+        Args:
+            page_id: The page ID to update
+            properties: New properties to set
+            content_blocks: New content blocks to append
+
+        Returns:
+            True if successful
+        """
+        if not self.api_key:
+            logger.error("No Notion API key configured")
+            return False
+
+        # Update properties if provided
+        if properties:
+            try:
+                response = requests.patch(
+                    f"{self.BASE_URL}/pages/{page_id}",
+                    headers=self.headers,
+                    json={"properties": properties},
+                    timeout=30
+                )
+                if response.status_code != 200:
+                    logger.error(f"Failed to update page properties: {response.text}")
+                    return False
+            except Exception as e:
+                logger.error(f"Error updating page properties: {e}")
+                return False
+
+        # Append content blocks if provided
+        if content_blocks:
+            try:
+                response = requests.patch(
+                    f"{self.BASE_URL}/blocks/{page_id}/children",
+                    headers=self.headers,
+                    json={"children": content_blocks},
+                    timeout=30
+                )
+                if response.status_code != 200:
+                    logger.error(f"Failed to append blocks: {response.text}")
+                    return False
+            except Exception as e:
+                logger.error(f"Error appending blocks: {e}")
+                return False
+
+        return True
+
+    def get_database_schema(self, database_id: Optional[str] = None) -> Optional[Dict]:
+        """Get the schema/properties of a Notion database.
+
+        Useful for understanding what properties are available.
+        """
+        db_id = database_id or self.database_id
+
+        if not db_id or not self.api_key:
+            return None
+
+        try:
+            response = requests.get(
+                f"{self.BASE_URL}/databases/{db_id}",
+                headers=self.headers,
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.error(f"Failed to get database schema: {response.text}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Error getting database schema: {e}")
+            return None
+
+    def query_database(
+        self,
+        database_id: Optional[str] = None,
+        filter_obj: Optional[Dict] = None,
+        sorts: Optional[List[Dict]] = None,
+        page_size: int = 10
+    ) -> List[Dict]:
+        """Query pages from a Notion database.
+
+        Args:
+            database_id: Database to query
+            filter_obj: Notion filter object
+            sorts: List of sort objects
+            page_size: Number of results to return
+
+        Returns:
+            List of page objects
+        """
+        db_id = database_id or self.database_id
+
+        if not db_id or not self.api_key:
+            return []
+
+        payload = {"page_size": page_size}
+
+        if filter_obj:
+            payload["filter"] = filter_obj
+        if sorts:
+            payload["sorts"] = sorts
+
+        try:
+            response = requests.post(
+                f"{self.BASE_URL}/databases/{db_id}/query",
+                headers=self.headers,
+                json=payload,
+                timeout=30
+            )
+
+            if response.status_code == 200:
+                return response.json().get("results", [])
+            else:
+                logger.error(f"Failed to query database: {response.text}")
+                return []
+
+        except Exception as e:
+            logger.error(f"Error querying database: {e}")
+            return []

@@ -1,0 +1,50 @@
+# QuantCoder CLI - Pinned Dependencies for Reproducible Builds
+# Generated for Python 3.10+
+# Last updated: 2026-01-26
+#
+# Usage:
+#   pip install -r requirements-lock.txt
+#
+# To update:
+#   pip install -e ".[dev]"
+#   pip freeze > requirements-lock.txt
+#   (then manually clean up to keep only direct dependencies)
+
+# Core CLI
+click==8.1.7
+rich==13.7.1
+prompt-toolkit==3.0.43
+InquirerPy==0.3.4
+pygments==2.17.2
+
+# HTTP & Networking
+requests==2.31.0
+aiohttp==3.9.3
+urllib3==2.2.0
+certifi==2024.2.2
+
+# PDF Processing
+pdfplumber==0.10.4
+pdfminer.six==20231228
+
+# NLP
+spacy==3.7.4
+
+# LLM Providers
+openai==1.12.0
+anthropic==0.18.1
+mistralai==0.1.8
+
+# Configuration
+python-dotenv==1.0.1
+toml==0.10.2
+
+# Development dependencies (install with: pip install -e ".[dev]")
+# pytest==7.4.4
+# pytest-cov==4.1.0
+# pytest-mock==3.12.0
+# black==24.1.1
+# ruff==0.2.0
+# mypy==1.8.0
+# pre-commit==3.6.0
+# pip-audit==2.7.0

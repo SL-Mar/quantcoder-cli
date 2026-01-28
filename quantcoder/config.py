@@ -4,7 +4,7 @@ import os
 import stat
 import toml
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from dataclasses import dataclass, field
 import logging
 
@@ -21,6 +21,19 @@ def _get_keyring():
         return keyring
     except ImportError:
         return None
+
+
+@dataclass
+class LoggingConfigSettings:
+    """Configuration for logging system."""
+    level: str = "INFO"  # DEBUG, INFO, WARNING, ERROR
+    format: str = "standard"  # standard, json
+    max_file_size_mb: int = 10
+    backup_count: int = 5
+    rotate_when: str = "midnight"  # midnight, h (hourly), d (daily)
+    alert_on_error: bool = False
+    webhook_url: Optional[str] = None
+    alert_levels: List[str] = field(default_factory=lambda: ["ERROR", "CRITICAL"])
 
 
 @dataclass
@@ -71,6 +84,27 @@ class MultiAgentConfig:
 
 
 @dataclass
+class SchedulerConfig:
+    """Configuration for automated scheduling."""
+    enabled: bool = True
+    interval: str = "daily"  # hourly, daily, weekly
+    hour: int = 6
+    minute: int = 0
+    day_of_week: str = "mon"
+    min_sharpe_ratio: float = 0.5  # Acceptance criteria - algo kept in QC if passes
+    max_strategies_per_run: int = 10  # Batch limit per scheduled run
+    publish_to_notion: bool = True  # Push article for successful algos
+    notion_min_sharpe: float = 0.5  # Same as acceptance criteria
+
+
+@dataclass
+class NotionConfig:
+    """Configuration for Notion integration."""
+    api_key: Optional[str] = None
+    database_id: Optional[str] = None
+
+
+@dataclass
 class Config:
     """Main configuration class for QuantCoder."""
 
@@ -78,6 +112,9 @@ class Config:
     ui: UIConfig = field(default_factory=UIConfig)
     tools: ToolsConfig = field(default_factory=ToolsConfig)
     multi_agent: MultiAgentConfig = field(default_factory=MultiAgentConfig)
+    scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
+    notion: NotionConfig = field(default_factory=NotionConfig)
+    logging: LoggingConfigSettings = field(default_factory=LoggingConfigSettings)
     api_key: Optional[str] = None
     quantconnect_api_key: Optional[str] = None
     quantconnect_user_id: Optional[str] = None
@@ -114,6 +151,8 @@ class Config:
             config.ui = UIConfig(**data["ui"])
         if "tools" in data:
             config.tools = ToolsConfig(**data["tools"])
+        if "logging" in data:
+            config.logging = LoggingConfigSettings(**data["logging"])
 
         return config
 
@@ -139,6 +178,16 @@ class Config:
                 "disabled_tools": self.tools.disabled_tools,
                 "downloads_dir": self.tools.downloads_dir,
                 "generated_code_dir": self.tools.generated_code_dir,
+            },
+            "logging": {
+                "level": self.logging.level,
+                "format": self.logging.format,
+                "max_file_size_mb": self.logging.max_file_size_mb,
+                "backup_count": self.logging.backup_count,
+                "rotate_when": self.logging.rotate_when,
+                "alert_on_error": self.logging.alert_on_error,
+                "webhook_url": self.logging.webhook_url,
+                "alert_levels": self.logging.alert_levels,
             }
         }
 
@@ -252,6 +301,26 @@ class Config:
         user_id = os.getenv("QUANTCONNECT_USER_ID")
         return bool(api_key and user_id)
 
+    def has_tavily_api_key(self) -> bool:
+        """Check if Tavily API key is available for deep search."""
+        from dotenv import load_dotenv
+
+        env_path = self.home_dir / ".env"
+        if env_path.exists():
+            load_dotenv(env_path)
+
+        return bool(os.getenv("TAVILY_API_KEY"))
+
+    def get_tavily_api_key(self) -> Optional[str]:
+        """Get Tavily API key from environment."""
+        from dotenv import load_dotenv
+
+        env_path = self.home_dir / ".env"
+        if env_path.exists():
+            load_dotenv(env_path)
+
+        return os.getenv("TAVILY_API_KEY")
+
     def save_api_key(self, api_key: str, provider: str = "openai"):
         """
         Save API key securely using keyring (preferred) or secure file storage.
@@ -304,3 +373,27 @@ class Config:
             logger.info(f"API key saved to {env_path}")
 
         self.api_key = api_key
+
+    def get_logging_config(self):
+        """Get logging configuration for setup_logging()."""
+        from quantcoder.logging_config import LoggingConfig
+
+        # Check for webhook URL in environment
+        from dotenv import load_dotenv
+        env_path = self.home_dir / ".env"
+        if env_path.exists():
+            load_dotenv(env_path)
+
+        webhook_url = self.logging.webhook_url or os.getenv("QUANTCODER_WEBHOOK_URL")
+
+        return LoggingConfig(
+            level=self.logging.level,
+            format=self.logging.format,
+            log_dir=self.home_dir / "logs",
+            max_file_size_mb=self.logging.max_file_size_mb,
+            backup_count=self.logging.backup_count,
+            rotate_when=self.logging.rotate_when,
+            alert_on_error=self.logging.alert_on_error,
+            webhook_url=webhook_url,
+            alert_levels=self.logging.alert_levels,
+        )

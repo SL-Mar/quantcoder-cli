@@ -285,6 +285,40 @@ class ArticleProcessor:
 
         return {"summary": summary, "code": qc_code}
 
+    def generate_code_from_summary(self, summary_text: str) -> Optional[str]:
+        """Generate QuantConnect code from a pre-existing summary.
+
+        Args:
+            summary_text: The strategy summary text
+
+        Returns:
+            Generated QuantConnect code or None
+        """
+        self.logger.info("Generating code from summary text")
+
+        if not summary_text:
+            self.logger.error("Empty summary provided")
+            return None
+
+        # Generate code
+        qc_code = self.llm_handler.generate_qc_code(summary_text)
+
+        # Refine code if needed
+        attempt = 0
+        while qc_code and not self._validate_code(qc_code) and attempt < self.max_refine_attempts:
+            self.logger.info(f"Attempt {attempt + 1} to refine code")
+            qc_code = self.llm_handler.refine_code(qc_code)
+            if qc_code and self._validate_code(qc_code):
+                self.logger.info("Refined code is valid")
+                break
+            attempt += 1
+
+        if not qc_code or not self._validate_code(qc_code):
+            self.logger.error("Failed to generate valid code after multiple attempts")
+            return "QuantConnect code could not be generated successfully."
+
+        return qc_code
+
     def _validate_code(self, code: str) -> bool:
         """Validate code syntax."""
         try:
