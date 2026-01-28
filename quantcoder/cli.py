@@ -936,5 +936,250 @@ def evolve_export(evolution_id, output):
     console.print(f"[green]Exported best variant to:[/green] {output_path}")
 
 
+# ============================================================================
+# SCHEDULED AUTOMATION COMMANDS
+# ============================================================================
+
+@main.group()
+def schedule():
+    """
+    Automated scheduled strategy generation.
+
+    Run the full pipeline on a schedule: discover papers, generate strategies,
+    backtest, and publish to Notion.
+    """
+    pass
+
+
+@schedule.command(name='start')
+@click.option('--interval', type=click.Choice(['hourly', 'daily', 'weekly']), default='daily',
+              help='Run frequency')
+@click.option('--hour', default=6, type=int, help='Hour to run (for daily/weekly)')
+@click.option('--day', default='mon', help='Day of week (for weekly)')
+@click.option('--queries', help='Comma-separated search queries')
+@click.option('--min-sharpe', default=0.5, type=float, help='Minimum Sharpe ratio')
+@click.option('--max-strategies', default=3, type=int, help='Max strategies per run')
+@click.option('--notion-min-sharpe', default=0.8, type=float, help='Min Sharpe for Notion publishing')
+@click.option('--output', type=click.Path(), help='Output directory')
+@click.option('--run-now', is_flag=True, help='Run immediately before starting schedule')
+@click.pass_context
+def schedule_start(ctx, interval, hour, day, queries, min_sharpe, max_strategies,
+                   notion_min_sharpe, output, run_now):
+    """
+    Start the automated scheduled pipeline.
+
+    This runs the full workflow on a schedule:
+    1. Search for new research papers
+    2. Generate and backtest strategies
+    3. Publish successful strategies to Notion
+    4. Keep algorithms in QuantConnect
+
+    Examples:
+        quantcoder schedule start --interval daily --hour 6
+        quantcoder schedule start --interval weekly --day mon --hour 9
+        quantcoder schedule start --queries "momentum,mean reversion" --run-now
+    """
+    import asyncio
+    from pathlib import Path
+    from quantcoder.scheduler import (
+        ScheduledRunner,
+        ScheduleConfig,
+        ScheduleInterval,
+        AutomatedBacktestPipeline,
+        PipelineConfig,
+    )
+
+    config = ctx.obj['config']
+
+    # Build schedule config
+    interval_map = {
+        'hourly': ScheduleInterval.HOURLY,
+        'daily': ScheduleInterval.DAILY,
+        'weekly': ScheduleInterval.WEEKLY,
+    }
+
+    schedule_config = ScheduleConfig(
+        interval=interval_map[interval],
+        hour=hour,
+        day_of_week=day,
+    )
+
+    # Build pipeline config
+    search_queries = queries.split(',') if queries else None
+    output_dir = Path(output) if output else None
+
+    pipeline_config = PipelineConfig(
+        min_sharpe_ratio=min_sharpe,
+        max_strategies_per_run=max_strategies,
+        notion_min_sharpe=notion_min_sharpe,
+    )
+
+    if search_queries:
+        pipeline_config.search_queries = [q.strip() for q in search_queries]
+    if output_dir:
+        pipeline_config.output_dir = output_dir
+
+    # Create pipeline and runner
+    pipeline = AutomatedBacktestPipeline(config=config, pipeline_config=pipeline_config)
+
+    async def run_pipeline():
+        result = await pipeline.run()
+        return {
+            "strategies_generated": result.strategies_generated,
+            "strategies_published": result.strategies_published,
+        }
+
+    runner = ScheduledRunner(
+        pipeline_func=run_pipeline,
+        schedule_config=schedule_config,
+    )
+
+    try:
+        if run_now:
+            console.print("[cyan]Running pipeline immediately...[/cyan]")
+            asyncio.run(runner.run_once())
+
+        asyncio.run(runner.run_forever())
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Scheduler stopped by user[/yellow]")
+
+
+@schedule.command(name='run')
+@click.option('--queries', help='Comma-separated search queries')
+@click.option('--min-sharpe', default=0.5, type=float, help='Minimum Sharpe ratio')
+@click.option('--max-strategies', default=3, type=int, help='Max strategies per run')
+@click.option('--output', type=click.Path(), help='Output directory')
+@click.pass_context
+def schedule_run(ctx, queries, min_sharpe, max_strategies, output):
+    """
+    Run the automated pipeline once (no scheduling).
+
+    Good for testing or manual runs.
+
+    Examples:
+        quantcoder schedule run
+        quantcoder schedule run --queries "factor investing" --min-sharpe 1.0
+    """
+    import asyncio
+    from pathlib import Path
+    from quantcoder.scheduler import AutomatedBacktestPipeline, PipelineConfig
+
+    config = ctx.obj['config']
+
+    # Build pipeline config
+    search_queries = queries.split(',') if queries else None
+    output_dir = Path(output) if output else None
+
+    pipeline_config = PipelineConfig(
+        min_sharpe_ratio=min_sharpe,
+        max_strategies_per_run=max_strategies,
+    )
+
+    if search_queries:
+        pipeline_config.search_queries = [q.strip() for q in search_queries]
+    if output_dir:
+        pipeline_config.output_dir = output_dir
+
+    pipeline = AutomatedBacktestPipeline(config=config, pipeline_config=pipeline_config)
+
+    try:
+        asyncio.run(pipeline.run())
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Pipeline stopped by user[/yellow]")
+
+
+@schedule.command(name='status')
+def schedule_status():
+    """
+    Show scheduler status and run history.
+    """
+    import json
+    from pathlib import Path
+
+    state_file = Path.home() / ".quantcoder" / "scheduler_state.json"
+
+    if not state_file.exists():
+        console.print("[yellow]No scheduler runs recorded yet.[/yellow]")
+        console.print("[dim]Run 'quantcoder schedule start' to begin.[/dim]")
+        return
+
+    with open(state_file, 'r') as f:
+        state = json.load(f)
+
+    from rich.table import Table
+
+    table = Table(title="Scheduler Statistics")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", style="green")
+
+    table.add_row("Total Runs", str(state.get('total_runs', 0)))
+    table.add_row("Successful Runs", str(state.get('successful_runs', 0)))
+    table.add_row("Failed Runs", str(state.get('failed_runs', 0)))
+    table.add_row("Strategies Generated", str(state.get('strategies_generated', 0)))
+    table.add_row("Strategies Published", str(state.get('strategies_published', 0)))
+    table.add_row("Last Run", state.get('last_run_time', 'Never'))
+    table.add_row("Last Run Success", 'Yes' if state.get('last_run_success', True) else 'No')
+
+    console.print(table)
+
+
+@schedule.command(name='config')
+@click.option('--notion-key', help='Set Notion API key')
+@click.option('--notion-db', help='Set Notion database ID')
+@click.option('--show', is_flag=True, help='Show current configuration')
+def schedule_config(notion_key, notion_db, show):
+    """
+    Configure scheduler settings (Notion integration, etc.)
+
+    Examples:
+        quantcoder schedule config --show
+        quantcoder schedule config --notion-key secret_xxx --notion-db abc123
+    """
+    import os
+    from pathlib import Path
+
+    env_file = Path.home() / ".quantcoder" / ".env"
+
+    if show:
+        console.print("\n[bold cyan]Scheduler Configuration[/bold cyan]\n")
+
+        # Check Notion settings
+        notion_key_set = bool(os.getenv('NOTION_API_KEY'))
+        notion_db_set = bool(os.getenv('NOTION_DATABASE_ID'))
+
+        console.print(f"NOTION_API_KEY: {'[green]Set[/green]' if notion_key_set else '[yellow]Not set[/yellow]'}")
+        console.print(f"NOTION_DATABASE_ID: {'[green]Set[/green]' if notion_db_set else '[yellow]Not set[/yellow]'}")
+
+        console.print(f"\n[dim]Environment file: {env_file}[/dim]")
+        return
+
+    if not notion_key and not notion_db:
+        console.print("[yellow]No configuration options provided. Use --show to see current config.[/yellow]")
+        return
+
+    # Load existing env file
+    env_vars = {}
+    if env_file.exists():
+        from dotenv import dotenv_values
+        env_vars = dict(dotenv_values(env_file))
+
+    # Update values
+    if notion_key:
+        env_vars['NOTION_API_KEY'] = notion_key
+        console.print("[green]Set NOTION_API_KEY[/green]")
+
+    if notion_db:
+        env_vars['NOTION_DATABASE_ID'] = notion_db
+        console.print("[green]Set NOTION_DATABASE_ID[/green]")
+
+    # Write back
+    env_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(env_file, 'w') as f:
+        for key, value in env_vars.items():
+            f.write(f"{key}={value}\n")
+
+    console.print(f"\n[dim]Configuration saved to {env_file}[/dim]")
+
+
 if __name__ == '__main__':
     main()

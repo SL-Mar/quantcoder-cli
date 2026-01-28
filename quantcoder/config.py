@@ -58,6 +58,27 @@ class MultiAgentConfig:
 
 
 @dataclass
+class SchedulerConfig:
+    """Configuration for automated scheduling."""
+    enabled: bool = True
+    interval: str = "daily"  # hourly, daily, weekly
+    hour: int = 6
+    minute: int = 0
+    day_of_week: str = "mon"
+    min_sharpe_ratio: float = 0.5
+    max_strategies_per_run: int = 3
+    publish_to_notion: bool = True
+    notion_min_sharpe: float = 0.8
+
+
+@dataclass
+class NotionConfig:
+    """Configuration for Notion integration."""
+    api_key: Optional[str] = None
+    database_id: Optional[str] = None
+
+
+@dataclass
 class Config:
     """Main configuration class for QuantCoder."""
 
@@ -65,6 +86,8 @@ class Config:
     ui: UIConfig = field(default_factory=UIConfig)
     tools: ToolsConfig = field(default_factory=ToolsConfig)
     multi_agent: MultiAgentConfig = field(default_factory=MultiAgentConfig)
+    scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
+    notion: NotionConfig = field(default_factory=NotionConfig)
     api_key: Optional[str] = None
     quantconnect_api_key: Optional[str] = None
     quantconnect_user_id: Optional[str] = None
