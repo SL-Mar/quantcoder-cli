@@ -228,62 +228,262 @@ class SummarizeArticleTool(Tool):
 
     @property
     def description(self) -> str:
-        return "Extract and summarize trading strategy from an article PDF"
+        return "Extract and summarize trading strategy from article PDF(s)"
 
-    def execute(self, article_id: int) -> ToolResult:
+    def execute(self, article_ids: List[int]) -> ToolResult:
         """
-        Summarize an article.
+        Summarize one or more articles.
+
+        If multiple articles are provided, also creates a consolidated summary.
 
         Args:
-            article_id: Article ID from search results (1-indexed)
+            article_ids: List of article IDs from search results (1-indexed)
 
         Returns:
-            ToolResult with summary text
+            ToolResult with summary data including consolidated summary ID if multiple
         """
         from ..core.processor import ArticleProcessor
+        from ..core.summary_store import SummaryStore, IndividualSummary
 
-        self.logger.info(f"Summarizing article {article_id}")
+        # Ensure it's a list
+        if isinstance(article_ids, int):
+            article_ids = [article_ids]
+
+        self.logger.info(f"Summarizing articles: {article_ids}")
 
         try:
-            # Find the article file
-            filepath = Path(self.config.tools.downloads_dir) / f"article_{article_id}.pdf"
+            # Initialize summary store
+            store = SummaryStore(self.config.home_dir)
 
-            if not filepath.exists():
+            # Load articles metadata
+            cache_file = Path(self.config.home_dir) / "articles.json"
+            if not cache_file.exists():
                 return ToolResult(
                     success=False,
-                    error=f"Article not downloaded. Please download article {article_id} first."
+                    error="No articles found. Please search first."
                 )
 
-            # Process the article
+            with open(cache_file, 'r') as f:
+                articles = json.load(f)
+
+            # Process each article
             processor = ArticleProcessor(self.config)
-            extracted_data = processor.extract_structure(str(filepath))
+            individual_summaries = []
+            summary_ids = []
 
-            if not extracted_data:
-                return ToolResult(
-                    success=False,
-                    error="Failed to extract data from the article"
+            for article_id in article_ids:
+                # Validate article ID
+                if article_id < 1 or article_id > len(articles):
+                    return ToolResult(
+                        success=False,
+                        error=f"Article ID {article_id} not found. Valid range: 1-{len(articles)}"
+                    )
+
+                # Find the article file
+                filepath = Path(self.config.tools.downloads_dir) / f"article_{article_id}.pdf"
+
+                if not filepath.exists():
+                    return ToolResult(
+                        success=False,
+                        error=f"Article {article_id} not downloaded. Please download it first."
+                    )
+
+                # Get article metadata
+                article_meta = articles[article_id - 1]
+
+                # Process the article
+                extracted_data = processor.extract_structure(str(filepath))
+
+                if not extracted_data:
+                    self.logger.warning(f"Failed to extract data from article {article_id}")
+                    continue
+
+                # Generate summary
+                summary_text = processor.generate_summary(extracted_data)
+
+                if not summary_text:
+                    self.logger.warning(f"Failed to generate summary for article {article_id}")
+                    continue
+
+                # Parse summary to extract structured data
+                parsed = self._parse_summary(summary_text)
+
+                # Create individual summary object
+                individual = IndividualSummary(
+                    article_id=article_id,
+                    title=article_meta.get('title', 'Unknown'),
+                    authors=article_meta.get('authors', 'Unknown'),
+                    url=article_meta.get('URL', ''),
+                    strategy_type=parsed.get('strategy_type', 'unknown'),
+                    key_concepts=parsed.get('key_concepts', []),
+                    indicators=parsed.get('indicators', []),
+                    risk_approach=parsed.get('risk_approach', ''),
+                    summary_text=summary_text
                 )
 
-            # Generate summary
-            summary = processor.generate_summary(extracted_data)
+                # Save to store
+                summary_id = store.save_individual(individual)
+                summary_ids.append(summary_id)
+                individual_summaries.append(individual)
 
-            if not summary:
+                self.logger.info(f"Created summary #{summary_id} for article {article_id}")
+
+            if not individual_summaries:
                 return ToolResult(
                     success=False,
-                    error="Failed to generate summary"
+                    error="Failed to generate any summaries"
                 )
 
-            # Save summary
-            summary_path = Path(self.config.tools.downloads_dir) / f"article_{article_id}_summary.txt"
-            with open(summary_path, 'w', encoding='utf-8') as f:
-                f.write(summary)
+            result_data = {
+                "individual_summary_ids": summary_ids,
+                "summaries": [s.to_dict() for s in individual_summaries]
+            }
+
+            # If multiple articles, create consolidated summary
+            consolidated_id = None
+            if len(individual_summaries) > 1:
+                consolidated_id = self._create_consolidated_summary(
+                    store, individual_summaries, articles
+                )
+                result_data["consolidated_summary_id"] = consolidated_id
+
+            message = f"Created summaries: {summary_ids}"
+            if consolidated_id:
+                message += f"\nConsolidated summary created: #{consolidated_id} (from articles {article_ids})"
 
             return ToolResult(
                 success=True,
-                data={"summary": summary, "path": str(summary_path)},
-                message=f"Summary saved to {summary_path}"
+                data=result_data,
+                message=message
             )
 
         except Exception as e:
-            self.logger.error(f"Error summarizing article: {e}")
+            self.logger.error(f"Error summarizing articles: {e}")
             return ToolResult(success=False, error=str(e))
+
+    def _parse_summary(self, summary_text: str) -> Dict:
+        """Parse summary text to extract structured information."""
+        # Simple extraction - can be enhanced with LLM
+        parsed = {
+            "strategy_type": "unknown",
+            "key_concepts": [],
+            "indicators": [],
+            "risk_approach": ""
+        }
+
+        text_lower = summary_text.lower()
+
+        # Detect strategy type
+        if "momentum" in text_lower:
+            parsed["strategy_type"] = "momentum"
+        elif "mean reversion" in text_lower or "mean-reversion" in text_lower:
+            parsed["strategy_type"] = "mean_reversion"
+        elif "arbitrage" in text_lower:
+            parsed["strategy_type"] = "arbitrage"
+        elif "factor" in text_lower:
+            parsed["strategy_type"] = "factor"
+        elif "machine learning" in text_lower or "ml" in text_lower:
+            parsed["strategy_type"] = "machine_learning"
+
+        # Detect indicators
+        indicator_keywords = [
+            "SMA", "EMA", "RSI", "MACD", "Bollinger", "ATR",
+            "moving average", "relative strength", "volatility"
+        ]
+        for ind in indicator_keywords:
+            if ind.lower() in text_lower:
+                parsed["indicators"].append(ind)
+
+        return parsed
+
+    def _create_consolidated_summary(
+        self,
+        store,
+        individual_summaries: List,
+        articles: List[Dict]
+    ) -> int:
+        """Create a consolidated summary from multiple individual summaries."""
+        from ..core.summary_store import ConsolidatedSummary
+        from ..core.llm import get_llm_provider
+
+        # Build references
+        references = []
+        contributions = {}
+        all_concepts = []
+        all_indicators = []
+
+        for summary in individual_summaries:
+            references.append({
+                "id": summary.article_id,
+                "title": summary.title,
+                "contribution": summary.strategy_type
+            })
+            contributions[summary.article_id] = summary.strategy_type
+            all_concepts.extend(summary.key_concepts)
+            all_indicators.extend(summary.indicators)
+
+        # Determine merged strategy type
+        strategy_types = [s.strategy_type for s in individual_summaries]
+        if len(set(strategy_types)) == 1:
+            merged_type = strategy_types[0]
+        else:
+            merged_type = "hybrid"
+
+        # Generate consolidated description using LLM
+        try:
+            llm = get_llm_provider(self.config)
+            merged_description = self._generate_consolidated_description(
+                llm, individual_summaries
+            )
+        except Exception as e:
+            self.logger.warning(f"LLM consolidation failed: {e}, using template")
+            merged_description = self._generate_template_description(individual_summaries)
+
+        # Create consolidated summary
+        consolidated = ConsolidatedSummary(
+            summary_id=0,  # Will be assigned by store
+            source_article_ids=[s.article_id for s in individual_summaries],
+            references=references,
+            merged_strategy_type=merged_type,
+            merged_description=merged_description,
+            contributions_by_article=contributions,
+            key_concepts=list(set(all_concepts)),
+            indicators=list(set(all_indicators)),
+            risk_approach="Combined risk management approach"
+        )
+
+        return store.save_consolidated(consolidated)
+
+    def _generate_consolidated_description(self, llm, summaries: List) -> str:
+        """Generate consolidated description using LLM."""
+        summaries_text = "\n\n".join([
+            f"Article {s.article_id} ({s.title}):\n{s.summary_text}"
+            for s in summaries
+        ])
+
+        prompt = f"""Consolidate these trading strategy summaries into a single coherent strategy description.
+Identify what each article contributes and how they can be combined.
+
+{summaries_text}
+
+Write a 2-3 paragraph consolidated strategy description that:
+1. Explains the combined approach
+2. Notes what each source article contributes
+3. Describes how the concepts work together
+
+Be concise and technical."""
+
+        response = llm.generate(prompt, max_tokens=500)
+        return response.strip()
+
+    def _generate_template_description(self, summaries: List) -> str:
+        """Generate template-based consolidated description."""
+        parts = []
+        for s in summaries:
+            parts.append(f"From article {s.article_id} ({s.title}): {s.strategy_type} approach")
+
+        return f"""This consolidated strategy combines concepts from {len(summaries)} research articles:
+
+{chr(10).join('- ' + p for p in parts)}
+
+The combined approach integrates multiple trading methodologies into a unified framework."""

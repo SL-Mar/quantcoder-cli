@@ -39,10 +39,14 @@ class AutoStats:
     avg_refinement_attempts: float = 0.0
     auto_fix_rate: float = 0.0
     start_time: float = None
+    session_id: str = None
+    last_updated: str = None
 
     def __post_init__(self):
         if self.start_time is None:
             self.start_time = time.time()
+        if self.session_id is None:
+            self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     @property
     def success_rate(self) -> float:
@@ -55,6 +59,83 @@ class AutoStats:
     def elapsed_hours(self) -> float:
         """Calculate elapsed time in hours."""
         return (time.time() - self.start_time) / 3600
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert stats to dictionary for persistence."""
+        return {
+            "session_id": self.session_id,
+            "total_attempts": self.total_attempts,
+            "successful": self.successful,
+            "failed": self.failed,
+            "avg_sharpe": self.avg_sharpe,
+            "avg_refinement_attempts": self.avg_refinement_attempts,
+            "auto_fix_rate": self.auto_fix_rate,
+            "start_time": self.start_time,
+            "success_rate": self.success_rate,
+            "elapsed_hours": self.elapsed_hours,
+            "last_updated": datetime.utcnow().isoformat() + "Z",
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "AutoStats":
+        """Create stats from dictionary."""
+        return cls(
+            total_attempts=data.get("total_attempts", 0),
+            successful=data.get("successful", 0),
+            failed=data.get("failed", 0),
+            avg_sharpe=data.get("avg_sharpe", 0.0),
+            avg_refinement_attempts=data.get("avg_refinement_attempts", 0.0),
+            auto_fix_rate=data.get("auto_fix_rate", 0.0),
+            start_time=data.get("start_time"),
+            session_id=data.get("session_id"),
+            last_updated=data.get("last_updated"),
+        )
+
+    def save(self, stats_dir: Path):
+        """Save stats to JSON file."""
+        stats_dir.mkdir(parents=True, exist_ok=True)
+        stats_file = stats_dir / f"auto_stats_{self.session_id}.json"
+
+        with open(stats_file, "w") as f:
+            json.dump(self.to_dict(), f, indent=2)
+
+        # Also update latest stats symlink/file
+        latest_file = stats_dir / "auto_stats_latest.json"
+        with open(latest_file, "w") as f:
+            json.dump(self.to_dict(), f, indent=2)
+
+    @classmethod
+    def load_latest(cls, stats_dir: Path) -> Optional["AutoStats"]:
+        """Load most recent stats from file."""
+        latest_file = stats_dir / "auto_stats_latest.json"
+        if not latest_file.exists():
+            return None
+
+        try:
+            with open(latest_file) as f:
+                data = json.load(f)
+            return cls.from_dict(data)
+        except (json.JSONDecodeError, IOError):
+            return None
+
+    @classmethod
+    def list_sessions(cls, stats_dir: Path) -> List[Dict[str, Any]]:
+        """List all saved stats sessions."""
+        if not stats_dir.exists():
+            return []
+
+        sessions = []
+        for stats_file in sorted(stats_dir.glob("auto_stats_*.json")):
+            if stats_file.name == "auto_stats_latest.json":
+                continue
+            try:
+                with open(stats_file) as f:
+                    data = json.load(f)
+                sessions.append(data)
+            except (json.JSONDecodeError, IOError):
+                continue
+
+        return sessions
 
 
 class AutonomousPipeline:
@@ -78,7 +159,8 @@ class AutonomousPipeline:
         self.perf_learner = PerformanceLearner(self.db)
         self.prompt_refiner = PromptRefiner(self.db)
 
-        # Statistics
+        # Statistics with persistence
+        self.stats_dir = self.config.home_dir / "stats"
         self.stats = AutoStats()
 
         # Initialize LLM and agents for real mode
@@ -89,6 +171,14 @@ class AutonomousPipeline:
         # Register signal handlers
         signal.signal(signal.SIGINT, self._handle_exit)
         signal.signal(signal.SIGTERM, self._handle_exit)
+
+    def _persist_stats(self):
+        """Save current stats to disk."""
+        try:
+            self.stats.save(self.stats_dir)
+        except Exception as e:
+            # Don't let stats persistence break the pipeline
+            console.print(f"[dim]Warning: Could not persist stats: {e}[/dim]")
 
     def _init_agents(self):
         """Initialize LLM and coordinator agent."""
@@ -174,6 +264,7 @@ class AutonomousPipeline:
                     self.stats.failed += 1
 
                 self.stats.total_attempts += 1
+                self._persist_stats()  # Save after each iteration
 
                 # Check if we should continue
                 if not await self._should_continue(iteration, max_iterations):
@@ -183,6 +274,7 @@ class AutonomousPipeline:
                 console.print(f"[red]Error in iteration {iteration}: {e}[/red]")
                 self.stats.failed += 1
                 self.stats.total_attempts += 1
+                self._persist_stats()  # Save after error
 
         # Generate final report
         await self._generate_final_report()

@@ -23,18 +23,38 @@ from .tools import (
 console = Console()
 
 
-def setup_logging(verbose: bool = False):
-    """Configure logging with rich handler."""
-    log_level = logging.DEBUG if verbose else logging.INFO
+def setup_logging(verbose: bool = False, config: Config = None):
+    """Configure logging with rich handler and rotation.
 
-    logging.basicConfig(
-        level=log_level,
-        format="%(message)s",
-        datefmt="[%X]",
-        handlers=[
-            RichHandler(rich_tracebacks=True, console=console),
-            logging.FileHandler("quantcoder.log")
-        ]
+    Uses the new centralized logging system with:
+    - Log rotation (configurable size and backup count)
+    - Structured JSON logging (in addition to console output)
+    - Optional webhook alerting for errors
+    """
+    from quantcoder.logging_config import setup_logging as setup_qc_logging
+
+    # Get logging config if available
+    logging_config = None
+    if config:
+        try:
+            logging_config = config.get_logging_config()
+        except Exception:
+            pass  # Use defaults if config fails
+
+    # Create rich console handler
+    rich_handler = RichHandler(
+        rich_tracebacks=True,
+        console=console,
+        show_time=True,
+        show_path=False,
+    )
+    rich_handler._custom_formatter = True  # Signal to not override formatter
+
+    # Setup centralized logging
+    setup_qc_logging(
+        verbose=verbose,
+        config=logging_config,
+        console_handler=rich_handler,
     )
 
 
@@ -49,11 +69,12 @@ def main(ctx, verbose, config, prompt):
 
     A conversational interface to transform research articles into trading algorithms.
     """
-    setup_logging(verbose)
-
-    # Load configuration
+    # Load configuration first so logging can use it
     config_path = Path(config) if config else None
     cfg = Config.load(config_path)
+
+    # Setup logging with config (enables rotation, JSON logs, webhooks)
+    setup_logging(verbose, cfg)
 
     # Ensure API key is loaded
     try:
@@ -110,99 +131,402 @@ def interactive(config: Config):
 @main.command()
 @click.argument('query')
 @click.option('--num', default=5, help='Number of results to return')
+@click.option('--deep', is_flag=True, help='Use Tavily for semantic deep search (requires TAVILY_API_KEY)')
+@click.option('--no-filter', is_flag=True, help='Skip LLM relevance filtering (with --deep)')
 @click.pass_context
-def search(ctx, query, num):
+def search(ctx, query, num, deep, no_filter):
     """
-    Search for academic articles on CrossRef.
+    Search for academic articles.
 
-    Example: quantcoder search "algorithmic trading" --num 3
+    By default uses CrossRef API for keyword search.
+    With --deep flag, uses Tavily for semantic search + LLM filtering.
+
+    Examples:
+        quantcoder search "algorithmic trading" --num 3
+        quantcoder search "momentum strategy" --deep
+        quantcoder search "mean reversion" --deep --num 10
     """
     config = ctx.obj['config']
-    tool = SearchArticlesTool(config)
 
-    with console.status(f"Searching for '{query}'..."):
-        result = tool.execute(query=query, max_results=num)
+    if deep:
+        # Use Tavily deep search
+        from .tools import DeepSearchTool
+        tool = DeepSearchTool(config)
 
-    if result.success:
-        console.print(f"[green]✓[/green] {result.message}")
-
-        for idx, article in enumerate(result.data, 1):
-            published = f" ({article['published']})" if article.get('published') else ""
-            console.print(
-                f"  [cyan]{idx}.[/cyan] {article['title']}\n"
-                f"      [dim]{article['authors']}{published}[/dim]"
+        with console.status(f"Deep searching for '{query}'..."):
+            result = tool.execute(
+                query=query,
+                max_results=num,
+                filter_relevance=not no_filter,
             )
+
+        if result.success:
+            console.print(f"[green]✓[/green] {result.message}\n")
+
+            for idx, article in enumerate(result.data, 1):
+                score = article.get('relevance_score', 0)
+                score_color = "green" if score > 0.7 else "yellow" if score > 0.5 else "dim"
+                published = f" ({article['published']})" if article.get('published') else ""
+
+                console.print(
+                    f"  [cyan]{idx}.[/cyan] {article['title']}\n"
+                    f"      [{score_color}]Score: {score:.2f}[/{score_color}]{published}\n"
+                    f"      [dim]{article['URL'][:60]}...[/dim]"
+                )
+
+            console.print(f"\n[dim]Use 'quantcoder download <ID>' to get articles[/dim]")
+        else:
+            console.print(f"[red]✗[/red] {result.error}")
     else:
-        console.print(f"[red]✗[/red] {result.error}")
+        # Use CrossRef keyword search (default)
+        tool = SearchArticlesTool(config)
+
+        with console.status(f"Searching for '{query}'..."):
+            result = tool.execute(query=query, max_results=num)
+
+        if result.success:
+            console.print(f"[green]✓[/green] {result.message}")
+
+            for idx, article in enumerate(result.data, 1):
+                published = f" ({article['published']})" if article.get('published') else ""
+                console.print(
+                    f"  [cyan]{idx}.[/cyan] {article['title']}\n"
+                    f"      [dim]{article['authors']}{published}[/dim]"
+                )
+        else:
+            console.print(f"[red]✗[/red] {result.error}")
 
 
 @main.command()
-@click.argument('article_id', type=int)
+@click.argument('article_ids', type=int, nargs=-1, required=True)
 @click.pass_context
-def download(ctx, article_id):
+def download(ctx, article_ids):
     """
-    Download an article PDF by ID.
+    Download article PDF(s) by ID.
 
-    Example: quantcoder download 1
+    Examples:
+        quantcoder download 1
+        quantcoder download 1 2 3
     """
     config = ctx.obj['config']
     tool = DownloadArticleTool(config)
 
-    with console.status(f"Downloading article {article_id}..."):
-        result = tool.execute(article_id=article_id)
+    for article_id in article_ids:
+        with console.status(f"Downloading article {article_id}..."):
+            result = tool.execute(article_id=article_id)
 
-    if result.success:
-        console.print(f"[green]✓[/green] {result.message}")
-    else:
-        console.print(f"[red]✗[/red] {result.error}")
+        if result.success:
+            console.print(f"[green]✓[/green] Article {article_id}: {result.message}")
+        else:
+            console.print(f"[red]✗[/red] Article {article_id}: {result.error}")
 
 
 @main.command()
-@click.argument('article_id', type=int)
+@click.argument('article_ids', type=int, nargs=-1, required=True)
 @click.pass_context
-def summarize(ctx, article_id):
+def summarize(ctx, article_ids):
     """
-    Summarize a downloaded article.
+    Summarize downloaded article(s).
 
-    Example: quantcoder summarize 1
+    When multiple articles are provided, also creates a consolidated summary
+    with a new ID that can be used with 'generate'.
+
+    Examples:
+        quantcoder summarize 1
+        quantcoder summarize 1 2 3    # Creates individual + consolidated summary
     """
     config = ctx.obj['config']
     tool = SummarizeArticleTool(config)
 
-    with console.status(f"Analyzing article {article_id}..."):
-        result = tool.execute(article_id=article_id)
+    article_ids_list = list(article_ids)
+
+    with console.status(f"Analyzing article(s) {article_ids_list}..."):
+        result = tool.execute(article_ids=article_ids_list)
 
     if result.success:
         console.print(f"[green]✓[/green] {result.message}\n")
-        console.print(Panel(
-            Markdown(result.data['summary']),
-            title="Summary",
-            border_style="green"
-        ))
+
+        # Show individual summaries
+        for summary in result.data.get('summaries', []):
+            console.print(Panel(
+                Markdown(summary.get('summary_text', '')),
+                title=f"Summary #{summary.get('article_id')} - {summary.get('title', 'Unknown')[:50]}",
+                border_style="green"
+            ))
+
+        # Highlight consolidated summary if created
+        if result.data.get('consolidated_summary_id'):
+            consolidated_id = result.data['consolidated_summary_id']
+            console.print(Panel(
+                f"[bold]Consolidated summary created: #{consolidated_id}[/bold]\n\n"
+                f"Source articles: {article_ids_list}\n\n"
+                f"Use [cyan]quantcoder generate {consolidated_id}[/cyan] to generate code from the combined strategy.",
+                title="Consolidated Summary",
+                border_style="cyan"
+            ))
     else:
         console.print(f"[red]✗[/red] {result.error}")
 
 
+@main.command(name='summaries')
+@click.pass_context
+def list_summaries(ctx):
+    """
+    List all available summaries (individual and consolidated).
+
+    Shows summary IDs that can be used with 'generate' command.
+    """
+    from quantcoder.core.summary_store import SummaryStore
+
+    config = ctx.obj['config']
+    store = SummaryStore(config.home_dir)
+    summaries = store.list_summaries()
+
+    if not summaries['individual'] and not summaries['consolidated']:
+        console.print("[yellow]No summaries found. Use 'summarize' to create some.[/yellow]")
+        return
+
+    from rich.table import Table
+
+    # Individual summaries
+    if summaries['individual']:
+        table = Table(title="Individual Summaries")
+        table.add_column("ID", style="cyan")
+        table.add_column("Article", style="white")
+        table.add_column("Title", style="green")
+        table.add_column("Type", style="yellow")
+
+        for s in summaries['individual']:
+            table.add_row(
+                str(s['summary_id']),
+                str(s['article_id']),
+                s['title'][:50] + "..." if len(s['title']) > 50 else s['title'],
+                s['strategy_type']
+            )
+
+        console.print(table)
+        console.print()
+
+    # Consolidated summaries
+    if summaries['consolidated']:
+        table = Table(title="Consolidated Summaries")
+        table.add_column("ID", style="cyan")
+        table.add_column("Source Articles", style="white")
+        table.add_column("Type", style="yellow")
+        table.add_column("Created", style="dim")
+
+        for s in summaries['consolidated']:
+            table.add_row(
+                str(s['summary_id']),
+                str(s['source_article_ids']),
+                s['strategy_type'],
+                s.get('created_at', '')[:10] if s.get('created_at') else ''
+            )
+
+        console.print(table)
+
+    console.print("\n[dim]Use 'quantcoder generate <ID>' to generate code from any summary[/dim]")
+
+
+def _publish_to_notion(config, summary_id: int, code: str, sharpe: float,
+                       backtest_data: dict, console):
+    """Publish strategy article to Notion after successful backtest."""
+    import os
+    from quantcoder.core.summary_store import SummaryStore
+
+    # Check Notion credentials
+    notion_key = os.getenv('NOTION_API_KEY')
+    notion_db = os.getenv('NOTION_DATABASE_ID')
+
+    if not notion_key or not notion_db:
+        console.print("[yellow]⚠ Notion credentials not configured[/yellow]")
+        console.print(f"[dim]Set NOTION_API_KEY and NOTION_DATABASE_ID in {config.home_dir / '.env'}[/dim]")
+        console.print("[dim]Use 'quantcoder schedule config' to configure[/dim]")
+        return
+
+    try:
+        from quantcoder.scheduler import NotionClient, StrategyArticle
+
+        # Get summary data
+        store = SummaryStore(config.home_dir)
+        summary = store.get_summary(summary_id)
+
+        if not summary:
+            console.print(f"[yellow]⚠ Could not retrieve summary {summary_id} for article[/yellow]")
+            return
+
+        # Determine title and description based on summary type
+        if summary.get('is_consolidated'):
+            paper_title = f"Consolidated from articles {summary.get('source_article_ids', [])}"
+            description = summary.get('merged_description', '')
+            strategy_type = summary.get('merged_strategy_type', 'hybrid')
+            paper_url = ""
+            authors = []
+        else:
+            paper_title = summary.get('title', f'Strategy {summary_id}')
+            description = summary.get('summary_text', '')
+            strategy_type = summary.get('strategy_type', 'unknown')
+            paper_url = summary.get('url', '')
+            authors = [summary.get('authors', 'Unknown')]
+
+        # Generate article title based on performance
+        if sharpe >= 1.5:
+            perf_label = "High-Performance"
+        elif sharpe >= 1.0:
+            perf_label = "Strong"
+        elif sharpe >= 0.5:
+            perf_label = "Viable"
+        else:
+            perf_label = "Experimental"
+
+        strategy_type_display = strategy_type.replace("_", " ").title()
+        title = f"{perf_label} {strategy_type_display} Strategy"
+
+        # Build backtest results for article
+        backtest_results = {
+            'sharpe_ratio': sharpe,
+            'total_return': backtest_data.get('total_return', 0),
+            'max_drawdown': backtest_data.get('statistics', {}).get('Max Drawdown', 0),
+            'win_rate': backtest_data.get('statistics', {}).get('Win Rate', 'N/A'),
+        }
+
+        # Create StrategyArticle directly
+        article = StrategyArticle(
+            title=title,
+            paper_title=paper_title,
+            paper_url=paper_url,
+            paper_authors=authors,
+            strategy_summary=description,
+            strategy_type=strategy_type,
+            backtest_results=backtest_results,
+            code_snippet=code[:2000] if len(code) > 2000 else code,
+            tags=[strategy_type_display]
+        )
+
+        # Publish to Notion
+        notion_client = NotionClient(api_key=notion_key, database_id=notion_db)
+        page = notion_client.create_strategy_page(article)
+
+        if page:
+            console.print(f"[green]✓ Published to Notion[/green] (page: {page.id[:8]}...)")
+        else:
+            console.print("[yellow]⚠ Failed to create Notion page[/yellow]")
+
+    except ImportError as e:
+        console.print(f"[yellow]⚠ Scheduler module not available: {e}[/yellow]")
+    except Exception as e:
+        console.print(f"[red]✗ Failed to publish to Notion: {e}[/red]")
+
+
+def _run_evolution(config, code: str, source_name: str, max_generations: int,
+                   variants_per_gen: int, start_date: str, end_date: str, console):
+    """Run evolution on a strategy to improve it."""
+    import asyncio
+    import os
+
+    try:
+        from quantcoder.evolver import EvolutionEngine, EvolutionConfig
+
+        # Get QC credentials
+        qc_user = os.getenv('QC_USER_ID') or os.getenv('QUANTCONNECT_USER_ID')
+        qc_token = os.getenv('QC_API_TOKEN') or os.getenv('QUANTCONNECT_API_KEY')
+        qc_project = os.getenv('QC_PROJECT_ID')
+
+        if not all([qc_user, qc_token]):
+            console.print("[yellow]⚠ QC credentials not fully configured for evolution[/yellow]")
+            return None
+
+        # Create evolution config
+        evo_config = EvolutionConfig(
+            qc_user_id=qc_user,
+            qc_api_token=qc_token,
+            qc_project_id=int(qc_project) if qc_project else None,
+            max_generations=max_generations,
+            variants_per_generation=variants_per_gen,
+            backtest_start_date=start_date,
+            backtest_end_date=end_date,
+        )
+
+        engine = EvolutionEngine(evo_config)
+
+        # Progress callback
+        def on_gen_complete(state, gen):
+            best = state.elite_pool.get_best()
+            if best and best.fitness:
+                console.print(f"  [dim]Gen {gen}: Best fitness = {best.fitness:.4f}[/dim]")
+
+        engine.on_generation_complete = on_gen_complete
+
+        async def run_evo():
+            return await engine.evolve(code, source_name)
+
+        # Run evolution
+        with console.status("Evolving strategy..."):
+            result = asyncio.run(run_evo())
+
+        # Get best variant
+        best = engine.get_best_variant()
+        if best and best.code:
+            return {
+                'code': best.code,
+                'sharpe': best.metrics.get('sharpe_ratio', 0) if best.metrics else 0,
+                'backtest_data': best.metrics or {},
+                'evolution_id': result.evolution_id,
+            }
+
+        return None
+
+    except ImportError as e:
+        console.print(f"[yellow]⚠ Evolution module not available: {e}[/yellow]")
+        return None
+    except Exception as e:
+        console.print(f"[red]✗ Evolution failed: {e}[/red]")
+        return None
+
+
 @main.command(name='generate')
-@click.argument('article_id', type=int)
+@click.argument('summary_id', type=int)
 @click.option('--max-attempts', default=6, help='Maximum refinement attempts')
 @click.option('--open-in-editor', is_flag=True, help='Open generated code in editor (default: Zed)')
 @click.option('--editor', default=None, help='Editor to use (overrides config, e.g., zed, code, vim)')
+@click.option('--backtest', is_flag=True, help='Run backtest on QuantConnect after generation')
+@click.option('--min-sharpe', default=0.5, type=float, help='Min Sharpe to keep algo and publish to Notion (with --backtest)')
+@click.option('--start-date', default='2020-01-01', help='Backtest start date (with --backtest)')
+@click.option('--end-date', default='2024-01-01', help='Backtest end date (with --backtest)')
+@click.option('--evolve', is_flag=True, help='Evolve strategy after backtest passes (with --backtest)')
+@click.option('--gens', default=5, type=int, help='Number of evolution generations (with --evolve)')
+@click.option('--variants', default=3, type=int, help='Variants per generation (with --evolve)')
 @click.pass_context
-def generate_code(ctx, article_id, max_attempts, open_in_editor, editor):
+def generate_code(ctx, summary_id, max_attempts, open_in_editor, editor, backtest, min_sharpe, start_date, end_date, evolve, gens, variants):
     """
-    Generate QuantConnect code from an article.
+    Generate QuantConnect code from a summary.
 
-    Example:
-        quantcoder generate 1
+    SUMMARY_ID can be:
+    - An individual article summary ID
+    - A consolidated summary ID (created from multiple articles)
+
+    With --backtest flag:
+    - Runs backtest on QuantConnect after code generation
+    - If Sharpe >= min-sharpe: keeps algo in QC and publishes article to Notion
+    - If Sharpe < min-sharpe: reports results but does not publish
+
+    With --evolve flag (requires --backtest):
+    - After backtest passes, evolves the strategy for N generations
+    - Publishes the best evolved variant to Notion
+
+    Examples:
+        quantcoder generate 1              # From article 1 summary
+        quantcoder generate 6              # From consolidated summary #6
         quantcoder generate 1 --open-in-editor
-        quantcoder generate 1 --open-in-editor --editor code
+        quantcoder generate 1 --backtest   # Generate, backtest, and publish if good
+        quantcoder generate 1 --backtest --min-sharpe 1.0
+        quantcoder generate 1 --backtest --evolve --gens 5  # Evolve after backtest
     """
     config = ctx.obj['config']
     tool = GenerateCodeTool(config)
 
-    with console.status(f"Generating code for article {article_id}..."):
-        result = tool.execute(article_id=article_id, max_refine_attempts=max_attempts)
+    with console.status(f"Generating code for summary #{summary_id}..."):
+        result = tool.execute(summary_id=summary_id, max_refine_attempts=max_attempts)
 
     if result.success:
         console.print(f"[green]✓[/green] {result.message}\n")
@@ -241,6 +565,94 @@ def generate_code(ctx, article_id, max_attempts, open_in_editor, editor):
                     console.print(f"[cyan]Opened in {editor_name}[/cyan]")
                 else:
                     console.print(f"[yellow]Could not open in {editor_name}. Is it installed?[/yellow]")
+
+        # Handle backtest if requested
+        if backtest:
+            code_path = result.data.get('path')
+            if not code_path:
+                console.print("[red]✗[/red] Cannot backtest: no code file path")
+                return
+
+            # Check QuantConnect credentials
+            if not config.has_quantconnect_credentials():
+                console.print("[red]Error: QuantConnect credentials not configured[/red]")
+                console.print(f"[yellow]Please set QUANTCONNECT_API_KEY and QUANTCONNECT_USER_ID in {config.home_dir / '.env'}[/yellow]")
+                return
+
+            console.print("\n")
+            backtest_tool = BacktestTool(config)
+
+            with console.status(f"Running backtest ({start_date} to {end_date})..."):
+                bt_result = backtest_tool.execute(
+                    file_path=code_path,
+                    start_date=start_date,
+                    end_date=end_date,
+                    name=f"Summary_{summary_id}"
+                )
+
+            if not bt_result.success:
+                console.print(f"[red]✗[/red] Backtest failed: {bt_result.error}")
+                return
+
+            sharpe = bt_result.data.get('sharpe_ratio', 0)
+            console.print(f"[green]✓[/green] Backtest complete: Sharpe = {sharpe:.2f}")
+
+            # Display backtest results
+            from rich.table import Table
+            bt_table = Table(title="Backtest Results")
+            bt_table.add_column("Metric", style="cyan")
+            bt_table.add_column("Value", style="green")
+
+            bt_table.add_row("Sharpe Ratio", f"{sharpe:.2f}")
+            bt_table.add_row("Total Return", str(bt_result.data.get('total_return', 'N/A')))
+
+            stats = bt_result.data.get('statistics', {})
+            for key, value in list(stats.items())[:6]:
+                bt_table.add_row(key, str(value))
+
+            console.print(bt_table)
+
+            # Check acceptance criteria
+            if sharpe >= min_sharpe:
+                console.print(f"\n[green]✓ Sharpe {sharpe:.2f} >= {min_sharpe} - ACCEPTED[/green]")
+
+                final_code = result.data['code']
+                final_sharpe = sharpe
+                final_backtest_data = bt_result.data
+
+                # Run evolution if requested
+                if evolve:
+                    console.print(f"\n[cyan]Evolving strategy for {gens} generations...[/cyan]")
+                    evolved_result = _run_evolution(
+                        config=config,
+                        code=result.data['code'],
+                        source_name=f"Summary_{summary_id}",
+                        max_generations=gens,
+                        variants_per_gen=variants,
+                        start_date=start_date,
+                        end_date=end_date,
+                        console=console
+                    )
+
+                    if evolved_result:
+                        final_code = evolved_result['code']
+                        final_sharpe = evolved_result['sharpe']
+                        final_backtest_data = evolved_result['backtest_data']
+                        console.print(f"[green]✓ Evolution complete: Sharpe improved to {final_sharpe:.2f}[/green]")
+
+                # Publish to Notion
+                console.print("[cyan]Publishing to Notion...[/cyan]")
+                _publish_to_notion(
+                    config=config,
+                    summary_id=summary_id,
+                    code=final_code,
+                    sharpe=final_sharpe,
+                    backtest_data=final_backtest_data,
+                    console=console
+                )
+            else:
+                console.print(f"\n[yellow]⚠ Sharpe {sharpe:.2f} < {min_sharpe} - NOT PUBLISHED[/yellow]")
+                console.print("[dim]Strategy kept locally but not published to Notion[/dim]")
     else:
         console.print(f"[red]✗[/red] {result.error}")
 
@@ -934,6 +1346,527 @@ def evolve_export(evolution_id, output):
         f.write(best.get('code', ''))
 
     console.print(f"[green]Exported best variant to:[/green] {output_path}")
+
+
+# ============================================================================
+# SCHEDULED AUTOMATION COMMANDS
+# ============================================================================
+
+@main.group()
+def schedule():
+    """
+    Automated scheduled strategy generation.
+
+    Run the full pipeline on a schedule: discover papers, generate strategies,
+    backtest, and publish to Notion.
+    """
+    pass
+
+
+@schedule.command(name='start')
+@click.option('--interval', type=click.Choice(['hourly', 'daily', 'weekly']), default='daily',
+              help='Run frequency')
+@click.option('--hour', default=6, type=int, help='Hour to run (for daily/weekly)')
+@click.option('--day', default='mon', help='Day of week (for weekly)')
+@click.option('--queries', help='Comma-separated search queries')
+@click.option('--min-sharpe', default=0.5, type=float, help='Acceptance criteria - min Sharpe to keep algo')
+@click.option('--max-strategies', default=10, type=int, help='Batch limit - max strategies per run')
+@click.option('--notion-min-sharpe', default=0.5, type=float, help='Min Sharpe for Notion article (defaults to min-sharpe)')
+@click.option('--output', type=click.Path(), help='Output directory')
+@click.option('--run-now', is_flag=True, help='Run immediately before starting schedule')
+@click.option('--evolve', is_flag=True, help='Evolve strategies after backtest passes')
+@click.option('--gens', default=5, type=int, help='Evolution generations (with --evolve)')
+@click.option('--variants', default=3, type=int, help='Variants per generation (with --evolve)')
+@click.pass_context
+def schedule_start(ctx, interval, hour, day, queries, min_sharpe, max_strategies,
+                   notion_min_sharpe, output, run_now, evolve, gens, variants):
+    """
+    Start the automated scheduled pipeline.
+
+    This runs the full workflow on a schedule:
+    1. Search for new research papers
+    2. Generate and backtest strategies
+    3. Publish successful strategies to Notion
+    4. Keep algorithms in QuantConnect
+
+    With --evolve flag:
+    - After each strategy passes backtest, evolves it for N generations
+    - Publishes the best evolved variant to Notion
+
+    Examples:
+        quantcoder schedule start --interval daily --hour 6
+        quantcoder schedule start --interval weekly --day mon --hour 9
+        quantcoder schedule start --queries "momentum,mean reversion" --run-now
+        quantcoder schedule start --evolve --gens 5  # With evolution
+    """
+    import asyncio
+    from pathlib import Path
+    from quantcoder.scheduler import (
+        ScheduledRunner,
+        ScheduleConfig,
+        ScheduleInterval,
+        AutomatedBacktestPipeline,
+        PipelineConfig,
+    )
+
+    config = ctx.obj['config']
+
+    # Build schedule config
+    interval_map = {
+        'hourly': ScheduleInterval.HOURLY,
+        'daily': ScheduleInterval.DAILY,
+        'weekly': ScheduleInterval.WEEKLY,
+    }
+
+    schedule_config = ScheduleConfig(
+        interval=interval_map[interval],
+        hour=hour,
+        day_of_week=day,
+    )
+
+    # Build pipeline config
+    search_queries = queries.split(',') if queries else None
+    output_dir = Path(output) if output else None
+
+    pipeline_config = PipelineConfig(
+        min_sharpe_ratio=min_sharpe,
+        max_strategies_per_run=max_strategies,
+        notion_min_sharpe=notion_min_sharpe,
+        evolve_strategies=evolve,
+        evolution_generations=gens,
+        evolution_variants=variants,
+    )
+
+    if search_queries:
+        pipeline_config.search_queries = [q.strip() for q in search_queries]
+    if output_dir:
+        pipeline_config.output_dir = output_dir
+
+    if evolve:
+        console.print(f"[cyan]Evolution enabled: {gens} generations, {variants} variants/gen[/cyan]")
+
+    # Create pipeline and runner
+    pipeline = AutomatedBacktestPipeline(config=config, pipeline_config=pipeline_config)
+
+    async def run_pipeline():
+        result = await pipeline.run()
+        return {
+            "strategies_generated": result.strategies_generated,
+            "strategies_published": result.strategies_published,
+        }
+
+    runner = ScheduledRunner(
+        pipeline_func=run_pipeline,
+        schedule_config=schedule_config,
+    )
+
+    try:
+        if run_now:
+            console.print("[cyan]Running pipeline immediately...[/cyan]")
+            asyncio.run(runner.run_once())
+
+        asyncio.run(runner.run_forever())
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Scheduler stopped by user[/yellow]")
+
+
+@schedule.command(name='run')
+@click.option('--queries', help='Comma-separated search queries')
+@click.option('--min-sharpe', default=0.5, type=float, help='Acceptance criteria - min Sharpe to keep algo')
+@click.option('--max-strategies', default=10, type=int, help='Batch limit - max strategies per run')
+@click.option('--output', type=click.Path(), help='Output directory')
+@click.option('--evolve', is_flag=True, help='Evolve strategies after backtest passes')
+@click.option('--gens', default=5, type=int, help='Evolution generations (with --evolve)')
+@click.option('--variants', default=3, type=int, help='Variants per generation (with --evolve)')
+@click.pass_context
+def schedule_run(ctx, queries, min_sharpe, max_strategies, output, evolve, gens, variants):
+    """
+    Run the automated pipeline once (no scheduling).
+
+    Good for testing or manual runs.
+
+    With --evolve flag:
+    - After each strategy passes backtest, evolves it for N generations
+    - Publishes the best evolved variant to Notion
+
+    Examples:
+        quantcoder schedule run
+        quantcoder schedule run --queries "factor investing" --min-sharpe 1.0
+        quantcoder schedule run --evolve --gens 5  # With evolution
+    """
+    import asyncio
+    from pathlib import Path
+    from quantcoder.scheduler import AutomatedBacktestPipeline, PipelineConfig
+
+    config = ctx.obj['config']
+
+    # Build pipeline config
+    search_queries = queries.split(',') if queries else None
+    output_dir = Path(output) if output else None
+
+    pipeline_config = PipelineConfig(
+        min_sharpe_ratio=min_sharpe,
+        max_strategies_per_run=max_strategies,
+        evolve_strategies=evolve,
+        evolution_generations=gens,
+        evolution_variants=variants,
+    )
+
+    if search_queries:
+        pipeline_config.search_queries = [q.strip() for q in search_queries]
+    if output_dir:
+        pipeline_config.output_dir = output_dir
+
+    if evolve:
+        console.print(f"[cyan]Evolution enabled: {gens} generations, {variants} variants/gen[/cyan]")
+
+    pipeline = AutomatedBacktestPipeline(config=config, pipeline_config=pipeline_config)
+
+    try:
+        asyncio.run(pipeline.run())
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Pipeline stopped by user[/yellow]")
+
+
+@schedule.command(name='status')
+def schedule_status():
+    """
+    Show scheduler status and run history.
+    """
+    import json
+    from pathlib import Path
+
+    state_file = Path.home() / ".quantcoder" / "scheduler_state.json"
+
+    if not state_file.exists():
+        console.print("[yellow]No scheduler runs recorded yet.[/yellow]")
+        console.print("[dim]Run 'quantcoder schedule start' to begin.[/dim]")
+        return
+
+    with open(state_file, 'r') as f:
+        state = json.load(f)
+
+    from rich.table import Table
+
+    table = Table(title="Scheduler Statistics")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", style="green")
+
+    table.add_row("Total Runs", str(state.get('total_runs', 0)))
+    table.add_row("Successful Runs", str(state.get('successful_runs', 0)))
+    table.add_row("Failed Runs", str(state.get('failed_runs', 0)))
+    table.add_row("Strategies Generated", str(state.get('strategies_generated', 0)))
+    table.add_row("Strategies Published", str(state.get('strategies_published', 0)))
+    table.add_row("Last Run", state.get('last_run_time', 'Never'))
+    table.add_row("Last Run Success", 'Yes' if state.get('last_run_success', True) else 'No')
+
+    console.print(table)
+
+
+@schedule.command(name='config')
+@click.option('--notion-key', help='Set Notion API key')
+@click.option('--notion-db', help='Set Notion database ID')
+@click.option('--tavily-key', help='Set Tavily API key for deep search')
+@click.option('--show', is_flag=True, help='Show current configuration')
+def schedule_config(notion_key, notion_db, tavily_key, show):
+    """
+    Configure scheduler settings (Notion, Tavily, etc.)
+
+    Examples:
+        quantcoder schedule config --show
+        quantcoder schedule config --notion-key secret_xxx --notion-db abc123
+        quantcoder schedule config --tavily-key tvly-xxx
+    """
+    import os
+    from pathlib import Path
+    from dotenv import load_dotenv
+
+    env_file = Path.home() / ".quantcoder" / ".env"
+
+    # Load existing env vars
+    if env_file.exists():
+        load_dotenv(env_file)
+
+    if show:
+        console.print("\n[bold cyan]Integration Configuration[/bold cyan]\n")
+
+        # Check Notion settings
+        notion_key_set = bool(os.getenv('NOTION_API_KEY'))
+        notion_db_set = bool(os.getenv('NOTION_DATABASE_ID'))
+        tavily_key_set = bool(os.getenv('TAVILY_API_KEY'))
+
+        console.print("[bold]Notion (article publishing):[/bold]")
+        console.print(f"  NOTION_API_KEY: {'[green]Set[/green]' if notion_key_set else '[yellow]Not set[/yellow]'}")
+        console.print(f"  NOTION_DATABASE_ID: {'[green]Set[/green]' if notion_db_set else '[yellow]Not set[/yellow]'}")
+
+        console.print("\n[bold]Tavily (deep search):[/bold]")
+        console.print(f"  TAVILY_API_KEY: {'[green]Set[/green]' if tavily_key_set else '[yellow]Not set[/yellow]'}")
+
+        console.print(f"\n[dim]Environment file: {env_file}[/dim]")
+        return
+
+    if not notion_key and not notion_db and not tavily_key:
+        console.print("[yellow]No configuration options provided. Use --show to see current config.[/yellow]")
+        return
+
+    # Load existing env file
+    env_vars = {}
+    if env_file.exists():
+        from dotenv import dotenv_values
+        env_vars = dict(dotenv_values(env_file))
+
+    # Update values
+    if notion_key:
+        env_vars['NOTION_API_KEY'] = notion_key
+        console.print("[green]Set NOTION_API_KEY[/green]")
+
+    if notion_db:
+        env_vars['NOTION_DATABASE_ID'] = notion_db
+        console.print("[green]Set NOTION_DATABASE_ID[/green]")
+
+    if tavily_key:
+        env_vars['TAVILY_API_KEY'] = tavily_key
+        console.print("[green]Set TAVILY_API_KEY[/green]")
+
+    # Write back
+    env_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(env_file, 'w') as f:
+        for key, value in env_vars.items():
+            f.write(f"{key}={value}\n")
+
+    console.print(f"\n[dim]Configuration saved to {env_file}[/dim]")
+
+
+# ============================================================================
+# LOGGING AND MONITORING COMMANDS
+# ============================================================================
+
+@main.group()
+def logs():
+    """
+    View and manage logs.
+
+    Commands to view log files, tail recent activity, and manage log rotation.
+    """
+    pass
+
+
+@logs.command(name='show')
+@click.option('--lines', '-n', default=50, type=int, help='Number of lines to show')
+@click.option('--json', 'json_format', is_flag=True, help='Show JSON structured logs')
+@click.pass_context
+def logs_show(ctx, lines, json_format):
+    """
+    Show recent log entries.
+
+    Examples:
+        quantcoder logs show
+        quantcoder logs show --lines 100
+        quantcoder logs show --json
+    """
+    from quantcoder.logging_config import get_log_files
+
+    config = ctx.obj['config']
+    log_dir = config.home_dir / "logs"
+
+    if json_format:
+        log_file = log_dir / "quantcoder.json.log"
+    else:
+        log_file = log_dir / "quantcoder.log"
+
+    if not log_file.exists():
+        console.print(f"[yellow]No log file found at {log_file}[/yellow]")
+        console.print("[dim]Logs will be created after running commands.[/dim]")
+        return
+
+    try:
+        with open(log_file) as f:
+            all_lines = f.readlines()
+            recent = all_lines[-lines:] if len(all_lines) > lines else all_lines
+
+        console.print(f"[cyan]Last {len(recent)} entries from {log_file.name}:[/cyan]\n")
+
+        for line in recent:
+            line = line.rstrip()
+            if json_format:
+                try:
+                    import json
+                    data = json.loads(line)
+                    level = data.get('level', 'INFO')
+                    color = {
+                        'DEBUG': 'dim',
+                        'INFO': 'green',
+                        'WARNING': 'yellow',
+                        'ERROR': 'red',
+                        'CRITICAL': 'bold red',
+                    }.get(level, 'white')
+                    console.print(f"[{color}]{data.get('timestamp', '')} | {level} | {data.get('message', '')}[/{color}]")
+                except json.JSONDecodeError:
+                    console.print(line)
+            else:
+                # Color based on log level
+                if ' ERROR ' in line or ' CRITICAL ' in line:
+                    console.print(f"[red]{line}[/red]")
+                elif ' WARNING ' in line:
+                    console.print(f"[yellow]{line}[/yellow]")
+                elif ' DEBUG ' in line:
+                    console.print(f"[dim]{line}[/dim]")
+                else:
+                    console.print(line)
+
+    except Exception as e:
+        console.print(f"[red]Error reading log file: {e}[/red]")
+
+
+@logs.command(name='list')
+@click.pass_context
+def logs_list(ctx):
+    """
+    List all log files.
+
+    Shows all log files with their sizes and modification times.
+    """
+    from rich.table import Table
+
+    config = ctx.obj['config']
+    log_dir = config.home_dir / "logs"
+
+    if not log_dir.exists():
+        console.print(f"[yellow]Log directory not found: {log_dir}[/yellow]")
+        return
+
+    log_files = sorted(log_dir.glob("quantcoder*.log*"))
+
+    if not log_files:
+        console.print("[yellow]No log files found.[/yellow]")
+        return
+
+    table = Table(title="Log Files")
+    table.add_column("File", style="cyan")
+    table.add_column("Size", style="green")
+    table.add_column("Modified", style="dim")
+
+    for log_file in log_files:
+        size = log_file.stat().st_size
+        if size > 1024 * 1024:
+            size_str = f"{size / (1024 * 1024):.1f} MB"
+        elif size > 1024:
+            size_str = f"{size / 1024:.1f} KB"
+        else:
+            size_str = f"{size} B"
+
+        from datetime import datetime
+        mtime = datetime.fromtimestamp(log_file.stat().st_mtime)
+        mtime_str = mtime.strftime("%Y-%m-%d %H:%M:%S")
+
+        table.add_row(log_file.name, size_str, mtime_str)
+
+    console.print(table)
+    console.print(f"\n[dim]Log directory: {log_dir}[/dim]")
+
+
+@logs.command(name='clear')
+@click.option('--keep', default=1, type=int, help='Number of backup files to keep')
+@click.confirmation_option(prompt='Are you sure you want to clear old log files?')
+@click.pass_context
+def logs_clear(ctx, keep):
+    """
+    Clear old log files.
+
+    Keeps the most recent backup files and removes older ones.
+    """
+    config = ctx.obj['config']
+    log_dir = config.home_dir / "logs"
+
+    if not log_dir.exists():
+        console.print("[yellow]No log directory found.[/yellow]")
+        return
+
+    # Find backup files (*.log.1, *.log.2, etc.)
+    removed = 0
+    for pattern in ["quantcoder.log.*", "quantcoder.json.log.*"]:
+        backup_files = sorted(log_dir.glob(pattern), key=lambda f: f.stat().st_mtime, reverse=True)
+
+        for backup_file in backup_files[keep:]:
+            try:
+                backup_file.unlink()
+                removed += 1
+                console.print(f"[dim]Removed: {backup_file.name}[/dim]")
+            except Exception as e:
+                console.print(f"[red]Failed to remove {backup_file.name}: {e}[/red]")
+
+    if removed:
+        console.print(f"\n[green]Cleared {removed} old log file(s)[/green]")
+    else:
+        console.print("[dim]No old log files to clear[/dim]")
+
+
+@logs.command(name='config')
+@click.option('--level', type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR']),
+              help='Set log level')
+@click.option('--format', 'log_format', type=click.Choice(['standard', 'json']),
+              help='Set log format')
+@click.option('--max-size', type=int, help='Max log file size in MB')
+@click.option('--backups', type=int, help='Number of backup files to keep')
+@click.option('--webhook', help='Webhook URL for error alerts')
+@click.option('--show', is_flag=True, help='Show current logging configuration')
+@click.pass_context
+def logs_config(ctx, level, log_format, max_size, backups, webhook, show):
+    """
+    Configure logging settings.
+
+    Examples:
+        quantcoder logs config --show
+        quantcoder logs config --level DEBUG
+        quantcoder logs config --max-size 20 --backups 10
+        quantcoder logs config --webhook https://hooks.slack.com/...
+    """
+    config = ctx.obj['config']
+
+    if show:
+        console.print("\n[bold cyan]Logging Configuration[/bold cyan]\n")
+        console.print(f"  Level: [green]{config.logging.level}[/green]")
+        console.print(f"  Format: [green]{config.logging.format}[/green]")
+        console.print(f"  Max File Size: [green]{config.logging.max_file_size_mb} MB[/green]")
+        console.print(f"  Backup Count: [green]{config.logging.backup_count}[/green]")
+        console.print(f"  Alert on Error: [green]{config.logging.alert_on_error}[/green]")
+        console.print(f"  Webhook URL: [green]{config.logging.webhook_url or 'Not set'}[/green]")
+        console.print(f"\n  Log Directory: [dim]{config.home_dir / 'logs'}[/dim]")
+        return
+
+    updated = False
+
+    if level:
+        config.logging.level = level
+        console.print(f"[green]Set log level: {level}[/green]")
+        updated = True
+
+    if log_format:
+        config.logging.format = log_format
+        console.print(f"[green]Set log format: {log_format}[/green]")
+        updated = True
+
+    if max_size:
+        config.logging.max_file_size_mb = max_size
+        console.print(f"[green]Set max file size: {max_size} MB[/green]")
+        updated = True
+
+    if backups:
+        config.logging.backup_count = backups
+        console.print(f"[green]Set backup count: {backups}[/green]")
+        updated = True
+
+    if webhook:
+        config.logging.webhook_url = webhook
+        config.logging.alert_on_error = True
+        console.print(f"[green]Set webhook URL and enabled error alerts[/green]")
+        updated = True
+
+    if updated:
+        config.save()
+        console.print("\n[dim]Configuration saved. Restart quantcoder to apply changes.[/dim]")
+    else:
+        console.print("[yellow]No options provided. Use --show to see current config.[/yellow]")
 
 
 if __name__ == '__main__':
