@@ -137,72 +137,160 @@ def search(ctx, query, num):
 
 
 @main.command()
-@click.argument('article_id', type=int)
+@click.argument('article_ids', type=int, nargs=-1, required=True)
 @click.pass_context
-def download(ctx, article_id):
+def download(ctx, article_ids):
     """
-    Download an article PDF by ID.
+    Download article PDF(s) by ID.
 
-    Example: quantcoder download 1
+    Examples:
+        quantcoder download 1
+        quantcoder download 1 2 3
     """
     config = ctx.obj['config']
     tool = DownloadArticleTool(config)
 
-    with console.status(f"Downloading article {article_id}..."):
-        result = tool.execute(article_id=article_id)
+    for article_id in article_ids:
+        with console.status(f"Downloading article {article_id}..."):
+            result = tool.execute(article_id=article_id)
 
-    if result.success:
-        console.print(f"[green]✓[/green] {result.message}")
-    else:
-        console.print(f"[red]✗[/red] {result.error}")
+        if result.success:
+            console.print(f"[green]✓[/green] Article {article_id}: {result.message}")
+        else:
+            console.print(f"[red]✗[/red] Article {article_id}: {result.error}")
 
 
 @main.command()
-@click.argument('article_id', type=int)
+@click.argument('article_ids', type=int, nargs=-1, required=True)
 @click.pass_context
-def summarize(ctx, article_id):
+def summarize(ctx, article_ids):
     """
-    Summarize a downloaded article.
+    Summarize downloaded article(s).
 
-    Example: quantcoder summarize 1
+    When multiple articles are provided, also creates a consolidated summary
+    with a new ID that can be used with 'generate'.
+
+    Examples:
+        quantcoder summarize 1
+        quantcoder summarize 1 2 3    # Creates individual + consolidated summary
     """
     config = ctx.obj['config']
     tool = SummarizeArticleTool(config)
 
-    with console.status(f"Analyzing article {article_id}..."):
-        result = tool.execute(article_id=article_id)
+    article_ids_list = list(article_ids)
+
+    with console.status(f"Analyzing article(s) {article_ids_list}..."):
+        result = tool.execute(article_ids=article_ids_list)
 
     if result.success:
         console.print(f"[green]✓[/green] {result.message}\n")
-        console.print(Panel(
-            Markdown(result.data['summary']),
-            title="Summary",
-            border_style="green"
-        ))
+
+        # Show individual summaries
+        for summary in result.data.get('summaries', []):
+            console.print(Panel(
+                Markdown(summary.get('summary_text', '')),
+                title=f"Summary #{summary.get('article_id')} - {summary.get('title', 'Unknown')[:50]}",
+                border_style="green"
+            ))
+
+        # Highlight consolidated summary if created
+        if result.data.get('consolidated_summary_id'):
+            consolidated_id = result.data['consolidated_summary_id']
+            console.print(Panel(
+                f"[bold]Consolidated summary created: #{consolidated_id}[/bold]\n\n"
+                f"Source articles: {article_ids_list}\n\n"
+                f"Use [cyan]quantcoder generate {consolidated_id}[/cyan] to generate code from the combined strategy.",
+                title="Consolidated Summary",
+                border_style="cyan"
+            ))
     else:
         console.print(f"[red]✗[/red] {result.error}")
 
 
+@main.command(name='summaries')
+@click.pass_context
+def list_summaries(ctx):
+    """
+    List all available summaries (individual and consolidated).
+
+    Shows summary IDs that can be used with 'generate' command.
+    """
+    from quantcoder.core.summary_store import SummaryStore
+
+    config = ctx.obj['config']
+    store = SummaryStore(config.home_dir)
+    summaries = store.list_summaries()
+
+    if not summaries['individual'] and not summaries['consolidated']:
+        console.print("[yellow]No summaries found. Use 'summarize' to create some.[/yellow]")
+        return
+
+    from rich.table import Table
+
+    # Individual summaries
+    if summaries['individual']:
+        table = Table(title="Individual Summaries")
+        table.add_column("ID", style="cyan")
+        table.add_column("Article", style="white")
+        table.add_column("Title", style="green")
+        table.add_column("Type", style="yellow")
+
+        for s in summaries['individual']:
+            table.add_row(
+                str(s['summary_id']),
+                str(s['article_id']),
+                s['title'][:50] + "..." if len(s['title']) > 50 else s['title'],
+                s['strategy_type']
+            )
+
+        console.print(table)
+        console.print()
+
+    # Consolidated summaries
+    if summaries['consolidated']:
+        table = Table(title="Consolidated Summaries")
+        table.add_column("ID", style="cyan")
+        table.add_column("Source Articles", style="white")
+        table.add_column("Type", style="yellow")
+        table.add_column("Created", style="dim")
+
+        for s in summaries['consolidated']:
+            table.add_row(
+                str(s['summary_id']),
+                str(s['source_article_ids']),
+                s['strategy_type'],
+                s.get('created_at', '')[:10] if s.get('created_at') else ''
+            )
+
+        console.print(table)
+
+    console.print("\n[dim]Use 'quantcoder generate <ID>' to generate code from any summary[/dim]")
+
+
 @main.command(name='generate')
-@click.argument('article_id', type=int)
+@click.argument('summary_id', type=int)
 @click.option('--max-attempts', default=6, help='Maximum refinement attempts')
 @click.option('--open-in-editor', is_flag=True, help='Open generated code in editor (default: Zed)')
 @click.option('--editor', default=None, help='Editor to use (overrides config, e.g., zed, code, vim)')
 @click.pass_context
-def generate_code(ctx, article_id, max_attempts, open_in_editor, editor):
+def generate_code(ctx, summary_id, max_attempts, open_in_editor, editor):
     """
-    Generate QuantConnect code from an article.
+    Generate QuantConnect code from a summary.
 
-    Example:
-        quantcoder generate 1
+    SUMMARY_ID can be:
+    - An individual article summary ID
+    - A consolidated summary ID (created from multiple articles)
+
+    Examples:
+        quantcoder generate 1              # From article 1 summary
+        quantcoder generate 6              # From consolidated summary #6
         quantcoder generate 1 --open-in-editor
-        quantcoder generate 1 --open-in-editor --editor code
     """
     config = ctx.obj['config']
     tool = GenerateCodeTool(config)
 
-    with console.status(f"Generating code for article {article_id}..."):
-        result = tool.execute(article_id=article_id, max_refine_attempts=max_attempts)
+    with console.status(f"Generating code for summary #{summary_id}..."):
+        result = tool.execute(summary_id=summary_id, max_refine_attempts=max_attempts)
 
     if result.success:
         console.print(f"[green]✓[/green] {result.message}\n")
