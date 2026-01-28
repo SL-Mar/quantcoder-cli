@@ -216,6 +216,26 @@ class Config:
         user_id = os.getenv("QUANTCONNECT_USER_ID")
         return bool(api_key and user_id)
 
+    def has_tavily_api_key(self) -> bool:
+        """Check if Tavily API key is available for deep search."""
+        from dotenv import load_dotenv
+
+        env_path = self.home_dir / ".env"
+        if env_path.exists():
+            load_dotenv(env_path)
+
+        return bool(os.getenv("TAVILY_API_KEY"))
+
+    def get_tavily_api_key(self) -> Optional[str]:
+        """Get Tavily API key from environment."""
+        from dotenv import load_dotenv
+
+        env_path = self.home_dir / ".env"
+        if env_path.exists():
+            load_dotenv(env_path)
+
+        return os.getenv("TAVILY_API_KEY")
+
     def save_api_key(self, api_key: str):
         """Save API key to .env file."""
         env_path = self.home_dir / ".env"

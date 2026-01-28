@@ -110,30 +110,70 @@ def interactive(config: Config):
 @main.command()
 @click.argument('query')
 @click.option('--num', default=5, help='Number of results to return')
+@click.option('--deep', is_flag=True, help='Use Tavily for semantic deep search (requires TAVILY_API_KEY)')
+@click.option('--no-filter', is_flag=True, help='Skip LLM relevance filtering (with --deep)')
 @click.pass_context
-def search(ctx, query, num):
+def search(ctx, query, num, deep, no_filter):
     """
-    Search for academic articles on CrossRef.
+    Search for academic articles.
 
-    Example: quantcoder search "algorithmic trading" --num 3
+    By default uses CrossRef API for keyword search.
+    With --deep flag, uses Tavily for semantic search + LLM filtering.
+
+    Examples:
+        quantcoder search "algorithmic trading" --num 3
+        quantcoder search "momentum strategy" --deep
+        quantcoder search "mean reversion" --deep --num 10
     """
     config = ctx.obj['config']
-    tool = SearchArticlesTool(config)
 
-    with console.status(f"Searching for '{query}'..."):
-        result = tool.execute(query=query, max_results=num)
+    if deep:
+        # Use Tavily deep search
+        from .tools import DeepSearchTool
+        tool = DeepSearchTool(config)
 
-    if result.success:
-        console.print(f"[green]✓[/green] {result.message}")
-
-        for idx, article in enumerate(result.data, 1):
-            published = f" ({article['published']})" if article.get('published') else ""
-            console.print(
-                f"  [cyan]{idx}.[/cyan] {article['title']}\n"
-                f"      [dim]{article['authors']}{published}[/dim]"
+        with console.status(f"Deep searching for '{query}'..."):
+            result = tool.execute(
+                query=query,
+                max_results=num,
+                filter_relevance=not no_filter,
             )
+
+        if result.success:
+            console.print(f"[green]✓[/green] {result.message}\n")
+
+            for idx, article in enumerate(result.data, 1):
+                score = article.get('relevance_score', 0)
+                score_color = "green" if score > 0.7 else "yellow" if score > 0.5 else "dim"
+                published = f" ({article['published']})" if article.get('published') else ""
+
+                console.print(
+                    f"  [cyan]{idx}.[/cyan] {article['title']}\n"
+                    f"      [{score_color}]Score: {score:.2f}[/{score_color}]{published}\n"
+                    f"      [dim]{article['URL'][:60]}...[/dim]"
+                )
+
+            console.print(f"\n[dim]Use 'quantcoder download <ID>' to get articles[/dim]")
+        else:
+            console.print(f"[red]✗[/red] {result.error}")
     else:
-        console.print(f"[red]✗[/red] {result.error}")
+        # Use CrossRef keyword search (default)
+        tool = SearchArticlesTool(config)
+
+        with console.status(f"Searching for '{query}'..."):
+            result = tool.execute(query=query, max_results=num)
+
+        if result.success:
+            console.print(f"[green]✓[/green] {result.message}")
+
+            for idx, article in enumerate(result.data, 1):
+                published = f" ({article['published']})" if article.get('published') else ""
+                console.print(
+                    f"  [cyan]{idx}.[/cyan] {article['title']}\n"
+                    f"      [dim]{article['authors']}{published}[/dim]"
+                )
+        else:
+            console.print(f"[red]✗[/red] {result.error}")
 
 
 @main.command()
@@ -1379,34 +1419,46 @@ def schedule_status():
 @schedule.command(name='config')
 @click.option('--notion-key', help='Set Notion API key')
 @click.option('--notion-db', help='Set Notion database ID')
+@click.option('--tavily-key', help='Set Tavily API key for deep search')
 @click.option('--show', is_flag=True, help='Show current configuration')
-def schedule_config(notion_key, notion_db, show):
+def schedule_config(notion_key, notion_db, tavily_key, show):
     """
-    Configure scheduler settings (Notion integration, etc.)
+    Configure scheduler settings (Notion, Tavily, etc.)
 
     Examples:
         quantcoder schedule config --show
         quantcoder schedule config --notion-key secret_xxx --notion-db abc123
+        quantcoder schedule config --tavily-key tvly-xxx
     """
     import os
     from pathlib import Path
+    from dotenv import load_dotenv
 
     env_file = Path.home() / ".quantcoder" / ".env"
 
+    # Load existing env vars
+    if env_file.exists():
+        load_dotenv(env_file)
+
     if show:
-        console.print("\n[bold cyan]Scheduler Configuration[/bold cyan]\n")
+        console.print("\n[bold cyan]Integration Configuration[/bold cyan]\n")
 
         # Check Notion settings
         notion_key_set = bool(os.getenv('NOTION_API_KEY'))
         notion_db_set = bool(os.getenv('NOTION_DATABASE_ID'))
+        tavily_key_set = bool(os.getenv('TAVILY_API_KEY'))
 
-        console.print(f"NOTION_API_KEY: {'[green]Set[/green]' if notion_key_set else '[yellow]Not set[/yellow]'}")
-        console.print(f"NOTION_DATABASE_ID: {'[green]Set[/green]' if notion_db_set else '[yellow]Not set[/yellow]'}")
+        console.print("[bold]Notion (article publishing):[/bold]")
+        console.print(f"  NOTION_API_KEY: {'[green]Set[/green]' if notion_key_set else '[yellow]Not set[/yellow]'}")
+        console.print(f"  NOTION_DATABASE_ID: {'[green]Set[/green]' if notion_db_set else '[yellow]Not set[/yellow]'}")
+
+        console.print("\n[bold]Tavily (deep search):[/bold]")
+        console.print(f"  TAVILY_API_KEY: {'[green]Set[/green]' if tavily_key_set else '[yellow]Not set[/yellow]'}")
 
         console.print(f"\n[dim]Environment file: {env_file}[/dim]")
         return
 
-    if not notion_key and not notion_db:
+    if not notion_key and not notion_db and not tavily_key:
         console.print("[yellow]No configuration options provided. Use --show to see current config.[/yellow]")
         return
 
@@ -1424,6 +1476,10 @@ def schedule_config(notion_key, notion_db, show):
     if notion_db:
         env_vars['NOTION_DATABASE_ID'] = notion_db
         console.print("[green]Set NOTION_DATABASE_ID[/green]")
+
+    if tavily_key:
+        env_vars['TAVILY_API_KEY'] = tavily_key
+        console.print("[green]Set TAVILY_API_KEY[/green]")
 
     # Write back
     env_file.parent.mkdir(parents=True, exist_ok=True)
