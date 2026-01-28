@@ -267,13 +267,107 @@ def list_summaries(ctx):
     console.print("\n[dim]Use 'quantcoder generate <ID>' to generate code from any summary[/dim]")
 
 
+def _publish_to_notion(config, summary_id: int, code: str, sharpe: float,
+                       backtest_data: dict, console):
+    """Publish strategy article to Notion after successful backtest."""
+    import os
+    from quantcoder.core.summary_store import SummaryStore
+
+    # Check Notion credentials
+    notion_key = os.getenv('NOTION_API_KEY')
+    notion_db = os.getenv('NOTION_DATABASE_ID')
+
+    if not notion_key or not notion_db:
+        console.print("[yellow]⚠ Notion credentials not configured[/yellow]")
+        console.print(f"[dim]Set NOTION_API_KEY and NOTION_DATABASE_ID in {config.home_dir / '.env'}[/dim]")
+        console.print("[dim]Use 'quantcoder schedule config' to configure[/dim]")
+        return
+
+    try:
+        from quantcoder.scheduler import NotionClient, StrategyArticle
+
+        # Get summary data
+        store = SummaryStore(config.home_dir)
+        summary = store.get_summary(summary_id)
+
+        if not summary:
+            console.print(f"[yellow]⚠ Could not retrieve summary {summary_id} for article[/yellow]")
+            return
+
+        # Determine title and description based on summary type
+        if summary.get('is_consolidated'):
+            paper_title = f"Consolidated from articles {summary.get('source_article_ids', [])}"
+            description = summary.get('merged_description', '')
+            strategy_type = summary.get('merged_strategy_type', 'hybrid')
+            paper_url = ""
+            authors = []
+        else:
+            paper_title = summary.get('title', f'Strategy {summary_id}')
+            description = summary.get('summary_text', '')
+            strategy_type = summary.get('strategy_type', 'unknown')
+            paper_url = summary.get('url', '')
+            authors = [summary.get('authors', 'Unknown')]
+
+        # Generate article title based on performance
+        if sharpe >= 1.5:
+            perf_label = "High-Performance"
+        elif sharpe >= 1.0:
+            perf_label = "Strong"
+        elif sharpe >= 0.5:
+            perf_label = "Viable"
+        else:
+            perf_label = "Experimental"
+
+        strategy_type_display = strategy_type.replace("_", " ").title()
+        title = f"{perf_label} {strategy_type_display} Strategy"
+
+        # Build backtest results for article
+        backtest_results = {
+            'sharpe_ratio': sharpe,
+            'total_return': backtest_data.get('total_return', 0),
+            'max_drawdown': backtest_data.get('statistics', {}).get('Max Drawdown', 0),
+            'win_rate': backtest_data.get('statistics', {}).get('Win Rate', 'N/A'),
+        }
+
+        # Create StrategyArticle directly
+        article = StrategyArticle(
+            title=title,
+            paper_title=paper_title,
+            paper_url=paper_url,
+            paper_authors=authors,
+            strategy_summary=description,
+            strategy_type=strategy_type,
+            backtest_results=backtest_results,
+            code_snippet=code[:2000] if len(code) > 2000 else code,
+            tags=[strategy_type_display]
+        )
+
+        # Publish to Notion
+        notion_client = NotionClient(api_key=notion_key, database_id=notion_db)
+        page = notion_client.create_strategy_page(article)
+
+        if page:
+            console.print(f"[green]✓ Published to Notion[/green] (page: {page.id[:8]}...)")
+        else:
+            console.print("[yellow]⚠ Failed to create Notion page[/yellow]")
+
+    except ImportError as e:
+        console.print(f"[yellow]⚠ Scheduler module not available: {e}[/yellow]")
+    except Exception as e:
+        console.print(f"[red]✗ Failed to publish to Notion: {e}[/red]")
+
+
 @main.command(name='generate')
 @click.argument('summary_id', type=int)
 @click.option('--max-attempts', default=6, help='Maximum refinement attempts')
 @click.option('--open-in-editor', is_flag=True, help='Open generated code in editor (default: Zed)')
 @click.option('--editor', default=None, help='Editor to use (overrides config, e.g., zed, code, vim)')
+@click.option('--backtest', is_flag=True, help='Run backtest on QuantConnect after generation')
+@click.option('--min-sharpe', default=0.5, type=float, help='Min Sharpe to keep algo and publish to Notion (with --backtest)')
+@click.option('--start-date', default='2020-01-01', help='Backtest start date (with --backtest)')
+@click.option('--end-date', default='2024-01-01', help='Backtest end date (with --backtest)')
 @click.pass_context
-def generate_code(ctx, summary_id, max_attempts, open_in_editor, editor):
+def generate_code(ctx, summary_id, max_attempts, open_in_editor, editor, backtest, min_sharpe, start_date, end_date):
     """
     Generate QuantConnect code from a summary.
 
@@ -281,10 +375,17 @@ def generate_code(ctx, summary_id, max_attempts, open_in_editor, editor):
     - An individual article summary ID
     - A consolidated summary ID (created from multiple articles)
 
+    With --backtest flag:
+    - Runs backtest on QuantConnect after code generation
+    - If Sharpe >= min-sharpe: keeps algo in QC and publishes article to Notion
+    - If Sharpe < min-sharpe: reports results but does not publish
+
     Examples:
         quantcoder generate 1              # From article 1 summary
         quantcoder generate 6              # From consolidated summary #6
         quantcoder generate 1 --open-in-editor
+        quantcoder generate 1 --backtest   # Generate, backtest, and publish if good
+        quantcoder generate 1 --backtest --min-sharpe 1.0
     """
     config = ctx.obj['config']
     tool = GenerateCodeTool(config)
@@ -329,6 +430,70 @@ def generate_code(ctx, summary_id, max_attempts, open_in_editor, editor):
                     console.print(f"[cyan]Opened in {editor_name}[/cyan]")
                 else:
                     console.print(f"[yellow]Could not open in {editor_name}. Is it installed?[/yellow]")
+
+        # Handle backtest if requested
+        if backtest:
+            code_path = result.data.get('path')
+            if not code_path:
+                console.print("[red]✗[/red] Cannot backtest: no code file path")
+                return
+
+            # Check QuantConnect credentials
+            if not config.has_quantconnect_credentials():
+                console.print("[red]Error: QuantConnect credentials not configured[/red]")
+                console.print(f"[yellow]Please set QUANTCONNECT_API_KEY and QUANTCONNECT_USER_ID in {config.home_dir / '.env'}[/yellow]")
+                return
+
+            console.print("\n")
+            backtest_tool = BacktestTool(config)
+
+            with console.status(f"Running backtest ({start_date} to {end_date})..."):
+                bt_result = backtest_tool.execute(
+                    file_path=code_path,
+                    start_date=start_date,
+                    end_date=end_date,
+                    name=f"Summary_{summary_id}"
+                )
+
+            if not bt_result.success:
+                console.print(f"[red]✗[/red] Backtest failed: {bt_result.error}")
+                return
+
+            sharpe = bt_result.data.get('sharpe_ratio', 0)
+            console.print(f"[green]✓[/green] Backtest complete: Sharpe = {sharpe:.2f}")
+
+            # Display backtest results
+            from rich.table import Table
+            bt_table = Table(title="Backtest Results")
+            bt_table.add_column("Metric", style="cyan")
+            bt_table.add_column("Value", style="green")
+
+            bt_table.add_row("Sharpe Ratio", f"{sharpe:.2f}")
+            bt_table.add_row("Total Return", str(bt_result.data.get('total_return', 'N/A')))
+
+            stats = bt_result.data.get('statistics', {})
+            for key, value in list(stats.items())[:6]:
+                bt_table.add_row(key, str(value))
+
+            console.print(bt_table)
+
+            # Check acceptance criteria
+            if sharpe >= min_sharpe:
+                console.print(f"\n[green]✓ Sharpe {sharpe:.2f} >= {min_sharpe} - ACCEPTED[/green]")
+                console.print("[cyan]Publishing to Notion...[/cyan]")
+
+                # Publish to Notion
+                _publish_to_notion(
+                    config=config,
+                    summary_id=summary_id,
+                    code=result.data['code'],
+                    sharpe=sharpe,
+                    backtest_data=bt_result.data,
+                    console=console
+                )
+            else:
+                console.print(f"\n[yellow]⚠ Sharpe {sharpe:.2f} < {min_sharpe} - NOT PUBLISHED[/yellow]")
+                console.print("[dim]Strategy kept locally but not published to Notion[/dim]")
     else:
         console.print(f"[red]✗[/red] {result.error}")
 
