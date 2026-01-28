@@ -65,10 +65,10 @@ class SchedulerConfig:
     hour: int = 6
     minute: int = 0
     day_of_week: str = "mon"
-    min_sharpe_ratio: float = 0.5
-    max_strategies_per_run: int = 3
-    publish_to_notion: bool = True
-    notion_min_sharpe: float = 0.8
+    min_sharpe_ratio: float = 0.5  # Acceptance criteria - algo kept in QC if passes
+    max_strategies_per_run: int = 10  # Batch limit per scheduled run
+    publish_to_notion: bool = True  # Push article for successful algos
+    notion_min_sharpe: float = 0.5  # Same as acceptance criteria
 
 
 @dataclass

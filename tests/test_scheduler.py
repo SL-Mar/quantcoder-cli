@@ -234,6 +234,6 @@ class TestPipelineConfig:
         config = PipelineConfig()
 
         assert len(config.search_queries) > 0
-        assert config.min_sharpe_ratio == 0.5
-        assert config.max_strategies_per_run == 3
+        assert config.min_sharpe_ratio == 0.5  # Acceptance criteria
+        assert config.max_strategies_per_run == 10  # Batch limit
         assert config.publish_to_notion is True

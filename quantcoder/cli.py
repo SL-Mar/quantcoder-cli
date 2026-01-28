@@ -957,9 +957,9 @@ def schedule():
 @click.option('--hour', default=6, type=int, help='Hour to run (for daily/weekly)')
 @click.option('--day', default='mon', help='Day of week (for weekly)')
 @click.option('--queries', help='Comma-separated search queries')
-@click.option('--min-sharpe', default=0.5, type=float, help='Minimum Sharpe ratio')
-@click.option('--max-strategies', default=3, type=int, help='Max strategies per run')
-@click.option('--notion-min-sharpe', default=0.8, type=float, help='Min Sharpe for Notion publishing')
+@click.option('--min-sharpe', default=0.5, type=float, help='Acceptance criteria - min Sharpe to keep algo')
+@click.option('--max-strategies', default=10, type=int, help='Batch limit - max strategies per run')
+@click.option('--notion-min-sharpe', default=0.5, type=float, help='Min Sharpe for Notion article (defaults to min-sharpe)')
 @click.option('--output', type=click.Path(), help='Output directory')
 @click.option('--run-now', is_flag=True, help='Run immediately before starting schedule')
 @click.pass_context
@@ -1046,8 +1046,8 @@ def schedule_start(ctx, interval, hour, day, queries, min_sharpe, max_strategies
 
 @schedule.command(name='run')
 @click.option('--queries', help='Comma-separated search queries')
-@click.option('--min-sharpe', default=0.5, type=float, help='Minimum Sharpe ratio')
-@click.option('--max-strategies', default=3, type=int, help='Max strategies per run')
+@click.option('--min-sharpe', default=0.5, type=float, help='Acceptance criteria - min Sharpe to keep algo')
+@click.option('--max-strategies', default=10, type=int, help='Batch limit - max strategies per run')
 @click.option('--output', type=click.Path(), help='Output directory')
 @click.pass_context
 def schedule_run(ctx, queries, min_sharpe, max_strategies, output):

@@ -33,11 +33,11 @@ class PipelineConfig:
         "factor investing",
         "machine learning trading"
     ])
-    papers_per_query: int = 3
+    papers_per_query: int = 5
 
-    # Strategy selection
-    min_sharpe_ratio: float = 0.5
-    max_strategies_per_run: int = 3
+    # Strategy selection - batch limit for strategies per run
+    min_sharpe_ratio: float = 0.5  # Acceptance criteria for keeping algo
+    max_strategies_per_run: int = 10  # Batch limit (configurable)
 
     # Backtest configuration
     backtest_start_date: str = "2020-01-01"
@@ -48,9 +48,9 @@ class PipelineConfig:
     save_markdown: bool = True
     save_json: bool = True
 
-    # Notion publishing
+    # Notion publishing - articles for successful strategies only
     publish_to_notion: bool = True
-    notion_min_sharpe: float = 0.8  # Higher bar for publishing
+    notion_min_sharpe: float = 0.5  # Same as acceptance criteria by default
 
     # Paper tracking (avoid reprocessing)
     processed_papers_file: Path = field(default_factory=lambda: Path.home() / ".quantcoder" / "processed_papers.json")
