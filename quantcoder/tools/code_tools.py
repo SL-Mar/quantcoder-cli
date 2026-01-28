@@ -16,52 +16,126 @@ class GenerateCodeTool(Tool):
 
     @property
     def description(self) -> str:
-        return "Generate QuantConnect trading algorithm code from article summary"
+        return "Generate QuantConnect trading algorithm code from article or consolidated summary"
 
-    def execute(self, article_id: int, max_refine_attempts: int = 6) -> ToolResult:
+    def execute(
+        self,
+        summary_id: int,
+        max_refine_attempts: int = 6,
+        use_summary_store: bool = True
+    ) -> ToolResult:
         """
-        Generate QuantConnect code from an article.
+        Generate QuantConnect code from a summary.
 
         Args:
-            article_id: Article ID from search results (1-indexed)
+            summary_id: Summary ID (can be individual article or consolidated)
             max_refine_attempts: Maximum attempts to refine code
+            use_summary_store: If True, look up summary from store; if False, treat as article_id (legacy)
 
         Returns:
             ToolResult with generated code
         """
         from ..core.processor import ArticleProcessor
+        from ..core.summary_store import SummaryStore
 
-        self.logger.info(f"Generating code for article {article_id}")
+        self.logger.info(f"Generating code for summary/article {summary_id}")
 
         try:
-            # Find the article file
-            filepath = Path(self.config.tools.downloads_dir) / f"article_{article_id}.pdf"
+            summary_text = None
+            is_consolidated = False
+            source_info = None
 
-            if not filepath.exists():
+            if use_summary_store:
+                # Try to load from summary store first
+                store = SummaryStore(self.config.home_dir)
+                summary_data = store.get_summary(summary_id)
+
+                if summary_data:
+                    is_consolidated = summary_data.get('is_consolidated', False)
+
+                    if is_consolidated:
+                        # Consolidated summary
+                        summary_text = summary_data.get('merged_description', '')
+                        source_info = {
+                            "type": "consolidated",
+                            "source_articles": summary_data.get('source_article_ids', []),
+                            "references": summary_data.get('references', [])
+                        }
+                        self.logger.info(f"Using consolidated summary #{summary_id} from articles {source_info['source_articles']}")
+                    else:
+                        # Individual summary from store
+                        summary_text = summary_data.get('summary_text', '')
+                        source_info = {
+                            "type": "individual",
+                            "article_id": summary_data.get('article_id'),
+                            "title": summary_data.get('title')
+                        }
+
+            # Fallback: treat summary_id as article_id (legacy behavior)
+            if not summary_text:
+                article_id = summary_id
+                filepath = Path(self.config.tools.downloads_dir) / f"article_{article_id}.pdf"
+
+                if not filepath.exists():
+                    return ToolResult(
+                        success=False,
+                        error=f"Summary #{summary_id} not found in store, and article_{article_id}.pdf not downloaded."
+                    )
+
+                # Process the article directly
+                processor = ArticleProcessor(self.config, max_refine_attempts=max_refine_attempts)
+                results = processor.extract_structure_and_generate_code(str(filepath))
+
+                summary = results.get("summary")
+                code = results.get("code")
+
+                if not code or code == "QuantConnect code could not be generated successfully.":
+                    return ToolResult(
+                        success=False,
+                        error="Failed to generate valid QuantConnect code",
+                        data={"summary": summary}
+                    )
+
+                # Save code
+                code_dir = Path(self.config.tools.generated_code_dir)
+                code_dir.mkdir(parents=True, exist_ok=True)
+
+                code_path = code_dir / f"algorithm_{article_id}.py"
+                with open(code_path, 'w', encoding='utf-8') as f:
+                    f.write(code)
+
                 return ToolResult(
-                    success=False,
-                    error=f"Article not downloaded. Please download article {article_id} first."
+                    success=True,
+                    data={
+                        "code": code,
+                        "summary": summary,
+                        "path": str(code_path),
+                        "source": {"type": "article", "article_id": article_id}
+                    },
+                    message=f"Code generated and saved to {code_path}"
                 )
 
-            # Process the article
+            # Generate code from summary text (individual or consolidated)
             processor = ArticleProcessor(self.config, max_refine_attempts=max_refine_attempts)
-            results = processor.extract_structure_and_generate_code(str(filepath))
-
-            summary = results.get("summary")
-            code = results.get("code")
+            code = processor.generate_code_from_summary(summary_text)
 
             if not code or code == "QuantConnect code could not be generated successfully.":
                 return ToolResult(
                     success=False,
                     error="Failed to generate valid QuantConnect code",
-                    data={"summary": summary}
+                    data={"summary": summary_text}
                 )
 
-            # Save code
+            # Save code with appropriate naming
             code_dir = Path(self.config.tools.generated_code_dir)
             code_dir.mkdir(parents=True, exist_ok=True)
 
-            code_path = code_dir / f"algorithm_{article_id}.py"
+            if is_consolidated:
+                code_path = code_dir / f"algorithm_consolidated_{summary_id}.py"
+            else:
+                article_id = source_info.get('article_id', summary_id) if source_info else summary_id
+                code_path = code_dir / f"algorithm_{article_id}.py"
+
             with open(code_path, 'w', encoding='utf-8') as f:
                 f.write(code)
 
@@ -69,8 +143,10 @@ class GenerateCodeTool(Tool):
                 success=True,
                 data={
                     "code": code,
-                    "summary": summary,
-                    "path": str(code_path)
+                    "summary": summary_text,
+                    "path": str(code_path),
+                    "source": source_info,
+                    "is_consolidated": is_consolidated
                 },
                 message=f"Code generated and saved to {code_path}"
             )
