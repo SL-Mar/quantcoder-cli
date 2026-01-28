@@ -23,18 +23,38 @@ from .tools import (
 console = Console()
 
 
-def setup_logging(verbose: bool = False):
-    """Configure logging with rich handler."""
-    log_level = logging.DEBUG if verbose else logging.INFO
+def setup_logging(verbose: bool = False, config: Config = None):
+    """Configure logging with rich handler and rotation.
 
-    logging.basicConfig(
-        level=log_level,
-        format="%(message)s",
-        datefmt="[%X]",
-        handlers=[
-            RichHandler(rich_tracebacks=True, console=console),
-            logging.FileHandler("quantcoder.log")
-        ]
+    Uses the new centralized logging system with:
+    - Log rotation (configurable size and backup count)
+    - Structured JSON logging (in addition to console output)
+    - Optional webhook alerting for errors
+    """
+    from quantcoder.logging_config import setup_logging as setup_qc_logging
+
+    # Get logging config if available
+    logging_config = None
+    if config:
+        try:
+            logging_config = config.get_logging_config()
+        except Exception:
+            pass  # Use defaults if config fails
+
+    # Create rich console handler
+    rich_handler = RichHandler(
+        rich_tracebacks=True,
+        console=console,
+        show_time=True,
+        show_path=False,
+    )
+    rich_handler._custom_formatter = True  # Signal to not override formatter
+
+    # Setup centralized logging
+    setup_qc_logging(
+        verbose=verbose,
+        config=logging_config,
+        console_handler=rich_handler,
     )
 
 
@@ -49,11 +69,12 @@ def main(ctx, verbose, config, prompt):
 
     A conversational interface to transform research articles into trading algorithms.
     """
-    setup_logging(verbose)
-
-    # Load configuration
+    # Load configuration first so logging can use it
     config_path = Path(config) if config else None
     cfg = Config.load(config_path)
+
+    # Setup logging with config (enables rotation, JSON logs, webhooks)
+    setup_logging(verbose, cfg)
 
     # Ensure API key is loaded
     try:
@@ -1614,6 +1635,238 @@ def schedule_config(notion_key, notion_db, tavily_key, show):
             f.write(f"{key}={value}\n")
 
     console.print(f"\n[dim]Configuration saved to {env_file}[/dim]")
+
+
+# ============================================================================
+# LOGGING AND MONITORING COMMANDS
+# ============================================================================
+
+@main.group()
+def logs():
+    """
+    View and manage logs.
+
+    Commands to view log files, tail recent activity, and manage log rotation.
+    """
+    pass
+
+
+@logs.command(name='show')
+@click.option('--lines', '-n', default=50, type=int, help='Number of lines to show')
+@click.option('--json', 'json_format', is_flag=True, help='Show JSON structured logs')
+@click.pass_context
+def logs_show(ctx, lines, json_format):
+    """
+    Show recent log entries.
+
+    Examples:
+        quantcoder logs show
+        quantcoder logs show --lines 100
+        quantcoder logs show --json
+    """
+    from quantcoder.logging_config import get_log_files
+
+    config = ctx.obj['config']
+    log_dir = config.home_dir / "logs"
+
+    if json_format:
+        log_file = log_dir / "quantcoder.json.log"
+    else:
+        log_file = log_dir / "quantcoder.log"
+
+    if not log_file.exists():
+        console.print(f"[yellow]No log file found at {log_file}[/yellow]")
+        console.print("[dim]Logs will be created after running commands.[/dim]")
+        return
+
+    try:
+        with open(log_file) as f:
+            all_lines = f.readlines()
+            recent = all_lines[-lines:] if len(all_lines) > lines else all_lines
+
+        console.print(f"[cyan]Last {len(recent)} entries from {log_file.name}:[/cyan]\n")
+
+        for line in recent:
+            line = line.rstrip()
+            if json_format:
+                try:
+                    import json
+                    data = json.loads(line)
+                    level = data.get('level', 'INFO')
+                    color = {
+                        'DEBUG': 'dim',
+                        'INFO': 'green',
+                        'WARNING': 'yellow',
+                        'ERROR': 'red',
+                        'CRITICAL': 'bold red',
+                    }.get(level, 'white')
+                    console.print(f"[{color}]{data.get('timestamp', '')} | {level} | {data.get('message', '')}[/{color}]")
+                except json.JSONDecodeError:
+                    console.print(line)
+            else:
+                # Color based on log level
+                if ' ERROR ' in line or ' CRITICAL ' in line:
+                    console.print(f"[red]{line}[/red]")
+                elif ' WARNING ' in line:
+                    console.print(f"[yellow]{line}[/yellow]")
+                elif ' DEBUG ' in line:
+                    console.print(f"[dim]{line}[/dim]")
+                else:
+                    console.print(line)
+
+    except Exception as e:
+        console.print(f"[red]Error reading log file: {e}[/red]")
+
+
+@logs.command(name='list')
+@click.pass_context
+def logs_list(ctx):
+    """
+    List all log files.
+
+    Shows all log files with their sizes and modification times.
+    """
+    from rich.table import Table
+
+    config = ctx.obj['config']
+    log_dir = config.home_dir / "logs"
+
+    if not log_dir.exists():
+        console.print(f"[yellow]Log directory not found: {log_dir}[/yellow]")
+        return
+
+    log_files = sorted(log_dir.glob("quantcoder*.log*"))
+
+    if not log_files:
+        console.print("[yellow]No log files found.[/yellow]")
+        return
+
+    table = Table(title="Log Files")
+    table.add_column("File", style="cyan")
+    table.add_column("Size", style="green")
+    table.add_column("Modified", style="dim")
+
+    for log_file in log_files:
+        size = log_file.stat().st_size
+        if size > 1024 * 1024:
+            size_str = f"{size / (1024 * 1024):.1f} MB"
+        elif size > 1024:
+            size_str = f"{size / 1024:.1f} KB"
+        else:
+            size_str = f"{size} B"
+
+        from datetime import datetime
+        mtime = datetime.fromtimestamp(log_file.stat().st_mtime)
+        mtime_str = mtime.strftime("%Y-%m-%d %H:%M:%S")
+
+        table.add_row(log_file.name, size_str, mtime_str)
+
+    console.print(table)
+    console.print(f"\n[dim]Log directory: {log_dir}[/dim]")
+
+
+@logs.command(name='clear')
+@click.option('--keep', default=1, type=int, help='Number of backup files to keep')
+@click.confirmation_option(prompt='Are you sure you want to clear old log files?')
+@click.pass_context
+def logs_clear(ctx, keep):
+    """
+    Clear old log files.
+
+    Keeps the most recent backup files and removes older ones.
+    """
+    config = ctx.obj['config']
+    log_dir = config.home_dir / "logs"
+
+    if not log_dir.exists():
+        console.print("[yellow]No log directory found.[/yellow]")
+        return
+
+    # Find backup files (*.log.1, *.log.2, etc.)
+    removed = 0
+    for pattern in ["quantcoder.log.*", "quantcoder.json.log.*"]:
+        backup_files = sorted(log_dir.glob(pattern), key=lambda f: f.stat().st_mtime, reverse=True)
+
+        for backup_file in backup_files[keep:]:
+            try:
+                backup_file.unlink()
+                removed += 1
+                console.print(f"[dim]Removed: {backup_file.name}[/dim]")
+            except Exception as e:
+                console.print(f"[red]Failed to remove {backup_file.name}: {e}[/red]")
+
+    if removed:
+        console.print(f"\n[green]Cleared {removed} old log file(s)[/green]")
+    else:
+        console.print("[dim]No old log files to clear[/dim]")
+
+
+@logs.command(name='config')
+@click.option('--level', type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR']),
+              help='Set log level')
+@click.option('--format', 'log_format', type=click.Choice(['standard', 'json']),
+              help='Set log format')
+@click.option('--max-size', type=int, help='Max log file size in MB')
+@click.option('--backups', type=int, help='Number of backup files to keep')
+@click.option('--webhook', help='Webhook URL for error alerts')
+@click.option('--show', is_flag=True, help='Show current logging configuration')
+@click.pass_context
+def logs_config(ctx, level, log_format, max_size, backups, webhook, show):
+    """
+    Configure logging settings.
+
+    Examples:
+        quantcoder logs config --show
+        quantcoder logs config --level DEBUG
+        quantcoder logs config --max-size 20 --backups 10
+        quantcoder logs config --webhook https://hooks.slack.com/...
+    """
+    config = ctx.obj['config']
+
+    if show:
+        console.print("\n[bold cyan]Logging Configuration[/bold cyan]\n")
+        console.print(f"  Level: [green]{config.logging.level}[/green]")
+        console.print(f"  Format: [green]{config.logging.format}[/green]")
+        console.print(f"  Max File Size: [green]{config.logging.max_file_size_mb} MB[/green]")
+        console.print(f"  Backup Count: [green]{config.logging.backup_count}[/green]")
+        console.print(f"  Alert on Error: [green]{config.logging.alert_on_error}[/green]")
+        console.print(f"  Webhook URL: [green]{config.logging.webhook_url or 'Not set'}[/green]")
+        console.print(f"\n  Log Directory: [dim]{config.home_dir / 'logs'}[/dim]")
+        return
+
+    updated = False
+
+    if level:
+        config.logging.level = level
+        console.print(f"[green]Set log level: {level}[/green]")
+        updated = True
+
+    if log_format:
+        config.logging.format = log_format
+        console.print(f"[green]Set log format: {log_format}[/green]")
+        updated = True
+
+    if max_size:
+        config.logging.max_file_size_mb = max_size
+        console.print(f"[green]Set max file size: {max_size} MB[/green]")
+        updated = True
+
+    if backups:
+        config.logging.backup_count = backups
+        console.print(f"[green]Set backup count: {backups}[/green]")
+        updated = True
+
+    if webhook:
+        config.logging.webhook_url = webhook
+        config.logging.alert_on_error = True
+        console.print(f"[green]Set webhook URL and enabled error alerts[/green]")
+        updated = True
+
+    if updated:
+        config.save()
+        console.print("\n[dim]Configuration saved. Restart quantcoder to apply changes.[/dim]")
+    else:
+        console.print("[yellow]No options provided. Use --show to see current config.[/yellow]")
 
 
 if __name__ == '__main__':
