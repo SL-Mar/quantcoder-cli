@@ -397,6 +397,72 @@ def _publish_to_notion(config, summary_id: int, code: str, sharpe: float,
         console.print(f"[red]✗ Failed to publish to Notion: {e}[/red]")
 
 
+def _run_evolution(config, code: str, source_name: str, max_generations: int,
+                   variants_per_gen: int, start_date: str, end_date: str, console):
+    """Run evolution on a strategy to improve it."""
+    import asyncio
+    import os
+
+    try:
+        from quantcoder.evolver import EvolutionEngine, EvolutionConfig
+
+        # Get QC credentials
+        qc_user = os.getenv('QC_USER_ID') or os.getenv('QUANTCONNECT_USER_ID')
+        qc_token = os.getenv('QC_API_TOKEN') or os.getenv('QUANTCONNECT_API_KEY')
+        qc_project = os.getenv('QC_PROJECT_ID')
+
+        if not all([qc_user, qc_token]):
+            console.print("[yellow]⚠ QC credentials not fully configured for evolution[/yellow]")
+            return None
+
+        # Create evolution config
+        evo_config = EvolutionConfig(
+            qc_user_id=qc_user,
+            qc_api_token=qc_token,
+            qc_project_id=int(qc_project) if qc_project else None,
+            max_generations=max_generations,
+            variants_per_generation=variants_per_gen,
+            backtest_start_date=start_date,
+            backtest_end_date=end_date,
+        )
+
+        engine = EvolutionEngine(evo_config)
+
+        # Progress callback
+        def on_gen_complete(state, gen):
+            best = state.elite_pool.get_best()
+            if best and best.fitness:
+                console.print(f"  [dim]Gen {gen}: Best fitness = {best.fitness:.4f}[/dim]")
+
+        engine.on_generation_complete = on_gen_complete
+
+        async def run_evo():
+            return await engine.evolve(code, source_name)
+
+        # Run evolution
+        with console.status("Evolving strategy..."):
+            result = asyncio.run(run_evo())
+
+        # Get best variant
+        best = engine.get_best_variant()
+        if best and best.code:
+            return {
+                'code': best.code,
+                'sharpe': best.metrics.get('sharpe_ratio', 0) if best.metrics else 0,
+                'backtest_data': best.metrics or {},
+                'evolution_id': result.evolution_id,
+            }
+
+        return None
+
+    except ImportError as e:
+        console.print(f"[yellow]⚠ Evolution module not available: {e}[/yellow]")
+        return None
+    except Exception as e:
+        console.print(f"[red]✗ Evolution failed: {e}[/red]")
+        return None
+
+
 @main.command(name='generate')
 @click.argument('summary_id', type=int)
 @click.option('--max-attempts', default=6, help='Maximum refinement attempts')
@@ -406,8 +472,11 @@ def _publish_to_notion(config, summary_id: int, code: str, sharpe: float,
 @click.option('--min-sharpe', default=0.5, type=float, help='Min Sharpe to keep algo and publish to Notion (with --backtest)')
 @click.option('--start-date', default='2020-01-01', help='Backtest start date (with --backtest)')
 @click.option('--end-date', default='2024-01-01', help='Backtest end date (with --backtest)')
+@click.option('--evolve', is_flag=True, help='Evolve strategy after backtest passes (with --backtest)')
+@click.option('--gens', default=5, type=int, help='Number of evolution generations (with --evolve)')
+@click.option('--variants', default=3, type=int, help='Variants per generation (with --evolve)')
 @click.pass_context
-def generate_code(ctx, summary_id, max_attempts, open_in_editor, editor, backtest, min_sharpe, start_date, end_date):
+def generate_code(ctx, summary_id, max_attempts, open_in_editor, editor, backtest, min_sharpe, start_date, end_date, evolve, gens, variants):
     """
     Generate QuantConnect code from a summary.
 
@@ -420,12 +489,17 @@ def generate_code(ctx, summary_id, max_attempts, open_in_editor, editor, backtes
     - If Sharpe >= min-sharpe: keeps algo in QC and publishes article to Notion
     - If Sharpe < min-sharpe: reports results but does not publish
 
+    With --evolve flag (requires --backtest):
+    - After backtest passes, evolves the strategy for N generations
+    - Publishes the best evolved variant to Notion
+
     Examples:
         quantcoder generate 1              # From article 1 summary
         quantcoder generate 6              # From consolidated summary #6
         quantcoder generate 1 --open-in-editor
         quantcoder generate 1 --backtest   # Generate, backtest, and publish if good
         quantcoder generate 1 --backtest --min-sharpe 1.0
+        quantcoder generate 1 --backtest --evolve --gens 5  # Evolve after backtest
     """
     config = ctx.obj['config']
     tool = GenerateCodeTool(config)
@@ -520,15 +594,39 @@ def generate_code(ctx, summary_id, max_attempts, open_in_editor, editor, backtes
             # Check acceptance criteria
             if sharpe >= min_sharpe:
                 console.print(f"\n[green]✓ Sharpe {sharpe:.2f} >= {min_sharpe} - ACCEPTED[/green]")
-                console.print("[cyan]Publishing to Notion...[/cyan]")
+
+                final_code = result.data['code']
+                final_sharpe = sharpe
+                final_backtest_data = bt_result.data
+
+                # Run evolution if requested
+                if evolve:
+                    console.print(f"\n[cyan]Evolving strategy for {gens} generations...[/cyan]")
+                    evolved_result = _run_evolution(
+                        config=config,
+                        code=result.data['code'],
+                        source_name=f"Summary_{summary_id}",
+                        max_generations=gens,
+                        variants_per_gen=variants,
+                        start_date=start_date,
+                        end_date=end_date,
+                        console=console
+                    )
+
+                    if evolved_result:
+                        final_code = evolved_result['code']
+                        final_sharpe = evolved_result['sharpe']
+                        final_backtest_data = evolved_result['backtest_data']
+                        console.print(f"[green]✓ Evolution complete: Sharpe improved to {final_sharpe:.2f}[/green]")
 
                 # Publish to Notion
+                console.print("[cyan]Publishing to Notion...[/cyan]")
                 _publish_to_notion(
                     config=config,
                     summary_id=summary_id,
-                    code=result.data['code'],
-                    sharpe=sharpe,
-                    backtest_data=bt_result.data,
+                    code=final_code,
+                    sharpe=final_sharpe,
+                    backtest_data=final_backtest_data,
                     console=console
                 )
             else:
@@ -1255,9 +1353,12 @@ def schedule():
 @click.option('--notion-min-sharpe', default=0.5, type=float, help='Min Sharpe for Notion article (defaults to min-sharpe)')
 @click.option('--output', type=click.Path(), help='Output directory')
 @click.option('--run-now', is_flag=True, help='Run immediately before starting schedule')
+@click.option('--evolve', is_flag=True, help='Evolve strategies after backtest passes')
+@click.option('--gens', default=5, type=int, help='Evolution generations (with --evolve)')
+@click.option('--variants', default=3, type=int, help='Variants per generation (with --evolve)')
 @click.pass_context
 def schedule_start(ctx, interval, hour, day, queries, min_sharpe, max_strategies,
-                   notion_min_sharpe, output, run_now):
+                   notion_min_sharpe, output, run_now, evolve, gens, variants):
     """
     Start the automated scheduled pipeline.
 
@@ -1267,10 +1368,15 @@ def schedule_start(ctx, interval, hour, day, queries, min_sharpe, max_strategies
     3. Publish successful strategies to Notion
     4. Keep algorithms in QuantConnect
 
+    With --evolve flag:
+    - After each strategy passes backtest, evolves it for N generations
+    - Publishes the best evolved variant to Notion
+
     Examples:
         quantcoder schedule start --interval daily --hour 6
         quantcoder schedule start --interval weekly --day mon --hour 9
         quantcoder schedule start --queries "momentum,mean reversion" --run-now
+        quantcoder schedule start --evolve --gens 5  # With evolution
     """
     import asyncio
     from pathlib import Path
@@ -1305,12 +1411,18 @@ def schedule_start(ctx, interval, hour, day, queries, min_sharpe, max_strategies
         min_sharpe_ratio=min_sharpe,
         max_strategies_per_run=max_strategies,
         notion_min_sharpe=notion_min_sharpe,
+        evolve_strategies=evolve,
+        evolution_generations=gens,
+        evolution_variants=variants,
     )
 
     if search_queries:
         pipeline_config.search_queries = [q.strip() for q in search_queries]
     if output_dir:
         pipeline_config.output_dir = output_dir
+
+    if evolve:
+        console.print(f"[cyan]Evolution enabled: {gens} generations, {variants} variants/gen[/cyan]")
 
     # Create pipeline and runner
     pipeline = AutomatedBacktestPipeline(config=config, pipeline_config=pipeline_config)
@@ -1342,16 +1454,24 @@ def schedule_start(ctx, interval, hour, day, queries, min_sharpe, max_strategies
 @click.option('--min-sharpe', default=0.5, type=float, help='Acceptance criteria - min Sharpe to keep algo')
 @click.option('--max-strategies', default=10, type=int, help='Batch limit - max strategies per run')
 @click.option('--output', type=click.Path(), help='Output directory')
+@click.option('--evolve', is_flag=True, help='Evolve strategies after backtest passes')
+@click.option('--gens', default=5, type=int, help='Evolution generations (with --evolve)')
+@click.option('--variants', default=3, type=int, help='Variants per generation (with --evolve)')
 @click.pass_context
-def schedule_run(ctx, queries, min_sharpe, max_strategies, output):
+def schedule_run(ctx, queries, min_sharpe, max_strategies, output, evolve, gens, variants):
     """
     Run the automated pipeline once (no scheduling).
 
     Good for testing or manual runs.
 
+    With --evolve flag:
+    - After each strategy passes backtest, evolves it for N generations
+    - Publishes the best evolved variant to Notion
+
     Examples:
         quantcoder schedule run
         quantcoder schedule run --queries "factor investing" --min-sharpe 1.0
+        quantcoder schedule run --evolve --gens 5  # With evolution
     """
     import asyncio
     from pathlib import Path
@@ -1366,12 +1486,18 @@ def schedule_run(ctx, queries, min_sharpe, max_strategies, output):
     pipeline_config = PipelineConfig(
         min_sharpe_ratio=min_sharpe,
         max_strategies_per_run=max_strategies,
+        evolve_strategies=evolve,
+        evolution_generations=gens,
+        evolution_variants=variants,
     )
 
     if search_queries:
         pipeline_config.search_queries = [q.strip() for q in search_queries]
     if output_dir:
         pipeline_config.output_dir = output_dir
+
+    if evolve:
+        console.print(f"[cyan]Evolution enabled: {gens} generations, {variants} variants/gen[/cyan]")
 
     pipeline = AutomatedBacktestPipeline(config=config, pipeline_config=pipeline_config)
 

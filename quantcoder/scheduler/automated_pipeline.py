@@ -52,6 +52,11 @@ class PipelineConfig:
     publish_to_notion: bool = True
     notion_min_sharpe: float = 0.5  # Same as acceptance criteria by default
 
+    # Evolution settings - evolve strategies after backtest passes
+    evolve_strategies: bool = False  # Enable evolution for passing strategies
+    evolution_generations: int = 5  # Number of generations to evolve
+    evolution_variants: int = 3  # Variants per generation
+
     # Paper tracking (avoid reprocessing)
     processed_papers_file: Path = field(default_factory=lambda: Path.home() / ".quantcoder" / "processed_papers.json")
 
