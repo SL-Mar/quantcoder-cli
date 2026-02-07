@@ -311,39 +311,88 @@ class BacktestTool(Tool):
 
         self.logger.info(f"Running backtest from {start_date} to {end_date}")
 
-        try:
-            result = self._run_backtest(code, start_date, end_date, name)
+        max_fix_attempts = 3
+        current_code = code
 
-            if not result.get("success"):
+        for attempt in range(max_fix_attempts + 1):
+            try:
+                result = self._run_backtest(current_code, start_date, end_date, name)
+
+                # Check for runtime error
+                runtime_error = result.get("runtime_error")
+                if runtime_error and attempt < max_fix_attempts:
+                    self.logger.warning(
+                        f"Runtime error (attempt {attempt + 1}/{max_fix_attempts}): "
+                        f"{runtime_error[:150]}"
+                    )
+
+                    # Feed error back to LLM to fix
+                    from ..core.llm import LLMHandler
+                    llm = LLMHandler(self.config)
+                    fixed_code = llm.fix_runtime_error(current_code, runtime_error)
+
+                    if fixed_code and fixed_code != current_code:
+                        current_code = fixed_code
+                        self.logger.info(f"Code fixed by LLM, retrying backtest...")
+
+                        # Save the fixed code if we loaded from file
+                        if file_path:
+                            fix_path = Path(file_path)
+                            if not fix_path.exists():
+                                fix_path = Path(self.config.tools.generated_code_dir) / file_path
+                            if fix_path.exists():
+                                with open(fix_path, 'w') as f:
+                                    f.write(fixed_code)
+                                self.logger.info(f"Saved fixed code to {fix_path}")
+                        continue
+                    else:
+                        self.logger.warning("LLM could not fix the error")
+
+                if not result.get("success"):
+                    error_msg = result.get("error", "Backtest failed")
+                    if runtime_error:
+                        error_msg = f"{error_msg}: {runtime_error[:200]}"
+                    return ToolResult(
+                        success=False,
+                        error=error_msg,
+                        data=result
+                    )
+
+                # Extract key metrics
+                stats = result.get("statistics", {})
+                sharpe = result.get("sharpe")
+                total_return = result.get("total_return")
+                project_url = result.get("project_url", "")
+
+                msg = f"Backtest completed. Sharpe: {sharpe}, Return: {total_return}"
+                if attempt > 0:
+                    msg += f" (fixed after {attempt} attempt{'s' if attempt > 1 else ''})"
+
                 return ToolResult(
-                    success=False,
-                    error=result.get("error", "Backtest failed"),
-                    data=result
+                    success=True,
+                    message=msg,
+                    data={
+                        "backtest_id": result.get("backtest_id"),
+                        "project_id": result.get("project_id"),
+                        "project_url": project_url,
+                        "sharpe_ratio": sharpe,
+                        "total_return": total_return,
+                        "statistics": stats,
+                        "runtime_statistics": result.get("runtime_statistics", {})
+                    }
                 )
 
-            # Extract key metrics
-            stats = result.get("statistics", {})
-            sharpe = result.get("sharpe")
-            total_return = result.get("total_return")
+            except Exception as e:
+                self.logger.error(f"Backtest error: {e}")
+                return ToolResult(
+                    success=False,
+                    error=str(e)
+                )
 
-            return ToolResult(
-                success=True,
-                message=f"Backtest completed. Sharpe: {sharpe}, Return: {total_return}",
-                data={
-                    "backtest_id": result.get("backtest_id"),
-                    "sharpe_ratio": sharpe,
-                    "total_return": total_return,
-                    "statistics": stats,
-                    "runtime_statistics": result.get("runtime_statistics", {})
-                }
-            )
-
-        except Exception as e:
-            self.logger.error(f"Backtest error: {e}")
-            return ToolResult(
-                success=False,
-                error=str(e)
-            )
+        return ToolResult(
+            success=False,
+            error=f"Backtest failed after {max_fix_attempts} fix attempts"
+        )
 
     def _run_backtest(
         self,
@@ -353,7 +402,11 @@ class BacktestTool(Tool):
         name: Optional[str]
     ) -> dict:
         """Run backtest on QuantConnect API."""
+        import re
         from ..mcp.quantconnect_mcp import QuantConnectMCPClient
+
+        # Override hardcoded dates in algorithm code with CLI flags
+        code = self._override_dates(code, start_date, end_date)
 
         api_key, user_id = self.config.load_quantconnect_credentials()
         client = QuantConnectMCPClient(api_key, user_id)
@@ -367,3 +420,28 @@ class BacktestTool(Tool):
             return result
         finally:
             loop.close()
+
+    @staticmethod
+    def _override_dates(code: str, start_date: str, end_date: str) -> str:
+        """Replace set_start_date/set_end_date calls in algorithm code with CLI-provided dates."""
+        import re
+        from datetime import datetime
+
+        try:
+            start = datetime.strptime(start_date, "%Y-%m-%d")
+            end = datetime.strptime(end_date, "%Y-%m-%d")
+        except ValueError:
+            return code  # invalid format, skip override
+
+        # Match self.set_start_date(...) with any args (ints or strings)
+        code = re.sub(
+            r'self\.set_start_date\([^)]+\)',
+            f'self.set_start_date({start.year}, {start.month}, {start.day})',
+            code
+        )
+        code = re.sub(
+            r'self\.set_end_date\([^)]+\)',
+            f'self.set_end_date({end.year}, {end.month}, {end.day})',
+            code
+        )
+        return code

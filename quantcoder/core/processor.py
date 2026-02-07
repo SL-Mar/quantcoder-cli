@@ -161,14 +161,35 @@ class KeywordAnalyzer:
         self.risk_management_keywords = {
             "drawdown", "volatility", "reduce", "limit", "risk", "risk-adjusted",
             "maximal drawdown", "market volatility", "bear markets", "stability",
-            "sidestep", "reduce drawdown", "stop-loss", "position sizing", "hedging"
+            "sidestep", "reduce drawdown", "stop-loss", "position sizing", "hedging",
+            "max loss", "capital at risk", "leverage", "margin", "var", "value at risk",
+            "portfolio protection", "tail risk", "max exposure"
         }
         self.trading_signal_keywords = {
             "buy", "sell", "signal", "indicator", "trend", "sma", "moving average",
             "momentum", "rsi", "macd", "bollinger bands", "rachev ratio", "stay long",
             "exit", "market timing", "yield curve", "recession", "unemployment",
-            "housing starts", "treasuries", "economic indicator"
+            "housing starts", "treasuries", "economic indicator",
+            "ema", "atr", "adx", "stochastic", "vwap", "volume weighted",
+            "crossover", "cross above", "cross below", "golden cross", "death cross",
+            "overbought", "oversold", "divergence", "breakout", "breakdown",
+            "mean reversion", "pairs trading", "factor", "alpha", "beta", "sharpe",
+            "long entry", "short entry", "entry condition", "exit condition",
+            "go long", "go short", "open position", "close position"
         }
+        self.strategy_parameter_keywords = {
+            "period", "threshold", "parameter", "lookback", "rebalance",
+            "weight", "allocation", "window", "lag", "decay", "half-life",
+            "z-score", "standard deviation", "percentile", "quantile",
+            "top decile", "bottom decile", "holding period", "frequency",
+            "daily", "weekly", "monthly", "intraday", "minute", "hourly"
+        }
+        # Pattern to match sentences with numbers near indicator names
+        self._param_pattern = re.compile(
+            r'(?:\d+[- ]?(?:day|period|bar|minute|hour|week|month))|'
+            r'(?:(?:period|lookback|window)\s*(?:of|=|:)?\s*\d+)',
+            re.IGNORECASE
+        )
         self.irrelevant_patterns = [
             re.compile(r'figure \d+', re.IGNORECASE),
             re.compile(r'\[\d+\]'),
@@ -198,8 +219,11 @@ class KeywordAnalyzer:
 
                 if any(kw in sent_text for kw in self.trading_signal_keywords):
                     keyword_map['trading_signal'].append(sent.strip())
-                elif any(kw in sent_text for kw in self.risk_management_keywords):
+                if any(kw in sent_text for kw in self.risk_management_keywords):
                     keyword_map['risk_management'].append(sent.strip())
+                if (any(kw in sent_text for kw in self.strategy_parameter_keywords)
+                        or self._param_pattern.search(sent_text)):
+                    keyword_map['strategy_parameters'].append(sent.strip())
 
         # Remove duplicates and sort
         for category, sentences in keyword_map.items():

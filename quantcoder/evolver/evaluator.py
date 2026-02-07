@@ -5,15 +5,13 @@ QuantConnect Evaluator
 Handles backtesting of algorithm variants via QuantConnect API.
 Parses results and calculates fitness scores.
 
-Adapted for QuantCoder v2.0 with async support.
+Uses the shared QuantConnectMCPClient for correct API auth and endpoints.
 """
 
 import logging
 import asyncio
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
-
-import requests
 
 from .config import EvolutionConfig
 
@@ -47,71 +45,31 @@ class QCEvaluator:
     """
     Evaluates algorithm variants by running backtests on QuantConnect.
 
-    Uses QuantConnect's REST API:
-    - Create/update project with algorithm code
-    - Compile project
-    - Run backtest
-    - Fetch and parse results
+    Uses QuantConnectMCPClient for correct hash-based auth and POST endpoints.
     """
-
-    API_BASE = "https://www.quantconnect.com/api/v2"
 
     def __init__(self, config: EvolutionConfig):
         self.config = config
         self.logger = logging.getLogger(self.__class__.__name__)
+        self._client = None
 
-        # Validate credentials
-        if not config.qc_user_id or not config.qc_api_token:
-            self.logger.warning(
-                "QuantConnect credentials not configured. "
-                "Set qc_user_id and qc_api_token in config."
+    def _get_client(self):
+        """Lazy-init the QC API client."""
+        if self._client is None:
+            from quantcoder.mcp.quantconnect_mcp import QuantConnectMCPClient
+            self._client = QuantConnectMCPClient(
+                self.config.qc_api_token,
+                self.config.qc_user_id
             )
-
-    def _get_auth(self) -> tuple:
-        """Get auth tuple for requests."""
-        return (self.config.qc_user_id, self.config.qc_api_token)
-
-    async def _api_request(
-        self,
-        method: str,
-        endpoint: str,
-        data: Optional[dict] = None
-    ) -> Optional[dict]:
-        """Make authenticated API request to QuantConnect."""
-        url = f"{self.API_BASE}/{endpoint}"
-
-        try:
-            # Run sync request in thread pool to not block
-            loop = asyncio.get_event_loop()
-
-            if method == "GET":
-                response = await loop.run_in_executor(
-                    None,
-                    lambda: requests.get(url, auth=self._get_auth(), timeout=30)
-                )
-            elif method == "POST":
-                response = await loop.run_in_executor(
-                    None,
-                    lambda: requests.post(url, auth=self._get_auth(), json=data, timeout=30)
-                )
-            else:
-                raise ValueError(f"Unsupported method: {method}")
-
-            response.raise_for_status()
-            return response.json()
-
-        except requests.RequestException as e:
-            self.logger.error(f"API request failed: {e}")
-            return None
+        return self._client
 
     async def create_project(self, name: str) -> Optional[int]:
         """Create a new project for evolution testing."""
-        data = {
-            "name": name,
-            "language": "Py"
-        }
-
-        result = await self._api_request("POST", "projects/create", data)
+        client = self._get_client()
+        result = await client._call_api(
+            "/projects/create", method="POST",
+            data={"name": name, "language": "Py"}
+        )
         if result and result.get("success"):
             project_id = result["projects"][0]["projectId"]
             self.logger.info(f"Created project {name} with ID {project_id}")
@@ -122,13 +80,11 @@ class QCEvaluator:
 
     async def update_project_code(self, project_id: int, code: str, filename: str = "main.py") -> bool:
         """Update the algorithm code in a project."""
-        data = {
-            "projectId": project_id,
-            "name": filename,
-            "content": code
-        }
-
-        result = await self._api_request("POST", "files/update", data)
+        client = self._get_client()
+        result = await client._call_api(
+            "/files/update", method="POST",
+            data={"projectId": project_id, "name": filename, "content": code}
+        )
         if result and result.get("success"):
             self.logger.debug(f"Updated code in project {project_id}")
             return True
@@ -138,42 +94,45 @@ class QCEvaluator:
 
     async def compile_project(self, project_id: int) -> Optional[str]:
         """Compile project and return compile ID."""
-        data = {"projectId": project_id}
+        client = self._get_client()
+        result = await client._call_api(
+            "/compile/create", method="POST",
+            data={"projectId": project_id}
+        )
+        if not result or not result.get("compileId"):
+            self.logger.error(f"Failed to start compilation: {result}")
+            return None
 
-        result = await self._api_request("POST", "compile/create", data)
-        if result and result.get("success"):
-            compile_id = result["compileId"]
-            state = result["state"]
+        compile_id = result["compileId"]
+        state = result.get("state", "InQueue")
 
-            # Wait for compilation to complete
-            max_wait = 60
-            waited = 0
-            while state == "InQueue" and waited < max_wait:
-                await asyncio.sleep(2)
-                waited += 2
-                status = await self._api_request("GET", f"compile/read?projectId={project_id}&compileId={compile_id}")
-                if status:
-                    state = status.get("state", "Unknown")
-
+        # Wait for compilation
+        for _ in range(30):
             if state == "BuildSuccess":
                 self.logger.info(f"Project {project_id} compiled successfully")
                 return compile_id
-            else:
-                self.logger.error(f"Compilation failed with state: {state}")
+            elif state == "BuildError":
+                self.logger.error(f"Compilation failed: {result.get('logs', [])}")
                 return None
 
-        self.logger.error(f"Failed to start compilation: {result}")
+            await asyncio.sleep(2)
+            status = await client._call_api(
+                "/compile/read", method="POST",
+                data={"projectId": project_id, "compileId": compile_id}
+            )
+            if status:
+                state = status.get("state", "Unknown")
+
+        self.logger.error("Compilation timed out")
         return None
 
     async def run_backtest(self, project_id: int, compile_id: str, name: str) -> Optional[str]:
         """Start a backtest and return backtest ID."""
-        data = {
-            "projectId": project_id,
-            "compileId": compile_id,
-            "backtestName": name
-        }
-
-        result = await self._api_request("POST", "backtests/create", data)
+        client = self._get_client()
+        result = await client._call_api(
+            "/backtests/create", method="POST",
+            data={"projectId": project_id, "compileId": compile_id, "backtestName": name}
+        )
         if result and result.get("success"):
             backtest_id = result["backtest"]["backtestId"]
             self.logger.info(f"Started backtest {backtest_id}")
@@ -184,21 +143,26 @@ class QCEvaluator:
 
     async def wait_for_backtest(self, project_id: int, backtest_id: str, timeout: int = 300) -> Optional[dict]:
         """Wait for backtest to complete and return results."""
+        client = self._get_client()
         waited = 0
         poll_interval = 5
 
         while waited < timeout:
-            result = await self._api_request(
-                "GET",
-                f"backtests/read?projectId={project_id}&backtestId={backtest_id}"
+            result = await client._call_api(
+                "/backtests/read", method="POST",
+                data={"projectId": project_id, "backtestId": backtest_id}
             )
 
-            if result and result.get("success"):
+            if result:
                 backtest = result.get("backtest", {})
                 completed = backtest.get("completed", False)
+                error = backtest.get("error")
 
-                if completed:
-                    self.logger.info(f"Backtest {backtest_id} completed")
+                if completed or backtest.get("progress") == 1.0:
+                    if error:
+                        self.logger.error(f"Backtest {backtest_id} runtime error: {error[:200]}")
+                    else:
+                        self.logger.info(f"Backtest {backtest_id} completed")
                     return backtest
 
             await asyncio.sleep(poll_interval)
@@ -210,13 +174,9 @@ class QCEvaluator:
 
     def parse_backtest_results(self, backtest_data: dict) -> BacktestResult:
         """Parse raw backtest response into structured result."""
-
-        # Extract statistics
         stats = backtest_data.get("statistics", {})
 
-        # Parse values with fallbacks
         def parse_pct(value, default=0.0):
-            """Parse percentage string like '25.5%' to 0.255"""
             if isinstance(value, (int, float)):
                 return value
             if isinstance(value, str):
@@ -228,7 +188,6 @@ class QCEvaluator:
             return default
 
         def parse_float(value, default=0.0):
-            """Parse numeric value."""
             if isinstance(value, (int, float)):
                 return value
             if isinstance(value, str):
@@ -241,12 +200,12 @@ class QCEvaluator:
 
         return BacktestResult(
             backtest_id=backtest_data.get("backtestId", "unknown"),
-            status="completed" if backtest_data.get("completed") else "failed",
+            status="completed" if not backtest_data.get("error") else "failed",
             sharpe_ratio=parse_float(stats.get("Sharpe Ratio", 0)),
-            total_return=parse_pct(stats.get("Total Net Profit", "0%")),
+            total_return=parse_pct(stats.get("Net Profit", "0%")),
             max_drawdown=parse_pct(stats.get("Drawdown", "0%")),
             win_rate=parse_pct(stats.get("Win Rate", "0%")),
-            total_trades=int(parse_float(stats.get("Total Trades", 0))),
+            total_trades=int(parse_float(stats.get("Total Orders", 0))),
             cagr=parse_pct(stats.get("Compounding Annual Return", "0%")),
             raw_response=backtest_data
         )
@@ -313,7 +272,7 @@ class QCEvaluator:
             result = await self.evaluate(code, variant_id)
             results[variant_id] = result
 
-            # Rate limiting - be nice to QC API
+            # Rate limiting
             await asyncio.sleep(2)
 
         return results

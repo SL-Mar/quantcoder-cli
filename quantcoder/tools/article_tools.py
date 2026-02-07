@@ -2,6 +2,7 @@
 
 import json
 import requests
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict, List, Optional
 from .base import Tool, ToolResult
@@ -13,7 +14,9 @@ from ..core.http_utils import (
 
 
 class SearchArticlesTool(Tool):
-    """Tool for searching academic articles using CrossRef API."""
+    """Tool for searching academic articles using arXiv API (open-access)."""
+
+    ARXIV_NS = {'a': 'http://www.w3.org/2005/Atom'}
 
     @property
     def name(self) -> str:
@@ -21,11 +24,11 @@ class SearchArticlesTool(Tool):
 
     @property
     def description(self) -> str:
-        return "Search for academic articles using CrossRef API"
+        return "Search for open-access academic articles using arXiv API"
 
     def execute(self, query: str, max_results: int = 5) -> ToolResult:
         """
-        Search for articles using CrossRef API.
+        Search for articles using arXiv API.
 
         Args:
             query: Search query string
@@ -34,15 +37,21 @@ class SearchArticlesTool(Tool):
         Returns:
             ToolResult with list of articles
         """
-        self.logger.info(f"Searching for articles: {query}")
+        self.logger.info(f"Searching arXiv for: {query}")
 
         try:
-            articles = self._search_crossref(query, rows=max_results)
+            articles = self._search_arxiv(query, max_results=max_results)
+
+            if articles is None:
+                return ToolResult(
+                    success=False,
+                    error="arXiv rate limited. Wait a few minutes and try again."
+                )
 
             if not articles:
                 return ToolResult(
                     success=False,
-                    error="No articles found or an error occurred during the search"
+                    error="No articles found on arXiv. Try broader terms or check your query."
                 )
 
             # Save articles to cache
@@ -55,71 +64,123 @@ class SearchArticlesTool(Tool):
             return ToolResult(
                 success=True,
                 data=articles,
-                message=f"Found {len(articles)} articles"
+                message=f"Found {len(articles)} articles (arXiv open-access)"
             )
 
         except Exception as e:
             self.logger.error(f"Error searching articles: {e}")
             return ToolResult(success=False, error=str(e))
 
-    def _search_crossref(self, query: str, rows: int = 5) -> List[Dict]:
-        """Search CrossRef API for articles with retry and caching support."""
-        api_url = "https://api.crossref.org/works"
-        params = {
-            "query": query,
-            "rows": rows,
-            "select": "DOI,title,author,published-print,URL"
-        }
+    def _search_arxiv(self, query: str, max_results: int = 5) -> List[Dict]:
+        """Search arXiv API for articles, scoped to finance/CS categories."""
+        import time
 
-        try:
-            # Use cached_request for automatic retry and caching
-            data = cached_request(
-                url=api_url,
-                params=params,
-                timeout=DEFAULT_TIMEOUT,
-                use_cache=True,
-                cache_ttl=1800,  # 30 minutes cache for search results
-            )
+        # Build query: treat quoted strings as exact phrases, split rest into AND terms
+        raw = query.strip()
+        # Keep hyphenated terms as-is (arXiv handles them), split on spaces
+        search_terms = raw.split()
+        terms_query = " AND ".join(f"all:{t}" for t in search_terms)
+        # Restrict to quantitative finance, computational finance, stats, CS
+        cat_filter = (
+            "cat:q-fin.* OR cat:stat.ML OR cat:cs.CE OR cat:cs.LG OR cat:econ.*"
+        )
+        arxiv_query = f"({terms_query}) AND ({cat_filter})"
 
-            if not data:
-                self.logger.error("CrossRef API request failed after retries")
-                return []
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            try:
+                response = make_request_with_retry(
+                    url="https://export.arxiv.org/api/query",
+                    method="GET",
+                    params={
+                        "search_query": arxiv_query,
+                        "start": 0,
+                        "max_results": max_results,
+                        "sortBy": "relevance",
+                        "sortOrder": "descending",
+                    },
+                    timeout=30,
+                    retries=2,
+                    backoff_factor=1.0,
+                )
 
-            articles = []
-            for item in data.get('message', {}).get('items', []):
-                article = {
-                    'title': item.get('title', ['No title'])[0],
-                    'authors': self._format_authors(item.get('author', [])),
-                    'published': self._format_date(item.get('published-print')),
-                    'DOI': item.get('DOI', ''),
-                    'URL': item.get('URL', '')
-                }
-                articles.append(article)
+                if not response.content:
+                    self.logger.error("Empty response from arXiv API")
+                    return []
 
-            return articles
+                # Handle rate limiting (429) and other HTTP errors
+                if response.status_code == 429:
+                    wait = 5 * (attempt + 1)
+                    self.logger.warning(f"arXiv rate limited (429), waiting {wait}s (attempt {attempt + 1}/{max_attempts})")
+                    time.sleep(wait)
+                    continue
 
-        except Exception as e:
-            self.logger.error(f"CrossRef API request failed: {e}")
-            return []
+                if response.status_code != 200:
+                    self.logger.error(f"arXiv returned HTTP {response.status_code}: {response.text[:200]}")
+                    if attempt < max_attempts - 1:
+                        time.sleep(3)
+                        continue
+                    return None  # signal rate limit / server error
 
-    def _format_authors(self, authors: List[Dict]) -> str:
-        """Format author list."""
-        if not authors:
+                root = ET.fromstring(response.content)
+                entries = root.findall('a:entry', self.ARXIV_NS)
+
+                articles = []
+                for entry in entries:
+                    arxiv_id = entry.find('a:id', self.ARXIV_NS).text.split('/abs/')[-1]
+                    title = ' '.join(entry.find('a:title', self.ARXIV_NS).text.strip().split())
+                    authors = self._format_authors(entry.findall('a:author', self.ARXIV_NS))
+                    published = entry.find('a:published', self.ARXIV_NS).text[:4]
+                    summary = ' '.join(entry.find('a:summary', self.ARXIV_NS).text.strip().split())
+
+                    # Get categories
+                    categories = [
+                        c.get('term', '')
+                        for c in entry.findall('a:category', self.ARXIV_NS)
+                    ]
+
+                    article = {
+                        'title': title,
+                        'authors': authors,
+                        'published': published,
+                        'DOI': f"arXiv:{arxiv_id}",
+                        'URL': f"https://arxiv.org/pdf/{arxiv_id}",
+                        'abstract_url': f"https://arxiv.org/abs/{arxiv_id}",
+                        'categories': categories,
+                        'summary': summary[:300],
+                    }
+                    articles.append(article)
+
+                return articles
+
+            except ET.ParseError as e:
+                self.logger.warning(f"Failed to parse arXiv response (attempt {attempt + 1}/{max_attempts}): {e}")
+                if attempt < max_attempts - 1:
+                    time.sleep(5)
+                    continue
+                return None
+            except Exception as e:
+                self.logger.error(f"arXiv API request failed: {e}")
+                if attempt < max_attempts - 1:
+                    time.sleep(3)
+                    continue
+                return None
+
+        return None  # all attempts exhausted
+
+    def _format_authors(self, author_elements) -> str:
+        """Format author list from arXiv XML elements."""
+        if not author_elements:
             return "Unknown"
-        author_names = [
-            f"{a.get('given', '')} {a.get('family', '')}".strip()
-            for a in authors[:3]
+        names = [
+            a.find('a:name', self.ARXIV_NS).text
+            for a in author_elements[:3]
+            if a.find('a:name', self.ARXIV_NS) is not None
         ]
-        return ", ".join(author_names)
-
-    def _format_date(self, date_parts: Optional[Dict]) -> str:
-        """Format publication date."""
-        if not date_parts or 'date-parts' not in date_parts:
-            return ""
-        parts = date_parts['date-parts'][0]
-        if len(parts) > 0:
-            return str(parts[0])
-        return ""
+        result = ", ".join(names)
+        if len(author_elements) > 3:
+            result += f" (+{len(author_elements) - 3} more)"
+        return result
 
 
 class DownloadArticleTool(Tool):
@@ -184,11 +245,20 @@ class DownloadArticleTool(Tool):
                     message=f"Article downloaded to {save_path}"
                 )
             else:
-                # Offer to open in browser
+                doi = article.get("DOI", "")
+                url = article.get("URL", "")
+                hint = (
+                    f"PDF is paywalled or not directly accessible.\n"
+                    f"  DOI: {doi}\n"
+                    f"  URL: {url}\n"
+                    f"  Try: 1) Search for the title on arxiv.org or scholar.google.com\n"
+                    f"       2) Place a PDF manually in '{downloads_dir}/article_{article_id}.pdf'\n"
+                    f"       3) Search with open-access terms: 'quantcoder search \"{article['title'][:40]}... arXiv\"'"
+                )
                 return ToolResult(
                     success=False,
-                    error="Failed to download PDF",
-                    data={"url": article["URL"], "can_open_browser": True}
+                    error=hint,
+                    data={"url": url, "doi": doi, "can_open_browser": True}
                 )
 
         except Exception as e:
@@ -196,25 +266,64 @@ class DownloadArticleTool(Tool):
             return ToolResult(success=False, error=str(e))
 
     def _download_pdf(self, url: str, save_path: Path, doi: Optional[str] = None) -> bool:
-        """Attempt to download PDF from URL with retry support."""
+        """Attempt to download PDF, trying open-access sources first if DOI available."""
+        # For arXiv URLs, download directly (already open-access)
+        if 'arxiv.org' in url:
+            return self._fetch_pdf(url, save_path)
+
+        # Try open-access sources via Unpaywall API if we have a DOI
+        if doi:
+            oa_url = self._find_open_access_url(doi)
+            if oa_url:
+                self.logger.info(f"Found open-access PDF via Unpaywall: {oa_url}")
+                if self._fetch_pdf(oa_url, save_path):
+                    return True
+
+        # Fallback: try the publisher URL directly
+        return self._fetch_pdf(url, save_path)
+
+    def _find_open_access_url(self, doi: str) -> Optional[str]:
+        """Check Unpaywall for a free open-access PDF URL."""
         try:
-            # Use make_request_with_retry for automatic retry on failure
+            unpaywall_url = f"https://api.unpaywall.org/v2/{doi}"
+            response = make_request_with_retry(
+                url=unpaywall_url,
+                method="GET",
+                params={"email": "quantcoder@example.com"},
+                timeout=15,
+                retries=2,
+                backoff_factor=0.5,
+            )
+            if response.status_code == 200:
+                data = response.json()
+                best_oa = data.get("best_oa_location")
+                if best_oa and best_oa.get("url_for_pdf"):
+                    return best_oa["url_for_pdf"]
+        except Exception as e:
+            self.logger.debug(f"Unpaywall lookup failed for {doi}: {e}")
+        return None
+
+    def _fetch_pdf(self, url: str, save_path: Path) -> bool:
+        """Fetch a PDF from a URL and save it."""
+        try:
             response = make_request_with_retry(
                 url=url,
                 method="GET",
-                timeout=60,  # Longer timeout for PDF downloads
+                timeout=60,
                 retries=3,
-                backoff_factor=1.0,  # 1s, 2s, 4s backoff
+                backoff_factor=1.0,
             )
             response.raise_for_status()
 
-            if 'application/pdf' in response.headers.get('Content-Type', ''):
+            content_type = response.headers.get('Content-Type', '')
+            is_pdf = 'application/pdf' in content_type or response.content[:5] == b'%PDF-'
+            if is_pdf:
                 with open(save_path, 'wb') as f:
                     f.write(response.content)
                 return True
 
         except requests.exceptions.RequestException as e:
-            self.logger.error(f"Failed to download PDF after retries: {e}")
+            self.logger.debug(f"PDF fetch failed for {url}: {e}")
 
         return False
 

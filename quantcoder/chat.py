@@ -51,8 +51,9 @@ class InteractiveChat:
 
         # Command completions
         self.completer = WordCompleter(
-            ['help', 'exit', 'quit', 'search', 'download', 'summarize',
-             'generate', 'validate', 'backtest', 'config', 'clear', 'history'],
+            ['help', 'exit', 'quit', 'search', 'download', 'summarize', 'summaries',
+             'generate', 'validate', 'backtest', 'evolve', 'auto', 'schedule',
+             'config', 'version', 'clear', 'history'],
             ignore_case=True
         )
 
@@ -102,7 +103,7 @@ class InteractiveChat:
 
         # Parse input for tool invocation
         if user_input.startswith('search '):
-            query = user_input[7:].strip()
+            query = user_input[7:].strip().strip('"').strip("'")
             self.execute_tool('search', query=query, max_results=5)
 
         elif user_input.startswith('download '):
@@ -115,14 +116,14 @@ class InteractiveChat:
         elif user_input.startswith('summarize '):
             try:
                 article_id = int(user_input[10:].strip())
-                self.execute_tool('summarize', article_id=article_id)
+                self.execute_tool('summarize', article_ids=article_id)
             except ValueError:
                 console.print("[red]Error: Please provide a valid article ID[/red]")
 
         elif user_input.startswith('generate '):
             try:
                 article_id = int(user_input[9:].strip())
-                self.execute_tool('generate', article_id=article_id, max_refine_attempts=6)
+                self.execute_tool('generate', summary_id=article_id, max_refine_attempts=6)
             except ValueError:
                 console.print("[red]Error: Please provide a valid article ID[/red]")
 
@@ -165,6 +166,24 @@ class InteractiveChat:
                 code = f.read()
             self.execute_tool('validate', code=code)
 
+        elif user_input.startswith('summaries'):
+            self._delegate_to_cli('summaries')
+
+        elif user_input.startswith('version'):
+            self._delegate_to_cli('version')
+
+        elif user_input.startswith('evolve'):
+            args = user_input[6:].strip()
+            self._run_evolve(args)
+
+        elif user_input.startswith('auto'):
+            args = user_input[4:].strip()
+            self._run_auto(args)
+
+        elif user_input.startswith('schedule'):
+            args = user_input[8:].strip()
+            self._delegate_to_cli(f'schedule {args}' if args else 'schedule --help')
+
         else:
             # For natural language queries, use the LLM to interpret
             self.process_natural_language(user_input)
@@ -198,11 +217,16 @@ class InteractiveChat:
                     )
 
             elif tool_name == 'summarize' and result.data:
-                console.print(Panel(
-                    Markdown(result.data['summary']),
-                    title="Summary",
-                    border_style="green"
-                ))
+                summaries = result.data.get('summaries', [])
+                for s in summaries:
+                    title = s.get('title', 'Summary')
+                    text = s.get('summary_text', '')
+                    if text:
+                        console.print(Panel(
+                            Markdown(text),
+                            title=title,
+                            border_style="green"
+                        ))
 
             elif tool_name == 'generate' and result.data:
                 # Display summary if available
@@ -234,9 +258,10 @@ class InteractiveChat:
                 table.add_column("Metric", style="cyan")
                 table.add_column("Value", style="green")
 
-                table.add_row("Sharpe Ratio", f"{result.data.get('sharpe_ratio', 'N/A'):.2f}" if result.data.get('sharpe_ratio') else "N/A")
-                table.add_row("Total Return", f"{result.data.get('total_return', 'N/A')}")
+                table.add_row("Sharpe Ratio", str(result.data.get('sharpe_ratio', 'N/A')))
+                table.add_row("Total Return", str(result.data.get('total_return', 'N/A')))
                 table.add_row("Backtest ID", str(result.data.get('backtest_id', 'N/A')))
+                table.add_row("Project ID", str(result.data.get('project_id', 'N/A')))
 
                 # Add more stats if available
                 stats = result.data.get('statistics', {})
@@ -244,6 +269,10 @@ class InteractiveChat:
                     table.add_row(key, str(value))
 
                 console.print(table)
+
+                project_url = result.data.get('project_url')
+                if project_url:
+                    console.print(f"\n[cyan]View in QuantConnect:[/cyan] {project_url}")
 
             elif tool_name == 'validate' and result.data:
                 stage = result.data.get('stage', 'local')
@@ -316,37 +345,41 @@ class InteractiveChat:
         help_text = """
 # QuantCoder Commands
 
-## Direct Commands:
-- `search <query>` - Search for articles
+## Pipeline Commands:
+- `search <query>` - Search for articles on arXiv
 - `download <id>` - Download article PDF
-- `summarize <id>` - Summarize article strategy
-- `generate <id>` - Generate QuantConnect code
-- `validate <file>` - Validate code on QuantConnect
+- `summarize <id>` - Extract structured strategy spec (Claude Sonnet)
+- `generate <id>` - Generate QuantConnect algorithm (Claude Opus)
+- `validate <file>` - Compile & validate on QuantConnect
 - `backtest <file> [--start YYYY-MM-DD] [--end YYYY-MM-DD]` - Run backtest
+- `summaries` - List all available summaries
+
+## Evolution & Automation:
+- `evolve <id> [--gens N] [--variants N]` - Evolve algorithm through structural mutations
+- `auto <query> [--max-iterations N] [--min-sharpe X]` - Autonomous self-improving pipeline
+- `schedule [--interval daily|weekly] [--hour H]` - Scheduled pipeline runs
+
+## Utility:
 - `config` - Show configuration
+- `version` - Show version
 - `clear` - Clear screen
 - `help` - Show this help
 - `exit` / `quit` - Exit the program
 
-## Natural Language:
-You can also ask questions in natural language, such as:
-- "Find articles about momentum trading"
-- "Backtest algorithm_1.py and tell me the Sharpe ratio"
-- "Why is my strategy underperforming?"
-
 ## Workflow:
-1. Search for articles: `search "algorithmic trading"`
-2. Download an article: `download 1`
-3. Summarize the strategy: `summarize 1`
-4. Generate code: `generate 1`
-5. Validate on QuantConnect: `validate algorithm_1.py`
-6. Run backtest: `backtest algorithm_1.py --start 2020-01-01 --end 2024-01-01`
+1. `search "momentum trading"` - Find research papers
+2. `download 1` - Download the PDF
+3. `summarize 1` - Extract strategy parameters
+4. `generate 1` - Generate QuantConnect code
+5. `backtest algorithm_1.py --start 2020-01-01 --end 2024-01-01`
+6. `evolve 1 --gens 5` - Evolve the strategy for better Sharpe
 
 ## QuantConnect Setup:
 Set credentials in ~/.quantcoder/.env:
 ```
 QUANTCONNECT_API_KEY=your_api_key
 QUANTCONNECT_USER_ID=your_user_id
+ANTHROPIC_API_KEY=your_key
 ```
 """
 
@@ -371,6 +404,49 @@ QUANTCONNECT_USER_ID=your_user_id
             title="Configuration",
             border_style="cyan"
         ))
+
+    def _delegate_to_cli(self, args_str: str):
+        """Delegate a command to the quantcoder CLI as a subprocess."""
+        import subprocess
+        import sys
+
+        cmd = [sys.executable, "-m", "quantcoder.cli"] + args_str.split()
+        try:
+            subprocess.run(cmd, check=False)
+        except Exception as e:
+            console.print(f"[red]Error: {e}[/red]")
+
+    def _run_evolve(self, args: str):
+        """Run evolve command from interactive prompt."""
+        if not args:
+            console.print(
+                "[cyan]Usage:[/cyan] evolve <summary_id> [options]\n"
+                "  --gens N        Max generations (default: 10)\n"
+                "  --variants N    Variants per generation (default: 5)\n"
+                "  --code <file>   Evolve from existing algorithm file\n"
+                "  --resume <id>   Resume a previous evolution\n\n"
+                "[dim]Example: evolve 1 --gens 5 --variants 3[/dim]"
+            )
+            return
+        self._delegate_to_cli(f'evolve start {args}')
+
+    def _run_auto(self, args: str):
+        """Run auto command from interactive prompt."""
+        if not args:
+            console.print(
+                "[cyan]Usage:[/cyan] auto <query> [options]\n"
+                "  --max-iterations N  Max iterations (default: 50)\n"
+                "  --min-sharpe X      Min Sharpe threshold (default: 0.5)\n"
+                "  --demo              Demo mode (no real API calls)\n\n"
+                "[dim]Example: auto \"momentum trading\" --max-iterations 20[/dim]"
+            )
+            return
+
+        # Parse: first arg is query (possibly quoted), rest are flags
+        parts = args.split()
+        query = parts[0].strip('"').strip("'")
+        flags = ' '.join(parts[1:])
+        self._delegate_to_cli(f'auto start --query "{query}" {flags}')
 
 
 class ProgrammaticChat:

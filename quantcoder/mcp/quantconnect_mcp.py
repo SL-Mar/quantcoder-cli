@@ -124,27 +124,47 @@ class QuantConnectMCPClient:
                 }
             )
 
-            backtest_id = backtest_result.get("backtestId")
+            # backtestId is nested inside "backtest" object
+            backtest_obj = backtest_result.get("backtest", {})
+            backtest_id = backtest_obj.get("backtestId")
 
             if not backtest_id:
                 return {
                     "success": False,
-                    "error": "Failed to create backtest"
+                    "error": f"Failed to create backtest: {backtest_result.get('errors', backtest_result.get('messages', 'unknown'))}"
                 }
 
             # Poll for completion
             self.logger.info(f"Waiting for backtest {backtest_id} to complete")
 
-            result = await self._wait_for_backtest(backtest_id)
+            result = await self._wait_for_backtest(backtest_id, validation["project_id"])
+
+            # Results may be nested under "backtest" or at top level
+            bt = result.get("backtest", result)
+            runtime_error = bt.get("error")
+            stats = bt.get("statistics", {})
+            runtime_stats = bt.get("runtimeStatistics", {})
+
+            if runtime_error:
+                return {
+                    "success": False,
+                    "error": "Runtime error during backtest",
+                    "runtime_error": runtime_error,
+                    "stacktrace": bt.get("stacktrace", ""),
+                    "backtest_id": backtest_id,
+                    "project_id": validation["project_id"],
+                    "project_url": f"https://www.quantconnect.com/terminal/{validation['project_id']}#open",
+                }
 
             return {
                 "success": True,
                 "backtest_id": backtest_id,
-                "statistics": result.get("result", {}).get("Statistics", {}),
-                "runtime_statistics": result.get("result", {}).get("RuntimeStatistics", {}),
-                "charts": result.get("result", {}).get("Charts", {}),
-                "sharpe": result.get("result", {}).get("Statistics", {}).get("Sharpe Ratio"),
-                "total_return": result.get("result", {}).get("Statistics", {}).get("Total Net Profit")
+                "project_id": validation["project_id"],
+                "project_url": f"https://www.quantconnect.com/terminal/{validation['project_id']}#open",
+                "statistics": stats,
+                "runtime_statistics": runtime_stats,
+                "sharpe": stats.get("Sharpe Ratio"),
+                "total_return": stats.get("Net Profit")
             }
 
         except Exception as e:
@@ -267,16 +287,24 @@ class QuantConnectMCPClient:
 
     async def _create_project(self) -> str:
         """Create a new project in QuantConnect."""
+        project_name = f"QuantCoder_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        self.logger.info(f"Creating project: {project_name}")
+
         result = await self._call_api(
             "/projects/create",
             method="POST",
             data={
-                "name": f"QuantCoder_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                "name": project_name,
                 "language": "Py"
             }
         )
 
-        return result.get("projects", [{}])[0].get("projectId")
+        project_id = result.get("projects", [{}])[0].get("projectId")
+        if not project_id:
+            raise RuntimeError(f"Failed to create project: {result}")
+
+        self.logger.info(f"Created project {project_id}: {project_name}")
+        return project_id
 
     async def _upload_files(
         self,
@@ -284,10 +312,11 @@ class QuantConnectMCPClient:
         main_code: str,
         additional_files: Dict[str, str]
     ):
-        """Upload files to project."""
-        # Upload Main.py
-        await self._call_api(
-            f"/files/create",
+        """Upload files to project with validation."""
+        # Update main.py (QC auto-creates it with boilerplate on project creation)
+        self.logger.info(f"Uploading main.py to project {project_id} ({len(main_code)} chars)")
+        result = await self._call_api(
+            "/files/update",
             method="POST",
             data={
                 "projectId": project_id,
@@ -296,10 +325,34 @@ class QuantConnectMCPClient:
             }
         )
 
+        if not result.get("success"):
+            raise RuntimeError(
+                f"Failed to upload main.py to project {project_id}: {result}"
+            )
+
+        # Verify the upload by reading back
+        verify = await self._call_api(
+            "/files/read",
+            method="POST",
+            data={"projectId": project_id, "name": "main.py"}
+        )
+        verify_files = verify.get("files", [])
+        if not verify_files:
+            raise RuntimeError(
+                f"main.py not found after upload to project {project_id}"
+            )
+        uploaded_lines = len(verify_files[0].get("content", "").splitlines())
+        expected_lines = len(main_code.splitlines())
+        self.logger.info(
+            f"Upload verified: main.py has {uploaded_lines} lines "
+            f"(expected {expected_lines})"
+        )
+
         # Upload additional files
         for filename, content in additional_files.items():
-            await self._call_api(
-                f"/files/create",
+            self.logger.info(f"Creating {filename} in project {project_id}")
+            result = await self._call_api(
+                "/files/create",
                 method="POST",
                 data={
                     "projectId": project_id,
@@ -307,20 +360,36 @@ class QuantConnectMCPClient:
                     "content": content
                 }
             )
+            if not result.get("success"):
+                self.logger.warning(
+                    f"Failed to create {filename}: {result}"
+                )
 
     async def _compile(self, project_id: str) -> Dict[str, Any]:
         """Compile project."""
         result = await self._call_api(
-            f"/compile/create",
+            "/compile/create",
             method="POST",
             data={"projectId": project_id}
         )
 
         compile_id = result.get("compileId")
 
-        # Wait for compilation
-        while True:
-            status = await self._call_api(f"/compile/read", params={"projectId": project_id, "compileId": compile_id})
+        if not compile_id:
+            return {
+                "success": False,
+                "compileId": None,
+                "errors": [f"Compile create failed: {result}"],
+                "warnings": []
+            }
+
+        # Wait for compilation (compile/read is POST, not GET)
+        for _ in range(60):
+            status = await self._call_api(
+                "/compile/read",
+                method="POST",
+                data={"projectId": project_id, "compileId": compile_id}
+            )
 
             if status.get("state") == "BuildSuccess":
                 return {
@@ -339,13 +408,42 @@ class QuantConnectMCPClient:
 
             await asyncio.sleep(1)
 
-    async def _wait_for_backtest(self, backtest_id: str, max_wait: int = 300) -> Dict[str, Any]:
-        """Wait for backtest to complete."""
-        for _ in range(max_wait):
-            result = await self._call_api(f"/backtests/read", params={"backtestId": backtest_id})
+        return {
+            "success": False,
+            "compileId": compile_id,
+            "errors": ["Compilation timed out after 60 seconds"],
+            "warnings": []
+        }
 
-            if result.get("progress") == 1.0 or result.get("completed"):
-                return result
+    async def _wait_for_backtest(self, backtest_id: str, project_id: str, max_wait: int = 300) -> Dict[str, Any]:
+        """Wait for backtest to complete, tolerating transient API failures."""
+        consecutive_errors = 0
+        max_consecutive_errors = 5
+
+        for i in range(max_wait // 2):
+            try:
+                result = await self._call_api(
+                    "/backtests/read",
+                    method="POST",
+                    data={"projectId": project_id, "backtestId": backtest_id}
+                )
+                consecutive_errors = 0  # reset on success
+
+                bt = result.get("backtest", result)
+                if bt.get("progress") == 1.0 or bt.get("completed"):
+                    return result
+
+                progress = bt.get("progress", 0)
+                if i % 15 == 0:
+                    self.logger.info(f"Backtest progress: {progress * 100:.0f}%")
+
+            except (ConnectionError, Exception) as e:
+                consecutive_errors += 1
+                self.logger.warning(f"Poll attempt {i} failed ({consecutive_errors}/{max_consecutive_errors}): {e}")
+                if consecutive_errors >= max_consecutive_errors:
+                    raise TimeoutError(
+                        f"Backtest polling failed {max_consecutive_errors} times consecutively: {e}"
+                    )
 
             await asyncio.sleep(2)
 
@@ -356,29 +454,48 @@ class QuantConnectMCPClient:
         endpoint: str,
         method: str = "GET",
         data: Optional[Dict] = None,
-        params: Optional[Dict] = None
+        params: Optional[Dict] = None,
+        retries: int = 3,
+        timeout_seconds: int = 30
     ) -> Dict[str, Any]:
-        """Call QuantConnect API."""
+        """Call QuantConnect API with hash-based authentication, timeout, and retry."""
         import aiohttp
 
         url = f"{self.base_url}{endpoint}"
-        headers = {
-            "Authorization": f"Basic {self._encode_credentials()}"
-        }
+        timeout = aiohttp.ClientTimeout(total=timeout_seconds, connect=10)
 
-        async with aiohttp.ClientSession() as session:
-            if method == "GET":
-                async with session.get(url, headers=headers, params=params) as resp:
-                    return await resp.json()
-            elif method == "POST":
-                async with session.post(url, headers=headers, json=data) as resp:
-                    return await resp.json()
+        for attempt in range(retries):
+            try:
+                headers = self._build_auth_headers()
+                headers["Content-Type"] = "application/json"
 
-    def _encode_credentials(self) -> str:
-        """Encode API credentials."""
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    if method == "GET":
+                        async with session.get(url, headers=headers, params=params) as resp:
+                            return await resp.json(content_type=None)
+                    elif method == "POST":
+                        async with session.post(url, headers=headers, json=data) as resp:
+                            return await resp.json(content_type=None)
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                self.logger.warning(f"API call {endpoint} attempt {attempt + 1}/{retries} failed: {e}")
+                if attempt < retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                else:
+                    raise ConnectionError(f"Connection timeout to host {url}") from e
+
+    def _build_auth_headers(self) -> Dict[str, str]:
+        """Build QC API auth headers with hash-based authentication."""
         import base64
-        credentials = f"{self.user_id}:{self.api_key}"
-        return base64.b64encode(credentials.encode()).decode()
+        import hashlib
+        import time
+
+        timestamp = str(int(time.time()))
+        api_hash = hashlib.sha256(f"{self.api_key}:{timestamp}".encode()).hexdigest()
+        credentials = base64.b64encode(f"{self.user_id}:{api_hash}".encode()).decode()
+        return {
+            "Timestamp": timestamp,
+            "Authorization": f"Basic {credentials}",
+        }
 
 
 class QuantConnectMCPServer:

@@ -76,24 +76,25 @@ def main(ctx, verbose, config, prompt):
     # Setup logging with config (enables rotation, JSON logs, webhooks)
     setup_logging(verbose, cfg)
 
-    # Ensure API key is loaded
-    try:
-        if not cfg.api_key:
-            api_key = cfg.load_api_key()
-            if not api_key:
-                # Prompt for API key on first run
-                console.print(
-                    "[yellow]No API key found. Please enter your OpenAI API key:[/yellow]"
-                )
-                api_key = click.prompt("OpenAI API Key", hide_input=True)
-                cfg.save_api_key(api_key)
-    except EnvironmentError as e:
-        console.print(f"[red]Error: {e}[/red]")
-        console.print(
-            "[yellow]Please set your OPENAI_API_KEY in the environment or "
-            f"create {cfg.home_dir / '.env'}[/yellow]"
-        )
-        sys.exit(1)
+    # Ensure API key is loaded (skip for local providers like Ollama)
+    if cfg.model.provider != "ollama":
+        try:
+            if not cfg.api_key:
+                api_key = cfg.load_api_key()
+                if not api_key:
+                    # Prompt for API key on first run
+                    console.print(
+                        "[yellow]No API key found. Please enter your API key:[/yellow]"
+                    )
+                    api_key = click.prompt("API Key", hide_input=True)
+                    cfg.save_api_key(api_key)
+        except EnvironmentError as e:
+            console.print(f"[red]Error: {e}[/red]")
+            console.print(
+                "[yellow]Please set your API key in the environment or "
+                f"create {cfg.home_dir / '.env'}[/yellow]"
+            )
+            sys.exit(1)
 
     ctx.ensure_object(dict)
     ctx.obj['config'] = cfg
@@ -114,15 +115,18 @@ def main(ctx, verbose, config, prompt):
 
 def interactive(config: Config):
     """Launch interactive chat mode."""
-    console.print(
-        Panel.fit(
-            "[bold cyan]QuantCoder v2.0[/bold cyan]\n"
-            "AI-powered CLI for QuantConnect algorithms\n\n"
-            "[dim]Type 'help' for commands, 'exit' to quit[/dim]",
-            title="Welcome",
-            border_style="cyan"
-        )
+    banner = (
+        "[bold cyan]"
+        "   ____                    _    ____          _\n"
+        "  / __ \\  _   _  __ _ _ _| |_ / ___|___   __| | ___ _ __\n"
+        " | |  | || | | |/ _` | '_ \\  _| |   / _ \\ / _` |/ _ \\ '__|\n"
+        " | |__| || |_| | (_| | | | | || |__| (_) | (_| |  __/ |\n"
+        "  \\___\\_\\ \\__,_|\\__,_|_| |_|\\__\\____\\___/ \\__,_|\\___|_|[/bold cyan]\n"
+        "\n"
+        "  [dim]v2.0  |  AI-powered QuantConnect algorithm pipeline[/dim]\n"
+        "  [dim]Type 'help' for commands, 'exit' to quit[/dim]"
     )
+    console.print(Panel(banner, border_style="cyan", padding=(1, 2)))
 
     chat = InteractiveChat(config)
     chat.run()
@@ -178,10 +182,10 @@ def search(ctx, query, num, deep, no_filter):
         else:
             console.print(f"[red]✗[/red] {result.error}")
     else:
-        # Use CrossRef keyword search (default)
+        # Use arXiv search (default, open-access)
         tool = SearchArticlesTool(config)
 
-        with console.status(f"Searching for '{query}'..."):
+        with console.status(f"Searching arXiv for '{query}'..."):
             result = tool.execute(query=query, max_results=num)
 
         if result.success:
@@ -189,9 +193,11 @@ def search(ctx, query, num, deep, no_filter):
 
             for idx, article in enumerate(result.data, 1):
                 published = f" ({article['published']})" if article.get('published') else ""
+                cats = article.get('categories', [])
+                cat_str = f" [magenta][{', '.join(cats[:3])}][/magenta]" if cats else ""
                 console.print(
                     f"  [cyan]{idx}.[/cyan] {article['title']}\n"
-                    f"      [dim]{article['authors']}{published}[/dim]"
+                    f"      [dim]{article['authors']}{published}[/dim]{cat_str}"
                 )
         else:
             console.print(f"[red]✗[/red] {result.error}")
@@ -218,7 +224,9 @@ def download(ctx, article_ids):
         if result.success:
             console.print(f"[green]✓[/green] Article {article_id}: {result.message}")
         else:
-            console.print(f"[red]✗[/red] Article {article_id}: {result.error}")
+            console.print(f"[red]✗[/red] Article {article_id} download failed:")
+            for line in result.error.split("\n"):
+                console.print(f"  [yellow]{line}[/yellow]")
 
 
 @main.command()
@@ -732,8 +740,12 @@ def backtest_cmd(ctx, file_path, start, end, name):
         table.add_column("Value", style="green")
 
         table.add_row("Backtest ID", str(result.data.get('backtest_id', 'N/A')))
-        table.add_row("Sharpe Ratio", f"{result.data.get('sharpe_ratio', 0):.2f}")
-        table.add_row("Total Return", str(result.data.get('total_return', 'N/A')))
+        sharpe = result.data.get('sharpe_ratio')
+        try:
+            table.add_row("Sharpe Ratio", f"{float(sharpe):.2f}" if sharpe is not None else "N/A")
+        except (ValueError, TypeError):
+            table.add_row("Sharpe Ratio", str(sharpe))
+        table.add_row("Total Return", str(result.data.get('total_return') or 'N/A'))
 
         # Add statistics
         stats = result.data.get('statistics', {})

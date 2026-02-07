@@ -36,6 +36,13 @@ class ModelConfig:
     code_provider: str = "mistral"  # Devstral for code generation
     risk_provider: str = "anthropic"  # Sonnet for nuanced risk decisions
 
+    # Code generation provider: "anthropic" (Claude Opus) or "ollama" (local)
+    code_provider: str = "anthropic"
+
+    # Summary provider: "anthropic" (Claude Sonnet) or "ollama" (local)
+    summary_provider: str = "ollama"
+    summary_model: str = "claude-sonnet-4-5-20250929"
+
     # Local LLM (Ollama) settings
     ollama_base_url: str = "http://localhost:11434/v1"  # Ollama API endpoint
     ollama_model: str = "llama3.2"  # Default Ollama model (codellama, qwen2.5-coder, etc.)
