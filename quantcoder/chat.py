@@ -348,8 +348,8 @@ class InteractiveChat:
 ## Pipeline Commands:
 - `search <query>` - Search for articles on arXiv
 - `download <id>` - Download article PDF
-- `summarize <id>` - Extract structured strategy spec (Claude Sonnet)
-- `generate <id>` - Generate QuantConnect algorithm (Claude Opus)
+- `summarize <id>` - Extract structured strategy spec (Ollama)
+- `generate <id>` - Generate QuantConnect algorithm (Ollama)
 - `validate <file>` - Compile & validate on QuantConnect
 - `backtest <file> [--start YYYY-MM-DD] [--end YYYY-MM-DD]` - Run backtest
 - `summaries` - List all available summaries
@@ -379,8 +379,8 @@ Set credentials in ~/.quantcoder/.env:
 ```
 QUANTCONNECT_API_KEY=your_api_key
 QUANTCONNECT_USER_ID=your_user_id
-ANTHROPIC_API_KEY=your_key
 ```
+LLM inference runs locally via Ollama (no cloud API keys needed).
 """
 
         console.print(Panel(
