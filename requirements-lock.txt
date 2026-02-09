@@ -11,38 +11,38 @@
 #   (then manually clean up to keep only direct dependencies)
 
 # Core CLI
-click==8.1.7
-rich==13.7.1
-prompt-toolkit==3.0.43
+click==8.3.1
+rich==14.3.2
+prompt-toolkit==3.0.52
 InquirerPy==0.3.4
-pygments==2.17.2
+pygments==2.19.2
 
 # HTTP & Networking
-requests==2.31.0
-aiohttp==3.9.3
-urllib3==2.2.0
-certifi==2024.2.2
+requests==2.32.5
+aiohttp==3.13.3
+urllib3==2.6.3
+certifi==2026.1.4
 
 # PDF Processing
-pdfplumber==0.10.4
-pdfminer.six==20231228
+pdfplumber==0.11.9
+pdfminer.six==20251230
 
 # NLP
-spacy==3.7.4
+spacy==3.8.11
 
 # Configuration
-python-dotenv==1.0.1
+python-dotenv==1.2.1
 toml==0.10.2
 
 # Scheduling
-apscheduler==3.10.4
+apscheduler==3.11.2
 
 # Development dependencies (install with: pip install -e ".[dev]")
-# pytest==7.4.4
-# pytest-cov==4.1.0
-# pytest-mock==3.12.0
-# black==24.1.1
-# ruff==0.2.0
-# mypy==1.8.0
-# pre-commit==3.6.0
-# pip-audit==2.7.0
+# pytest==8.x
+# pytest-cov==5.x
+# pytest-mock==3.x
+# black==24.x
+# ruff==0.x
+# mypy==1.x
+# pre-commit==3.x
+# pip-audit==2.x

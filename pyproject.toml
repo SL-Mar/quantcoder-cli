@@ -27,10 +27,10 @@ classifiers = [
 
 dependencies = [
     "click>=8.1.0",
-    "requests>=2.31.0",
-    "pdfplumber>=0.10.0",
+    "requests>=2.32.4",
+    "pdfplumber>=0.11.0",
     "spacy>=3.7.0",
-    "aiohttp>=3.9.0",
+    "aiohttp>=3.13.3",
     "python-dotenv>=1.0.0",
     "pygments>=2.17.0",
     "rich>=13.7.0",
