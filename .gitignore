@@ -51,6 +51,7 @@ article_processor.log
 # QuantCoder specific - user data
 downloads/
 generated_code/
+data/evolutions/
 articles.json
 output.html
 output.*
