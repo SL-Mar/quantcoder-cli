@@ -89,12 +89,12 @@ class TestOllamaProvider:
         """Test provider with custom configuration."""
         provider = OllamaProvider(
             model="mistral",
-            base_url="http://192.168.1.100:11434",
+            base_url="http://10.0.0.50:11434",
             timeout=300
         )
         assert provider.model == "mistral"
         assert provider.get_model_name() == "mistral"
-        assert provider.base_url == "http://192.168.1.100:11434"
+        assert provider.base_url == "http://10.0.0.50:11434"
         assert provider.timeout == 300
 
     def test_init_strips_v1_suffix(self):

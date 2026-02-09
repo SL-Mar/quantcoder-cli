@@ -89,7 +89,7 @@ def make_request_with_retry(
     session = create_session_with_retries(retries, backoff_factor)
 
     default_headers = {
-        "User-Agent": "QuantCoder/2.0 (mailto:smr.laignel@gmail.com)"
+        "User-Agent": "QuantCoder/2.0 (https://github.com/SL-Mar/quantcoder)"
     }
     if headers:
         default_headers.update(headers)

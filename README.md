@@ -152,7 +152,7 @@ To use a remote Ollama instance:
 
 ```toml
 [model]
-ollama_base_url = "http://192.168.1.100:11434"
+ollama_base_url = "http://your-server:11434"
 ```
 
 ---
