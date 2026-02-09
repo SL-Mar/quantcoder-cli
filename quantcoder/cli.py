@@ -582,7 +582,10 @@ def generate_code(ctx, summary_id, max_attempts, open_in_editor, editor, backtes
                 console.print(f"[red]✗[/red] Backtest failed: {bt_result.error}")
                 return
 
-            sharpe = bt_result.data.get('sharpe_ratio', 0)
+            try:
+                sharpe = float(bt_result.data.get('sharpe_ratio', 0))
+            except (TypeError, ValueError):
+                sharpe = 0.0
             console.print(f"[green]✓[/green] Backtest complete: Sharpe = {sharpe:.2f}")
 
             # Display backtest results
@@ -594,9 +597,17 @@ def generate_code(ctx, summary_id, max_attempts, open_in_editor, editor, backtes
             bt_table.add_row("Sharpe Ratio", f"{sharpe:.2f}")
             bt_table.add_row("Total Return", str(bt_result.data.get('total_return', 'N/A')))
 
-            stats = bt_result.data.get('statistics', {})
-            for key, value in list(stats.items())[:6]:
-                bt_table.add_row(key, str(value))
+            cagr = bt_result.data.get('cagr')
+            bt_table.add_row("CAGR", f"{cagr:.1%}" if isinstance(cagr, (int, float)) else "N/A")
+
+            max_dd = bt_result.data.get('max_drawdown')
+            bt_table.add_row("Max Drawdown", f"{max_dd:.1%}" if isinstance(max_dd, (int, float)) else "N/A")
+
+            win_rate = bt_result.data.get('win_rate')
+            bt_table.add_row("Win Rate", f"{win_rate:.1%}" if isinstance(win_rate, (int, float)) else "N/A")
+
+            total_trades = bt_result.data.get('total_trades')
+            bt_table.add_row("Total Trades", str(total_trades) if total_trades is not None else "N/A")
 
             console.print(bt_table)
 
@@ -727,10 +738,17 @@ def backtest_cmd(ctx, file_path, start, end, name):
             table.add_row("Sharpe Ratio", str(sharpe))
         table.add_row("Total Return", str(result.data.get('total_return') or 'N/A'))
 
-        # Add statistics
-        stats = result.data.get('statistics', {})
-        for key, value in list(stats.items())[:8]:
-            table.add_row(key, str(value))
+        cagr = result.data.get('cagr')
+        table.add_row("CAGR", f"{cagr:.1%}" if isinstance(cagr, (int, float)) else "N/A")
+
+        max_dd = result.data.get('max_drawdown')
+        table.add_row("Max Drawdown", f"{max_dd:.1%}" if isinstance(max_dd, (int, float)) else "N/A")
+
+        win_rate = result.data.get('win_rate')
+        table.add_row("Win Rate", f"{win_rate:.1%}" if isinstance(win_rate, (int, float)) else "N/A")
+
+        total_trades = result.data.get('total_trades')
+        table.add_row("Total Trades", str(total_trades) if total_trades is not None else "N/A")
 
         console.print(table)
     else:
@@ -1039,16 +1057,17 @@ def evolve():
 @click.argument('article_id', type=int, required=False)
 @click.option('--code', type=click.Path(exists=True), help='Path to algorithm file to evolve')
 @click.option('--resume', 'resume_id', help='Resume a previous evolution by ID')
-@click.option('--gens', 'max_generations', default=10, help='Maximum generations to run')
+@click.option('--gens', 'max_generations', default=3, help='Maximum generations to run')
 @click.option('--variants', 'variants_per_gen', default=5, help='Variants per generation')
 @click.option('--elite', 'elite_size', default=3, help='Elite pool size')
 @click.option('--patience', default=3, help='Stop after N generations without improvement')
 @click.option('--qc-user', envvar='QC_USER_ID', help='QuantConnect user ID')
 @click.option('--qc-token', envvar='QC_API_TOKEN', help='QuantConnect API token')
 @click.option('--qc-project', envvar='QC_PROJECT_ID', type=int, help='QuantConnect project ID')
+@click.option('--push-to-qc', is_flag=True, help='Push best variant to a new QuantConnect project after evolution')
 @click.pass_context
 def evolve_start(ctx, article_id, code, resume_id, max_generations, variants_per_gen,
-                 elite_size, patience, qc_user, qc_token, qc_project):
+                 elite_size, patience, qc_user, qc_token, qc_project, push_to_qc):
     """
     Evolve a trading algorithm using AlphaEvolve-inspired optimization.
 
@@ -1065,9 +1084,10 @@ def evolve_start(ctx, article_id, code, resume_id, max_generations, variants_per
 
     Examples:
         quantcoder evolve start 1                    # Evolve article 1's algorithm
-        quantcoder evolve start 1 --gens 5          # Run for 5 generations
+        quantcoder evolve start 1 --gens 3          # Run for 3 generations
         quantcoder evolve start --code algo.py      # Evolve from file
         quantcoder evolve start --resume abc123     # Resume evolution abc123
+        quantcoder evolve start 1 --push-to-qc     # Push best variant to QuantConnect
     """
     import asyncio
     import os
@@ -1186,6 +1206,43 @@ def evolve_start(ctx, article_id, code, resume_id, max_generations, variants_per
         console.print(f"\n[cyan]Evolution ID:[/cyan] {result.evolution_id}")
         console.print(f"[dim]To resume: quantcoder evolve start --resume {result.evolution_id}[/dim]")
 
+        # Push best variant to QuantConnect if requested
+        if push_to_qc and best:
+            try:
+                from quantcoder.evolver.evaluator import QCEvaluator
+                from quantcoder.evolver.config import EvolutionConfig as EvoConfig
+
+                evo_cfg = EvoConfig(
+                    qc_user_id=qc_user,
+                    qc_api_token=qc_token,
+                    qc_project_id=qc_project,
+                )
+                evaluator = QCEvaluator(evo_cfg)
+
+                async def push_to_quantconnect():
+                    project_name = f"Evolved_{result.evolution_id}"
+                    project_id = await evaluator.create_project(project_name)
+                    if not project_id:
+                        return None, None
+                    if not await evaluator.update_project_code(project_id, best.code):
+                        return project_id, None
+                    compile_id = await evaluator.compile_project(project_id)
+                    return project_id, compile_id
+
+                console.print("\n[cyan]Pushing best variant to QuantConnect...[/cyan]")
+                proj_id, comp_id = asyncio.run(push_to_quantconnect())
+
+                if proj_id and comp_id:
+                    console.print(f"[green]✓ Created QC project:[/green] Evolved_{result.evolution_id}")
+                    console.print(f"  Project ID: {proj_id}")
+                    console.print(f"  URL: https://www.quantconnect.com/terminal/{proj_id}")
+                elif proj_id:
+                    console.print(f"[yellow]⚠ Project created (ID: {proj_id}) but compilation failed[/yellow]")
+                else:
+                    console.print("[yellow]⚠ Failed to create QC project[/yellow]")
+            except Exception as push_err:
+                console.print(f"[yellow]⚠ Push to QC failed: {push_err}[/yellow]")
+
     except Exception as e:
         console.print(f"[red]Error: Evolution failed - {e}[/red]")
         ctx.exit(1)
@@ -1286,13 +1343,16 @@ def evolve_show(evolution_id):
             metrics = variant.get('metrics', {})
             console.print(
                 f"  {i}. [cyan]{variant['id']}[/cyan] (Gen {variant['generation']}): "
-                f"Fitness={variant.get('fitness', 'N/A'):.4f if variant.get('fitness') else 'N/A'}"
+                f"Fitness={variant.get('fitness', 0):.4f}"
             )
             if metrics:
                 console.print(
                     f"     Sharpe={metrics.get('sharpe_ratio', 0):.2f}, "
                     f"Return={metrics.get('total_return', 0):.1%}, "
-                    f"MaxDD={metrics.get('max_drawdown', 0):.1%}"
+                    f"MaxDD={metrics.get('max_drawdown', 0):.1%}, "
+                    f"CAGR={metrics.get('cagr', 0):.1%}, "
+                    f"WinRate={metrics.get('win_rate', 0):.1%}, "
+                    f"Trades={metrics.get('total_trades', 0)}"
                 )
 
 

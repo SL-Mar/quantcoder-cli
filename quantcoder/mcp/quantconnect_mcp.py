@@ -32,7 +32,7 @@ class QuantConnectMCPClient:
         self.api_key = api_key
         self.user_id = user_id
         self.base_url = "https://www.quantconnect.com/api/v2"
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = logging.getLogger(f"quantcoder.{self.__class__.__name__}")
 
     async def validate_code(
         self,
@@ -508,7 +508,7 @@ class QuantConnectMCPServer:
     def __init__(self, api_key: str, user_id: str):
         """Initialize MCP server."""
         self.client = QuantConnectMCPClient(api_key, user_id)
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = logging.getLogger(f"quantcoder.{self.__class__.__name__}")
 
     async def start(self):
         """

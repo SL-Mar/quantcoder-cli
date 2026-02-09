@@ -27,10 +27,10 @@ class LoggingConfigSettings:
 class ModelConfig:
     """Configuration for the AI model (Ollama-only)."""
     provider: str = "ollama"
-    model: str = "qwen2.5-coder:32b"
+    model: str = "qwen2.5-coder:14b"
     temperature: float = 0.5
     max_tokens: int = 3000
-    code_model: str = "qwen2.5-coder:32b"
+    code_model: str = "qwen2.5-coder:14b"
     reasoning_model: str = "mistral"
     ollama_base_url: str = "http://localhost:11434"
     ollama_timeout: int = 600

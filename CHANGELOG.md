@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.0-alpha.2] - 2026-02-09
+
+### Changed
+- Default evolution generations reduced from 10 to 3 (more practical for real-world use)
+- Backtest results now display 6 structured metrics: Sharpe Ratio, Total Return, CAGR, Max Drawdown, Win Rate, Total Trades
+- `evolve show` elite pool display includes CAGR, Win Rate, and Trades
+- Evolution engine final results log includes all 6 metrics
+
+### Added
+- `--push-to-qc` flag on `evolve start` — automatically creates a QuantConnect project with the best evolved variant, uploads code, and compiles
+
+---
+
 ## [2.0.0] - 2026-02-09
 
 ### Breaking Changes
@@ -18,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Ollama-only local inference** — All LLM calls route through Ollama
-  - `qwen2.5-coder:32b` for code generation, refinement, error fixing
+  - `qwen2.5-coder:14b` for code generation, refinement, error fixing
   - `mistral` for reasoning, summarization, chat
 - **Task-based model routing** — `LLMFactory.create(task=...)` automatically selects the right model
 - **OllamaProvider enhancements** — `check_health()`, `list_models()`, configurable timeout (default 600s)

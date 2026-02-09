@@ -56,7 +56,7 @@ class ElitePool:
     def __init__(self, max_size: int = 3):
         self.max_size = max_size
         self.variants: List[Variant] = []
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = logging.getLogger(f"quantcoder.{self.__class__.__name__}")
 
     def update(self, candidate: Variant) -> bool:
         """
@@ -144,7 +144,7 @@ class EvolutionState:
         self.created_at = datetime.now().isoformat()
         self.updated_at = self.created_at
 
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = logging.getLogger(f"quantcoder.{self.__class__.__name__}")
 
     def add_variant(self, variant: Variant):
         """Add a variant to the history."""

@@ -36,7 +36,7 @@ class EvolutionConfig:
     elite_pool_size: int = 3
 
     # Stopping conditions
-    max_generations: int = 10
+    max_generations: int = 3
     convergence_patience: int = 3  # stop if no improvement for N generations
     target_sharpe: Optional[float] = None  # stop if Sharpe exceeds this
 
@@ -58,7 +58,7 @@ class EvolutionConfig:
 
     # LLM settings — Ollama local models
     llm_provider: str = "ollama"
-    model: str = "qwen2.5-coder:32b"
+    model: str = "qwen2.5-coder:14b"
     temperature_variation: float = 0.7  # higher for more diverse variations
     temperature_refinement: float = 0.3  # lower for precise fixes
 

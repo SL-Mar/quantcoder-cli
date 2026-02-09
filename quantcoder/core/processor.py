@@ -16,7 +16,7 @@ class PDFLoader:
     """Handles loading and extracting text from PDF files."""
 
     def __init__(self):
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = logging.getLogger(f"quantcoder.{self.__class__.__name__}")
 
     def load_pdf(self, pdf_path: str) -> str:
         """Load text from a PDF file."""
@@ -41,7 +41,7 @@ class TextPreprocessor:
     """Handles preprocessing of extracted text."""
 
     def __init__(self):
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = logging.getLogger(f"quantcoder.{self.__class__.__name__}")
         self.url_pattern = re.compile(r'https?://\S+')
         self.phrase_pattern = re.compile(r'Electronic copy available at: .*', re.IGNORECASE)
         self.number_pattern = re.compile(r'^\d+\s*$', re.MULTILINE)
@@ -76,7 +76,7 @@ class HeadingDetector:
     """Detects headings in text using NLP."""
 
     def __init__(self, model: str = "en_core_web_sm"):
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = logging.getLogger(f"quantcoder.{self.__class__.__name__}")
         try:
             self.nlp = spacy.load(model)
             self.logger.info(f"SpaCy model '{model}' loaded successfully")
@@ -105,7 +105,7 @@ class SectionSplitter:
     """Splits text into sections based on detected headings."""
 
     def __init__(self):
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = logging.getLogger(f"quantcoder.{self.__class__.__name__}")
 
     def split_into_sections(self, text: str, headings: List[str]) -> Dict[str, str]:
         """Split text into sections based on headings."""
@@ -130,7 +130,7 @@ class CodeValidator:
     """Validates Python code syntax."""
 
     def __init__(self):
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = logging.getLogger(f"quantcoder.{self.__class__.__name__}")
 
     def validate_code(self, code: str) -> bool:
         """
@@ -157,7 +157,7 @@ class KeywordAnalyzer:
     """Analyzes text sections to categorize sentences based on keywords."""
 
     def __init__(self):
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = logging.getLogger(f"quantcoder.{self.__class__.__name__}")
         self.risk_management_keywords = {
             "drawdown", "volatility", "reduce", "limit", "risk", "risk-adjusted",
             "maximal drawdown", "market volatility", "bear markets", "stability",
@@ -239,7 +239,7 @@ class ArticleProcessor:
 
     def __init__(self, config, max_refine_attempts: int = 6):
         self.config = config
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = logging.getLogger(f"quantcoder.{self.__class__.__name__}")
         self.pdf_loader = PDFLoader()
         self.preprocessor = TextPreprocessor()
         self.heading_detector = HeadingDetector()

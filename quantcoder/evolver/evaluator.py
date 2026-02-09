@@ -50,7 +50,7 @@ class QCEvaluator:
 
     def __init__(self, config: EvolutionConfig):
         self.config = config
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = logging.getLogger(f"quantcoder.{self.__class__.__name__}")
         self._client = None
 
     def _get_client(self):

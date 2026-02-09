@@ -53,7 +53,7 @@ pip install -e ".[dev]"
 python -m spacy download en_core_web_sm
 
 # Pull required Ollama models
-ollama pull qwen2.5-coder:32b
+ollama pull qwen2.5-coder:14b
 ollama pull mistral
 
 # Verify installation

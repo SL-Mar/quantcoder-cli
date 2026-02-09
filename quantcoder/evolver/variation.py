@@ -26,7 +26,7 @@ class VariationGenerator:
 
     def __init__(self, config: EvolutionConfig, llm: Optional[LLMProvider] = None):
         self.config = config
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = logging.getLogger(f"quantcoder.{self.__class__.__name__}")
 
         # Use provided LLM or create one from config
         if llm:

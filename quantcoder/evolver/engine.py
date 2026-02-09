@@ -39,7 +39,7 @@ class EvolutionEngine:
     ):
         self.config = config
         self.state_dir = state_dir
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = logging.getLogger(f"quantcoder.{self.__class__.__name__}")
 
         # Initialize components
         self.variation_generator = VariationGenerator(config)
@@ -281,7 +281,10 @@ class EvolutionEngine:
                 self.logger.info(
                     f"     Sharpe={variant.metrics.get('sharpe_ratio', 0):.2f}, "
                     f"Return={variant.metrics.get('total_return', 0):.1%}, "
-                    f"MaxDD={variant.metrics.get('max_drawdown', 0):.1%}"
+                    f"MaxDD={variant.metrics.get('max_drawdown', 0):.1%}, "
+                    f"CAGR={variant.metrics.get('cagr', 0):.1%}, "
+                    f"WinRate={variant.metrics.get('win_rate', 0):.1%}, "
+                    f"Trades={variant.metrics.get('total_trades', 0)}"
                 )
 
     def get_best_variant(self) -> Optional[Variant]:

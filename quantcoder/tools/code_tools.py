@@ -360,13 +360,44 @@ class BacktestTool(Tool):
 
                 # Extract key metrics
                 stats = result.get("statistics", {})
-                sharpe = result.get("sharpe")
+                try:
+                    sharpe = float(result.get("sharpe", 0))
+                except (TypeError, ValueError):
+                    sharpe = 0.0
                 total_return = result.get("total_return")
                 project_url = result.get("project_url", "")
 
                 msg = f"Backtest completed. Sharpe: {sharpe}, Return: {total_return}"
                 if attempt > 0:
                     msg += f" (fixed after {attempt} attempt{'s' if attempt > 1 else ''})"
+
+                # Parse additional metrics from statistics
+                def _parse_pct(value, default=0.0):
+                    if isinstance(value, (int, float)):
+                        return value
+                    if isinstance(value, str):
+                        value = value.replace('%', '').replace(',', '')
+                        try:
+                            return float(value) / 100
+                        except ValueError:
+                            return default
+                    return default
+
+                def _parse_float(value, default=0.0):
+                    if isinstance(value, (int, float)):
+                        return value
+                    if isinstance(value, str):
+                        value = value.replace(',', '').replace('$', '')
+                        try:
+                            return float(value)
+                        except ValueError:
+                            return default
+                    return default
+
+                max_drawdown = _parse_pct(stats.get("Drawdown", "0%"))
+                cagr = _parse_pct(stats.get("Compounding Annual Return", "0%"))
+                win_rate = _parse_pct(stats.get("Win Rate", "0%"))
+                total_trades = int(_parse_float(stats.get("Total Orders", 0)))
 
                 return ToolResult(
                     success=True,
@@ -377,6 +408,10 @@ class BacktestTool(Tool):
                         "project_url": project_url,
                         "sharpe_ratio": sharpe,
                         "total_return": total_return,
+                        "max_drawdown": max_drawdown,
+                        "cagr": cagr,
+                        "win_rate": win_rate,
+                        "total_trades": total_trades,
                         "statistics": stats,
                         "runtime_statistics": result.get("runtime_statistics", {})
                     }

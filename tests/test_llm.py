@@ -12,7 +12,7 @@ class TestLLMHandler:
         """Create an LLMHandler with mocked Ollama providers."""
         with patch("quantcoder.core.llm.LLMFactory") as mock_factory:
             mock_provider = MagicMock()
-            mock_provider.get_model_name.return_value = "qwen2.5-coder:32b"
+            mock_provider.get_model_name.return_value = "qwen2.5-coder:14b"
             mock_provider.chat = AsyncMock(return_value="Test response")
             mock_factory.create.return_value = mock_provider
             handler = LLMHandler(mock_config)

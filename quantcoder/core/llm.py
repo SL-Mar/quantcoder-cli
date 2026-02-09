@@ -1,7 +1,7 @@
 """LLM handler — Ollama-only local inference.
 
 Routes tasks to the appropriate local model via OllamaProvider:
-  - Code generation / refinement / error fixing → qwen2.5-coder:32b
+  - Code generation / refinement / error fixing → qwen2.5-coder:14b
   - Summarization / chat → mistral
 """
 
@@ -35,7 +35,7 @@ class LLMHandler:
 
     def __init__(self, config):
         self.config = config
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = logging.getLogger(f"quantcoder.{self.__class__.__name__}")
 
         # Read Ollama settings from config
         base_url = getattr(config.model, 'ollama_base_url', 'http://localhost:11434')

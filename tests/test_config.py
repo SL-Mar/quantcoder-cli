@@ -20,14 +20,14 @@ class TestModelConfig:
         """Test default configuration values (Ollama-only)."""
         config = ModelConfig()
         assert config.provider == "ollama"
-        assert config.model == "qwen2.5-coder:32b"
+        assert config.model == "qwen2.5-coder:14b"
         assert config.temperature == 0.5
         assert config.max_tokens == 3000
 
     def test_code_and_reasoning_models(self):
         """Test code and reasoning model defaults."""
         config = ModelConfig()
-        assert config.code_model == "qwen2.5-coder:32b"
+        assert config.code_model == "qwen2.5-coder:14b"
         assert config.reasoning_model == "mistral"
 
     def test_ollama_settings(self):
@@ -132,7 +132,7 @@ class TestConfig:
         assert "ui" in data
         assert "tools" in data
         assert data["model"]["provider"] == "ollama"
-        assert data["model"]["code_model"] == "qwen2.5-coder:32b"
+        assert data["model"]["code_model"] == "qwen2.5-coder:14b"
         assert data["model"]["reasoning_model"] == "mistral"
         assert data["ui"]["theme"] == "monokai"
 

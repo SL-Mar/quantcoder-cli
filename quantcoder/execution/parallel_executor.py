@@ -41,7 +41,7 @@ class ParallelExecutor:
         """
         self.max_workers = max_workers
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = logging.getLogger(f"quantcoder.{self.__class__.__name__}")
 
     async def execute_agents_parallel(
         self,

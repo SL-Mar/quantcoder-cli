@@ -52,7 +52,7 @@ class MultiFileGenerator:
             name=project_name,
             files={}
         )
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = logging.getLogger(f"quantcoder.{self.__class__.__name__}")
 
     def add_file(
         self,

@@ -164,7 +164,7 @@ git checkout v1.0  # Access old version anytime
 
 ### Prerequisites for v2.0.0
 - Ollama installed and running
-- Models pulled: `ollama pull qwen2.5-coder:32b && ollama pull mistral`
+- Models pulled: `ollama pull qwen2.5-coder:14b && ollama pull mistral`
 - No cloud API keys required
 
 ---

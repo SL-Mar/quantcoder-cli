@@ -49,7 +49,7 @@ class OllamaProvider(LLMProvider):
 
     def __init__(
         self,
-        model: str = "qwen2.5-coder:32b",
+        model: str = "qwen2.5-coder:14b",
         base_url: str = None,
         timeout: int = 600
     ):
@@ -61,7 +61,7 @@ class OllamaProvider(LLMProvider):
         if self.base_url.endswith('/v1'):
             self.base_url = self.base_url[:-3]
         self.timeout = timeout
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = logging.getLogger(f"quantcoder.{self.__class__.__name__}")
         self.logger.info(f"Initialized OllamaProvider: {self.base_url}, model={self.model}")
 
     async def chat(
@@ -160,10 +160,10 @@ class OllamaProvider(LLMProvider):
 
 # Task-to-model mapping
 TASK_MODELS = {
-    "coding": "qwen2.5-coder:32b",
-    "code_generation": "qwen2.5-coder:32b",
-    "refinement": "qwen2.5-coder:32b",
-    "error_fixing": "qwen2.5-coder:32b",
+    "coding": "qwen2.5-coder:14b",
+    "code_generation": "qwen2.5-coder:14b",
+    "refinement": "qwen2.5-coder:14b",
+    "error_fixing": "qwen2.5-coder:14b",
     "reasoning": "mistral",
     "chat": "mistral",
     "summary": "mistral",
@@ -187,7 +187,7 @@ class LLMFactory:
 
         Args:
             task: Task type — determines default model.
-                  coding/code_generation/refinement/error_fixing → qwen2.5-coder:32b
+                  coding/code_generation/refinement/error_fixing → qwen2.5-coder:14b
                   reasoning/chat/summary/coordination → mistral
             model: Override model (uses task default if None)
             base_url: Ollama server URL (default: http://localhost:11434)
@@ -200,7 +200,7 @@ class LLMFactory:
             >>> llm = LLMFactory.create(task="coding")
             >>> llm = LLMFactory.create(task="reasoning", model="mistral")
         """
-        resolved_model = model or TASK_MODELS.get(task, "qwen2.5-coder:32b")
+        resolved_model = model or TASK_MODELS.get(task, "qwen2.5-coder:14b")
 
         kwargs = {"model": resolved_model, "timeout": timeout}
         if base_url:

@@ -38,7 +38,7 @@ class BaseAgent(ABC):
         """
         self.llm = llm
         self.config = config
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = logging.getLogger(f"quantcoder.{self.__class__.__name__}")
 
     @property
     @abstractmethod

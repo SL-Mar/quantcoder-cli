@@ -15,10 +15,10 @@ class TestLLMFactory:
     """Tests for LLMFactory task-based routing."""
 
     def test_create_coding_task(self):
-        """Test coding task routes to qwen2.5-coder:32b."""
+        """Test coding task routes to qwen2.5-coder:14b."""
         provider = LLMFactory.create(task="coding")
         assert isinstance(provider, OllamaProvider)
-        assert provider.get_model_name() == "qwen2.5-coder:32b"
+        assert provider.get_model_name() == "qwen2.5-coder:14b"
 
     def test_create_reasoning_task(self):
         """Test reasoning task routes to mistral."""
@@ -37,14 +37,14 @@ class TestLLMFactory:
         assert provider.get_model_name() == "mistral"
 
     def test_create_code_generation_task(self):
-        """Test code_generation task routes to qwen2.5-coder:32b."""
+        """Test code_generation task routes to qwen2.5-coder:14b."""
         provider = LLMFactory.create(task="code_generation")
-        assert provider.get_model_name() == "qwen2.5-coder:32b"
+        assert provider.get_model_name() == "qwen2.5-coder:14b"
 
     def test_create_unknown_task_defaults_to_coder(self):
-        """Test unknown task defaults to qwen2.5-coder:32b."""
+        """Test unknown task defaults to qwen2.5-coder:14b."""
         provider = LLMFactory.create(task="some_unknown_task")
-        assert provider.get_model_name() == "qwen2.5-coder:32b"
+        assert provider.get_model_name() == "qwen2.5-coder:14b"
 
     def test_create_with_model_override(self):
         """Test model override takes precedence."""
@@ -80,7 +80,7 @@ class TestOllamaProvider:
     def test_init_defaults(self):
         """Test provider initialization with new defaults."""
         provider = OllamaProvider()
-        assert provider.model == "qwen2.5-coder:32b"
+        assert provider.model == "qwen2.5-coder:14b"
         assert provider.base_url == "http://localhost:11434"
         assert provider.timeout == 600
         assert provider.get_provider_name() == "ollama"
@@ -204,7 +204,7 @@ class TestOllamaProvider:
             mock_response.raise_for_status = MagicMock()
             mock_response.json = AsyncMock(return_value={
                 "models": [
-                    {"name": "qwen2.5-coder:32b"},
+                    {"name": "qwen2.5-coder:14b"},
                     {"name": "mistral"},
                 ]
             })
@@ -218,7 +218,7 @@ class TestOllamaProvider:
             mock_session_class.return_value.__aexit__ = AsyncMock()
 
             models = await provider.list_models()
-            assert "qwen2.5-coder:32b" in models
+            assert "qwen2.5-coder:14b" in models
             assert "mistral" in models
 
     def test_is_llm_provider_subclass(self):

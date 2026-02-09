@@ -9,7 +9,7 @@
 QuantCoder transforms academic quant research into compilable QuantConnect LEAN algorithms using local LLMs. No cloud API keys required.
 
 **Models:**
-- **qwen2.5-coder:32b** — code generation, refinement, error fixing
+- **qwen2.5-coder:14b** — code generation, refinement, error fixing
 - **mistral** — reasoning, summarization, chat
 
 ---
@@ -23,7 +23,7 @@ QuantCoder transforms academic quant research into compilable QuantConnect LEAN 
 
 ```bash
 # Pull the required models
-ollama pull qwen2.5-coder:32b
+ollama pull qwen2.5-coder:14b
 ollama pull mistral
 ```
 
@@ -95,9 +95,17 @@ quantcoder auto status
 ### Evolution Mode (AlphaEvolve-inspired)
 
 ```bash
-quantcoder evolve start 1 --gens 10 --variants 5
+quantcoder evolve start 1 --gens 3 --variants 5
+quantcoder evolve start 1 --gens 3 --push-to-qc   # Push best to QC
 quantcoder evolve list
 quantcoder evolve export abc123
+```
+
+### Backtest with Detailed Metrics
+
+```bash
+# Shows Sharpe, Total Return, CAGR, Max Drawdown, Win Rate, Total Trades
+quantcoder backtest generated_code/algorithm_1.py --start 2022-01-01 --end 2024-01-01
 ```
 
 ### Library Builder
@@ -116,8 +124,8 @@ Configuration is stored in `~/.quantcoder/config.toml`:
 ```toml
 [model]
 provider = "ollama"
-model = "qwen2.5-coder:32b"
-code_model = "qwen2.5-coder:32b"
+model = "qwen2.5-coder:14b"
+code_model = "qwen2.5-coder:14b"
 reasoning_model = "mistral"
 ollama_base_url = "http://localhost:11434"
 ollama_timeout = 600

@@ -10,11 +10,11 @@ def mock_ollama_provider():
     from quantcoder.llm import OllamaProvider
 
     provider = MagicMock(spec=OllamaProvider)
-    provider.get_model_name.return_value = "qwen2.5-coder:32b"
+    provider.get_model_name.return_value = "qwen2.5-coder:14b"
     provider.get_provider_name.return_value = "ollama"
     provider.chat = AsyncMock(return_value="Test response")
     provider.check_health = AsyncMock(return_value=True)
-    provider.list_models = AsyncMock(return_value=["qwen2.5-coder:32b", "mistral"])
+    provider.list_models = AsyncMock(return_value=["qwen2.5-coder:14b", "mistral"])
     return provider
 
 
@@ -89,10 +89,10 @@ def mock_config():
     """Mock configuration object for testing."""
     config = MagicMock()
     config.model.provider = "ollama"
-    config.model.model = "qwen2.5-coder:32b"
+    config.model.model = "qwen2.5-coder:14b"
     config.model.temperature = 0.5
     config.model.max_tokens = 1000
-    config.model.code_model = "qwen2.5-coder:32b"
+    config.model.code_model = "qwen2.5-coder:14b"
     config.model.reasoning_model = "mistral"
     config.model.ollama_base_url = "http://localhost:11434"
     config.model.ollama_timeout = 600
