@@ -1,5 +1,5 @@
-# QuantCoder CLI v2.1.0 Requirements
-# Multi-Agent System with MCP Support
+# QuantCoder CLI v2.0.0 Requirements
+# Ollama-only local LLM inference
 
 # Core Dependencies
 click>=8.1.0
@@ -12,15 +12,7 @@ rich>=13.7.0
 prompt-toolkit>=3.0.43
 toml>=0.10.2
 InquirerPy>=0.3.4
+apscheduler>=3.10.0
 
-# Multi-LLM Support
-anthropic>=0.18.0  # Sonnet 4.5
-mistralai>=0.1.0   # Devstral 2
-openai>=1.0.0      # GPT-4o / DeepSeek
-
-# Async & Parallel Execution
+# Async (Ollama transport)
 aiohttp>=3.9.0
-asyncio>=3.4.3
-
-# Optional: MCP SDK (when available)
-# mcp>=0.1.0

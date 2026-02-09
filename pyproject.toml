@@ -30,9 +30,6 @@ dependencies = [
     "requests>=2.31.0",
     "pdfplumber>=0.10.0",
     "spacy>=3.7.0",
-    "openai>=1.0.0",
-    "anthropic>=0.18.0",
-    "mistralai>=0.1.0",
     "aiohttp>=3.9.0",
     "python-dotenv>=1.0.0",
     "pygments>=2.17.0",
@@ -44,16 +41,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# LLM Provider extras - install only what you need
-openai = ["openai>=1.0.0"]
-anthropic = ["anthropic>=0.18.0"]
-mistral = ["mistralai>=0.1.0"]
-all-llm = [
-    "openai>=1.0.0",
-    "anthropic>=0.18.0",
-    "mistralai>=0.1.0",
-]
-
 # Development dependencies
 dev = [
     "pytest>=7.4.0",

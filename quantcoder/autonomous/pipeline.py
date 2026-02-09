@@ -183,15 +183,7 @@ class AutonomousPipeline:
     def _init_agents(self):
         """Initialize LLM and coordinator agent."""
         try:
-            # Get API key from config or environment
-            api_key = self.config.api_key if hasattr(self.config, 'api_key') else None
-            if not api_key:
-                import os
-                api_key = os.getenv('OPENAI_API_KEY') or os.getenv('ANTHROPIC_API_KEY', '')
-
-            # Create LLM provider
-            provider_name = LLMFactory.get_recommended_for_task("coding")
-            self.llm = LLMFactory.create(provider_name, api_key)
+            self.llm = LLMFactory.create(task="coding")
             self.coordinator = CoordinatorAgent(self.llm, self.config)
             console.print("[green]✓ Coordinator agent initialized[/green]")
         except Exception as e:

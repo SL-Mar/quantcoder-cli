@@ -1,6 +1,6 @@
 # QuantCoder CLI - Pinned Dependencies for Reproducible Builds
 # Generated for Python 3.10+
-# Last updated: 2026-01-26
+# Last updated: 2026-02-09
 #
 # Usage:
 #   pip install -r requirements-lock.txt
@@ -30,14 +30,12 @@ pdfminer.six==20231228
 # NLP
 spacy==3.7.4
 
-# LLM Providers
-openai==1.12.0
-anthropic==0.18.1
-mistralai==0.1.8
-
 # Configuration
 python-dotenv==1.0.1
 toml==0.10.2
+
+# Scheduling
+apscheduler==3.10.4
 
 # Development dependencies (install with: pip install -e ".[dev]")
 # pytest==7.4.4

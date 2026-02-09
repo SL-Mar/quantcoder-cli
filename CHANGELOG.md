@@ -7,52 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased] - v2.0 (develop branch)
+## [2.0.0] - 2026-02-09
+
+### Breaking Changes
+- **Cloud LLM providers removed** — Anthropic, OpenAI, Mistral (cloud), and DeepSeek providers have been deleted. QuantCoder now runs exclusively on local models via Ollama.
+- **No API keys required** — `load_api_key()` and `save_api_key()` are now no-ops. The CLI no longer prompts for API keys on startup.
+- **ModelConfig simplified** — Removed `coordinator_provider`, `code_provider` (duplicate), `risk_provider`, `summary_provider`, `summary_model`, `ollama_model` fields. New fields: `code_model`, `reasoning_model`, `ollama_timeout`.
+- **LLMFactory API changed** — Now uses task-based routing: `LLMFactory.create(task="coding")` instead of `LLMFactory.create("anthropic", api_key="...")`.
+- **Dependencies removed** — `openai`, `anthropic`, `mistralai` packages no longer required.
 
 ### Added
-- **Multi-Agent Architecture**: Specialized agents for algorithm generation
-  - `CoordinatorAgent` - Orchestrates multi-agent workflow
-  - `UniverseAgent` - Generates stock selection logic (Universe.py)
-  - `AlphaAgent` - Generates trading signals (Alpha.py)
-  - `RiskAgent` - Generates risk management (Risk.py)
-  - `StrategyAgent` - Integrates components (Main.py)
-- **Autonomous Pipeline**: Self-improving strategy generation
-  - `AutonomousPipeline` - Continuous generation loop
-  - `LearningDatabase` - SQLite storage for patterns
-  - `ErrorLearner` - Analyzes and learns from errors
-  - `PerformanceLearner` - Tracks successful patterns
-  - `PromptRefiner` - Dynamically improves prompts
-- **Library Builder**: Batch strategy generation system
-  - 13+ strategy categories (momentum, mean reversion, factor, etc.)
-  - Checkpointing for resumable builds
-  - Coverage tracking and reporting
-- **Multi-LLM Support**: Provider abstraction layer
-  - OpenAI (GPT-4, GPT-4o)
-  - Anthropic (Claude 3, 3.5)
-  - Mistral (Mistral Large, Codestral)
-  - DeepSeek
-- **Tool System**: Pluggable tool architecture (Mistral Vibe pattern)
-  - `SearchArticlesTool`, `DownloadArticleTool`
-  - `SummarizeArticleTool`, `GenerateCodeTool`
-  - `ValidateCodeTool`, `ReadFileTool`, `WriteFileTool`
-- **Rich Terminal UI**: Modern CLI experience
-  - Interactive REPL with command history
-  - Syntax highlighting for generated code
-  - Progress indicators and panels
-  - Markdown rendering
-- **Parallel Execution**: AsyncIO + ThreadPool for concurrent agent execution
-- **MCP Integration**: QuantConnect Model Context Protocol for validation
-- **Configuration System**: TOML-based configuration with dataclasses
+- **Ollama-only local inference** — All LLM calls route through Ollama
+  - `qwen2.5-coder:32b` for code generation, refinement, error fixing
+  - `mistral` for reasoning, summarization, chat
+- **Task-based model routing** — `LLMFactory.create(task=...)` automatically selects the right model
+- **OllamaProvider enhancements** — `check_health()`, `list_models()`, configurable timeout (default 600s)
+- **Backwards-compatible config loading** — Old config files with unknown fields are handled gracefully; `/v1` suffix stripped from `ollama_base_url`
 
-### Changed
+### Changed (from pre-release)
+- **Multi-Agent Architecture**: Specialized agents for algorithm generation
+- **Autonomous Pipeline**: Self-improving strategy generation with learning database
+- **Library Builder**: Batch strategy generation across 13+ categories
+- **AlphaEvolve Evolution**: LLM-driven structural variation of algorithms
+- **Tool System**: Pluggable architecture (search, download, summarize, generate, validate, backtest)
+- **Rich Terminal UI**: Modern CLI with syntax highlighting, panels, progress indicators
+- **MCP Integration**: QuantConnect Model Context Protocol for validation and backtesting
+- **Configuration System**: TOML-based with dataclasses
 - Package renamed from `quantcli` to `quantcoder`
-- Complete architectural rewrite
-- CLI framework enhanced with multiple execution modes
-- Removed Tkinter GUI in favor of Rich terminal interface
 
 ### Removed
-- Tkinter GUI (replaced by Rich terminal)
+- Tkinter GUI (replaced by Rich terminal in pre-release)
 - Legacy OpenAI SDK v0.28 support
+- All cloud LLM providers (Anthropic, OpenAI, Mistral cloud, DeepSeek)
+- Optional dependency groups `[openai]`, `[anthropic]`, `[mistral]`, `[all-llm]`
 
 ---
 

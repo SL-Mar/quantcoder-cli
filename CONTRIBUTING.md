@@ -32,6 +32,7 @@ By participating in this project, you are expected to maintain a respectful and 
 
 - Python 3.10 or higher
 - Git
+- [Ollama](https://ollama.ai) running locally
 - A virtual environment tool (venv, conda, etc.)
 
 ### Installation
@@ -50,6 +51,10 @@ pip install -e ".[dev]"
 
 # Download required spacy model
 python -m spacy download en_core_web_sm
+
+# Pull required Ollama models
+ollama pull qwen2.5-coder:32b
+ollama pull mistral
 
 # Verify installation
 quantcoder --help

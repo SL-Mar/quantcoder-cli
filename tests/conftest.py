@@ -1,22 +1,21 @@
 """Pytest fixtures and configuration for quantcoder tests."""
 
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock, patch
 
 
 @pytest.fixture
-def mock_openai_client():
-    """Create a mock OpenAI client for testing."""
-    client = MagicMock()
+def mock_ollama_provider():
+    """Create a mock OllamaProvider for testing."""
+    from quantcoder.llm import OllamaProvider
 
-    # Mock chat completions response
-    mock_response = MagicMock()
-    mock_response.choices = [MagicMock()]
-    mock_response.choices[0].message.content = "Test response"
-
-    client.chat.completions.create.return_value = mock_response
-
-    return client
+    provider = MagicMock(spec=OllamaProvider)
+    provider.get_model_name.return_value = "qwen2.5-coder:32b"
+    provider.get_provider_name.return_value = "ollama"
+    provider.chat = AsyncMock(return_value="Test response")
+    provider.check_health = AsyncMock(return_value=True)
+    provider.list_models = AsyncMock(return_value=["qwen2.5-coder:32b", "mistral"])
+    return provider
 
 
 @pytest.fixture
@@ -89,22 +88,13 @@ def broken_function(
 def mock_config():
     """Mock configuration object for testing."""
     config = MagicMock()
-    config.api_key = "sk-test-key-12345"
-    config.load_api_key.return_value = "sk-test-key-12345"
-    config.model.model = "gpt-4o"
+    config.model.provider = "ollama"
+    config.model.model = "qwen2.5-coder:32b"
     config.model.temperature = 0.5
     config.model.max_tokens = 1000
+    config.model.code_model = "qwen2.5-coder:32b"
+    config.model.reasoning_model = "mistral"
+    config.model.ollama_base_url = "http://localhost:11434"
+    config.model.ollama_timeout = 600
+    config.home_dir = MagicMock()
     return config
-
-
-@pytest.fixture
-def env_with_api_key(monkeypatch):
-    """Set up environment with mock API key."""
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key-12345")
-    return "sk-test-key-12345"
-
-
-@pytest.fixture
-def env_without_api_key(monkeypatch):
-    """Set up environment without API key."""
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)

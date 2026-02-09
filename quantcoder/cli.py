@@ -76,26 +76,6 @@ def main(ctx, verbose, config, prompt):
     # Setup logging with config (enables rotation, JSON logs, webhooks)
     setup_logging(verbose, cfg)
 
-    # Ensure API key is loaded (skip for local providers like Ollama)
-    if cfg.model.provider != "ollama":
-        try:
-            if not cfg.api_key:
-                api_key = cfg.load_api_key()
-                if not api_key:
-                    # Prompt for API key on first run
-                    console.print(
-                        "[yellow]No API key found. Please enter your API key:[/yellow]"
-                    )
-                    api_key = click.prompt("API Key", hide_input=True)
-                    cfg.save_api_key(api_key)
-        except EnvironmentError as e:
-            console.print(f"[red]Error: {e}[/red]")
-            console.print(
-                "[yellow]Please set your API key in the environment or "
-                f"create {cfg.home_dir / '.env'}[/yellow]"
-            )
-            sys.exit(1)
-
     ctx.ensure_object(dict)
     ctx.obj['config'] = cfg
     ctx.obj['verbose'] = verbose

@@ -1,88 +1,75 @@
-"""LLM handler supporting multiple providers.
+"""LLM handler — Ollama-only local inference.
 
-Uses Ollama for chat/summarize (free, fast) and Claude for code generation (quality).
+Routes tasks to the appropriate local model via OllamaProvider:
+  - Code generation / refinement / error fixing → qwen2.5-coder:32b
+  - Summarization / chat → mistral
 """
 
-import os
+import asyncio
 import logging
 from typing import Dict, List, Optional
-from openai import OpenAI
+
+from quantcoder.llm import LLMFactory
 
 logger = logging.getLogger(__name__)
 
 
+def _run_async(coro):
+    """Run an async coroutine synchronously."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        # Already inside an event loop — create a new thread
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            return pool.submit(asyncio.run, coro).result()
+    else:
+        return asyncio.run(coro)
+
+
 class LLMHandler:
-    """Handles interactions with LLM providers."""
+    """Handles interactions with Ollama LLM providers."""
 
     def __init__(self, config):
         self.config = config
         self.logger = logging.getLogger(self.__class__.__name__)
 
-        provider = config.model.provider
+        # Read Ollama settings from config
+        base_url = getattr(config.model, 'ollama_base_url', 'http://localhost:11434')
+        timeout = getattr(config.model, 'ollama_timeout', 600)
 
-        if provider == "ollama":
-            base_url = config.model.ollama_base_url
-            self.client = OpenAI(base_url=base_url, api_key="ollama")
-            self.model = config.model.ollama_model
-            self.logger.info(f"Using Ollama provider: {base_url}, model={self.model}")
-        else:
-            api_key = config.api_key or config.load_api_key()
-            self.client = OpenAI(api_key=api_key)
-            self.model = config.model.model
+        # Task-specific providers
+        self._code_llm = LLMFactory.create(
+            task="coding",
+            model=getattr(config.model, 'code_model', None),
+            base_url=base_url,
+            timeout=timeout,
+        )
+        self._chat_llm = LLMFactory.create(
+            task="chat",
+            model=getattr(config.model, 'reasoning_model', None),
+            base_url=base_url,
+            timeout=timeout,
+        )
+        self._summary_llm = LLMFactory.create(
+            task="summary",
+            model=getattr(config.model, 'reasoning_model', None),
+            base_url=base_url,
+            timeout=timeout,
+        )
 
         self.temperature = config.model.temperature
         self.max_tokens = config.model.max_tokens
 
-        # Code generation provider: "anthropic" or "ollama" (from config)
-        self.code_provider = getattr(config.model, 'code_provider', 'anthropic')
-        self._code_client = None
-        self._code_model = "claude-opus-4-6"
-        self.logger.info(f"Code generation provider: {self.code_provider}")
-
-        # Summary provider: "anthropic" or "ollama" (from config)
-        self.summary_provider = getattr(config.model, 'summary_provider', 'ollama')
-        self._summary_model = getattr(config.model, 'summary_model', 'claude-sonnet-4-5-20250929')
-        self.logger.info(f"Summary provider: {self.summary_provider}")
-
-    def _get_code_client(self):
-        """Lazy-init Anthropic client for code generation."""
-        if self.code_provider != "anthropic":
-            return None
-
-        if self._code_client is None:
-            from dotenv import load_dotenv
-            env_path = self.config.home_dir / ".env"
-            if env_path.exists():
-                load_dotenv(env_path)
-
-            api_key = os.getenv("ANTHROPIC_API_KEY")
-            if api_key:
-                import anthropic
-                self._code_client = anthropic.Anthropic(api_key=api_key)
-                self.logger.info(f"Claude code generation enabled: {self._code_model}")
-            else:
-                self.logger.warning("ANTHROPIC_API_KEY not found, falling back to Ollama for code gen")
-
-        return self._code_client
-
-    def _generate_with_claude(self, system: str, prompt: str, temperature: float = 0.3) -> Optional[str]:
-        """Generate text using Claude API."""
-        client = self._get_code_client()
-        if not client:
-            return None
-
-        try:
-            response = client.messages.create(
-                model=self._code_model,
-                max_tokens=8192,
-                temperature=temperature,
-                system=system,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            return response.content[0].text.strip()
-        except Exception as e:
-            self.logger.error(f"Claude API error: {e}")
-            return None
+        self.logger.info(
+            f"LLMHandler initialized — "
+            f"code: {self._code_llm.get_model_name()}, "
+            f"chat: {self._chat_llm.get_model_name()}, "
+            f"summary: {self._summary_llm.get_model_name()}"
+        )
 
     def generate_summary(self, extracted_data: Dict[str, List[str]]) -> Optional[str]:
         """Generate a structured trading strategy summary for algorithm generation."""
@@ -150,56 +137,22 @@ Write as precise conditional logic:
 - Initial capital: [$100,000 unless paper specifies otherwise]
 - Benchmark: [SPY unless paper specifies otherwise]"""
 
-        # Route through Claude if configured
-        if self.summary_provider == "anthropic":
-            self.logger.info(f"Using Claude ({self._summary_model}) for summarization")
-            summary = self._generate_summary_with_claude(system, prompt)
-            if summary:
-                self.logger.info("Summary generated with Claude")
-                return summary
-            self.logger.warning("Claude summary failed, falling back to Ollama")
-
-        # Ollama fallback / default path
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=4096,
-                temperature=0.3
+            messages = [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt}
+            ]
+            summary = _run_async(
+                self._summary_llm.chat(messages=messages, max_tokens=4096, temperature=0.3)
             )
-
-            summary = response.choices[0].message.content.strip()
             self.logger.info("Summary generated successfully")
             return summary
-
         except Exception as e:
             self.logger.error(f"Error during summary generation: {e}")
             return None
 
-    def _generate_summary_with_claude(self, system: str, prompt: str) -> Optional[str]:
-        """Generate summary using Claude API (reuses the Anthropic client from code gen)."""
-        client = self._get_code_client()
-        if not client:
-            return None
-
-        try:
-            response = client.messages.create(
-                model=self._summary_model,
-                max_tokens=4096,
-                temperature=0.3,
-                system=system,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            return response.content[0].text.strip()
-        except Exception as e:
-            self.logger.error(f"Claude summary API error: {e}")
-            return None
-
     def generate_qc_code(self, summary: str) -> Optional[str]:
-        """Generate QuantConnect Python code using Claude Opus."""
+        """Generate QuantConnect Python code."""
         self.logger.info("Generating QuantConnect code")
 
         system = """You are an expert QuantConnect algorithm developer. You write production-quality LEAN Python algorithms.
@@ -245,39 +198,23 @@ The algorithm must:
 - Include stop loss and position sizing
 - Be ready to compile and run without errors"""
 
-        # Try Claude first
-        code = self._generate_with_claude(system, prompt, temperature=0.3)
+        try:
+            messages = [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt}
+            ]
+            code = _run_async(
+                self._code_llm.chat(messages=messages, max_tokens=self.max_tokens, temperature=0.3)
+            )
+            self.logger.info(f"Code generated with {self._code_llm.get_model_name()}")
+        except Exception as e:
+            self.logger.error(f"Error during code generation: {e}")
+            return None
 
-        if code:
-            self.logger.info("Code generated with Claude Opus")
-        else:
-            # Fallback to default provider
-            self.logger.info("Falling back to default provider for code generation")
-            try:
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": prompt}
-                    ],
-                    max_tokens=self.max_tokens,
-                    temperature=0.3
-                )
-                code = response.choices[0].message.content.strip()
-            except Exception as e:
-                self.logger.error(f"Error during code generation: {e}")
-                return None
-
-        # Clean up markdown formatting
-        if "```python" in code:
-            code = code.split("```python")[1].split("```")[0].strip()
-        elif "```" in code:
-            code = code.split("```")[1].split("```")[0].strip()
-
-        return code
+        return self._strip_markdown(code)
 
     def refine_code(self, code: str) -> Optional[str]:
-        """Fix errors in generated QuantConnect code using Claude Opus."""
+        """Fix errors in generated QuantConnect code."""
         self.logger.info("Refining generated code")
 
         system = """You are an expert QuantConnect LEAN Python debugger. Fix the code so it compiles and runs without errors.
@@ -294,38 +231,23 @@ CRITICAL RULES:
 
 Return ONLY the corrected Python code."""
 
-        # Try Claude first
-        corrected = self._generate_with_claude(system, prompt, temperature=0.2)
+        try:
+            messages = [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt}
+            ]
+            corrected = _run_async(
+                self._code_llm.chat(messages=messages, max_tokens=self.max_tokens, temperature=0.2)
+            )
+            self.logger.info(f"Code refined with {self._code_llm.get_model_name()}")
+        except Exception as e:
+            self.logger.error(f"Error during code refinement: {e}")
+            return None
 
-        if corrected:
-            self.logger.info("Code refined with Claude Opus")
-        else:
-            # Fallback to default provider
-            try:
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": prompt}
-                    ],
-                    max_tokens=self.max_tokens,
-                    temperature=0.2
-                )
-                corrected = response.choices[0].message.content.strip()
-            except Exception as e:
-                self.logger.error(f"Error during code refinement: {e}")
-                return None
-
-        # Clean up markdown formatting
-        if "```python" in corrected:
-            corrected = corrected.split("```python")[1].split("```")[0].strip()
-        elif "```" in corrected:
-            corrected = corrected.split("```")[1].split("```")[0].strip()
-
-        return corrected
+        return self._strip_markdown(corrected)
 
     def fix_runtime_error(self, code: str, error_message: str) -> Optional[str]:
-        """Fix a QuantConnect runtime error by feeding the error back to Claude."""
+        """Fix a QuantConnect runtime error by feeding the error back to the LLM."""
         self.logger.info(f"Fixing runtime error: {error_message[:100]}")
 
         system = """You are an expert QuantConnect LEAN Python debugger.
@@ -361,50 +283,44 @@ ALGORITHM CODE:
 
 Fix the error and return ONLY the corrected Python code."""
 
-        corrected = self._generate_with_claude(system, prompt, temperature=0.2)
+        try:
+            messages = [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt}
+            ]
+            corrected = _run_async(
+                self._code_llm.chat(messages=messages, max_tokens=8192, temperature=0.2)
+            )
+        except Exception as e:
+            self.logger.error(f"Error during runtime fix: {e}")
+            return None
 
-        if not corrected:
-            # Fallback to default provider
-            try:
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": prompt}
-                    ],
-                    max_tokens=8192,
-                    temperature=0.2
-                )
-                corrected = response.choices[0].message.content.strip()
-            except Exception as e:
-                self.logger.error(f"Error during runtime fix: {e}")
-                return None
-
-        if corrected:
-            if "```python" in corrected:
-                corrected = corrected.split("```python")[1].split("```")[0].strip()
-            elif "```" in corrected:
-                corrected = corrected.split("```")[1].split("```")[0].strip()
-
-        return corrected
+        return self._strip_markdown(corrected) if corrected else None
 
     def chat(self, message: str, context: Optional[List[Dict]] = None) -> Optional[str]:
-        """Chat conversation using the default provider (Ollama)."""
+        """Chat conversation using the reasoning model."""
         self.logger.info("Chatting with LLM")
 
         messages = context or []
         messages.append({"role": "user", "content": message})
 
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                max_tokens=self.max_tokens,
-                temperature=self.temperature
+            return _run_async(
+                self._chat_llm.chat(
+                    messages=messages,
+                    max_tokens=self.max_tokens,
+                    temperature=self.temperature,
+                )
             )
-
-            return response.choices[0].message.content.strip()
-
         except Exception as e:
             self.logger.error(f"Error during chat: {e}")
             return None
+
+    @staticmethod
+    def _strip_markdown(text: str) -> str:
+        """Remove markdown code fences from LLM output."""
+        if "```python" in text:
+            text = text.split("```python")[1].split("```")[0].strip()
+        elif "```" in text:
+            text = text.split("```")[1].split("```")[0].strip()
+        return text

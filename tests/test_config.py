@@ -3,7 +3,6 @@
 import pytest
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 from quantcoder.config import (
     Config,
@@ -18,31 +17,39 @@ class TestModelConfig:
     """Tests for ModelConfig dataclass."""
 
     def test_default_values(self):
-        """Test default configuration values."""
+        """Test default configuration values (Ollama-only)."""
         config = ModelConfig()
-        assert config.provider == "anthropic"
-        assert config.model == "claude-sonnet-4-5-20250929"
+        assert config.provider == "ollama"
+        assert config.model == "qwen2.5-coder:32b"
         assert config.temperature == 0.5
         assert config.max_tokens == 3000
 
-    def test_custom_values(self):
-        """Test custom configuration values."""
-        config = ModelConfig(
-            provider="openai",
-            model="gpt-4",
-            temperature=0.7,
-            max_tokens=4000,
-        )
-        assert config.provider == "openai"
-        assert config.model == "gpt-4"
-        assert config.temperature == 0.7
-        assert config.max_tokens == 4000
+    def test_code_and_reasoning_models(self):
+        """Test code and reasoning model defaults."""
+        config = ModelConfig()
+        assert config.code_model == "qwen2.5-coder:32b"
+        assert config.reasoning_model == "mistral"
 
     def test_ollama_settings(self):
         """Test Ollama-specific settings."""
         config = ModelConfig()
-        assert config.ollama_base_url == "http://localhost:11434/v1"
-        assert config.ollama_model == "llama3.2"
+        assert config.ollama_base_url == "http://localhost:11434"
+        assert config.ollama_timeout == 600
+
+    def test_custom_values(self):
+        """Test custom configuration values."""
+        config = ModelConfig(
+            model="mistral",
+            temperature=0.7,
+            max_tokens=4000,
+            code_model="codellama:13b",
+            reasoning_model="mistral:7b",
+        )
+        assert config.model == "mistral"
+        assert config.temperature == 0.7
+        assert config.max_tokens == 4000
+        assert config.code_model == "codellama:13b"
+        assert config.reasoning_model == "mistral:7b"
 
 
 class TestUIConfig:
@@ -124,17 +131,23 @@ class TestConfig:
         assert "model" in data
         assert "ui" in data
         assert "tools" in data
-        assert data["model"]["provider"] == "anthropic"
+        assert data["model"]["provider"] == "ollama"
+        assert data["model"]["code_model"] == "qwen2.5-coder:32b"
+        assert data["model"]["reasoning_model"] == "mistral"
         assert data["ui"]["theme"] == "monokai"
 
     def test_from_dict(self):
         """Test configuration deserialization from dict."""
         data = {
             "model": {
-                "provider": "openai",
-                "model": "gpt-4",
+                "provider": "ollama",
+                "model": "mistral",
                 "temperature": 0.8,
                 "max_tokens": 2000,
+                "code_model": "codellama:13b",
+                "reasoning_model": "mistral:7b",
+                "ollama_base_url": "http://localhost:11434",
+                "ollama_timeout": 300,
             },
             "ui": {
                 "theme": "dark",
@@ -145,28 +158,49 @@ class TestConfig:
         }
         config = Config.from_dict(data)
 
-        assert config.model.provider == "openai"
-        assert config.model.model == "gpt-4"
+        assert config.model.provider == "ollama"
+        assert config.model.model == "mistral"
+        assert config.model.code_model == "codellama:13b"
         assert config.ui.theme == "dark"
         assert config.ui.auto_approve is True
+
+    def test_from_dict_strips_v1_suffix(self):
+        """Test that /v1 suffix is stripped from ollama_base_url."""
+        data = {
+            "model": {
+                "ollama_base_url": "http://localhost:11434/v1",
+            },
+        }
+        config = Config.from_dict(data)
+        assert config.model.ollama_base_url == "http://localhost:11434"
+
+    def test_from_dict_strips_unknown_fields(self):
+        """Test that old/unknown model fields are ignored."""
+        data = {
+            "model": {
+                "provider": "ollama",
+                "coordinator_provider": "anthropic",  # old field
+                "summary_provider": "ollama",  # old field
+                "ollama_model": "llama3.2",  # old field
+            },
+        }
+        config = Config.from_dict(data)
+        assert config.model.provider == "ollama"
 
     def test_save_and_load(self):
         """Test saving and loading configuration."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "config.toml"
 
-            # Create and save config
             config = Config()
-            config.model.provider = "mistral"
+            config.model.code_model = "codellama:13b"
             config.ui.theme = "light"
             config.save(config_path)
 
-            # Verify file exists
             assert config_path.exists()
 
-            # Load and verify
             loaded_config = Config.load(config_path)
-            assert loaded_config.model.provider == "mistral"
+            assert loaded_config.model.code_model == "codellama:13b"
             assert loaded_config.ui.theme == "light"
 
     def test_load_nonexistent_creates_default(self):
@@ -174,44 +208,19 @@ class TestConfig:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "nonexistent" / "config.toml"
 
-            # Should create default config
             config = Config.load(config_path)
-            assert config.model.provider == "anthropic"
+            assert config.model.provider == "ollama"
 
-    def test_load_api_key_from_env(self, monkeypatch):
-        """Test loading API key from environment."""
-        monkeypatch.setenv("OPENAI_API_KEY", "test-api-key")
+    def test_load_api_key_noop(self):
+        """Test load_api_key is a no-op for Ollama."""
+        config = Config()
+        result = config.load_api_key()
+        assert result == ""
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config = Config()
-            config.home_dir = Path(tmpdir)
-
-            api_key = config.load_api_key()
-            assert api_key == "test-api-key"
-            assert config.api_key == "test-api-key"
-
-    def test_load_api_key_raises_without_key(self, monkeypatch):
-        """Test that missing API key raises error."""
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config = Config()
-            config.home_dir = Path(tmpdir)
-
-            with pytest.raises(EnvironmentError):
-                config.load_api_key()
-
-    def test_save_api_key(self):
-        """Test saving API key to .env file."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config = Config()
-            config.home_dir = Path(tmpdir)
-
-            config.save_api_key("my-secret-key")
-
-            env_path = Path(tmpdir) / ".env"
-            assert env_path.exists()
-            assert "my-secret-key" in env_path.read_text()
+    def test_save_api_key_noop(self):
+        """Test save_api_key is a no-op for Ollama."""
+        config = Config()
+        config.save_api_key("anything")  # Should not raise
 
     def test_has_quantconnect_credentials(self, monkeypatch):
         """Test checking for QuantConnect credentials."""

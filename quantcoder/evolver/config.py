@@ -56,9 +56,9 @@ class EvolutionConfig:
     backtest_end_date: str = "2023-12-31"
     initial_cash: int = 100000
 
-    # LLM settings - now supports multiple providers
-    llm_provider: str = "openai"  # openai, anthropic, mistral, deepseek
-    model: str = "gpt-4o-2024-11-20"
+    # LLM settings — Ollama local models
+    llm_provider: str = "ollama"
+    model: str = "qwen2.5-coder:32b"
     temperature_variation: float = 0.7  # higher for more diverse variations
     temperature_refinement: float = 0.3  # lower for precise fixes
 

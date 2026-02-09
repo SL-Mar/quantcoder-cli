@@ -1,9 +1,9 @@
-"""LLM provider abstraction for multiple backends."""
+"""LLM provider abstraction — Ollama-only local models."""
 
 import os
 import logging
 from abc import ABC, abstractmethod
-from typing import List, Dict, Optional, AsyncIterator
+from typing import List, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -44,234 +44,23 @@ class LLMProvider(ABC):
         pass
 
 
-class AnthropicProvider(LLMProvider):
-    """Anthropic (Claude) provider - Sonnet 4.5 for best reasoning."""
-
-    def __init__(
-        self,
-        api_key: str,
-        model: str = "claude-sonnet-4-5-20250929"
-    ):
-        """
-        Initialize Anthropic provider.
-
-        Args:
-            api_key: Anthropic API key
-            model: Model identifier (default: Sonnet 4.5)
-        """
-        try:
-            from anthropic import AsyncAnthropic
-            self.client = AsyncAnthropic(api_key=api_key)
-            self.model = model
-            self.logger = logging.getLogger(self.__class__.__name__)
-        except ImportError:
-            raise ImportError("anthropic package not installed. Run: pip install anthropic")
-
-    async def chat(
-        self,
-        messages: List[Dict[str, str]],
-        temperature: float = 0.7,
-        max_tokens: int = 2000,
-        **kwargs
-    ) -> str:
-        """Generate chat completion with Claude."""
-        try:
-            response = await self.client.messages.create(
-                model=self.model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                **kwargs
-            )
-            return response.content[0].text
-        except Exception as e:
-            self.logger.error(f"Anthropic API error: {e}")
-            raise
-
-    def get_model_name(self) -> str:
-        return self.model
-
-    def get_provider_name(self) -> str:
-        return "anthropic"
-
-
-class MistralProvider(LLMProvider):
-    """Mistral provider - Devstral for code generation."""
-
-    def __init__(
-        self,
-        api_key: str,
-        model: str = "devstral-2-123b"
-    ):
-        """
-        Initialize Mistral provider.
-
-        Args:
-            api_key: Mistral API key
-            model: Model identifier (default: Devstral 2)
-        """
-        try:
-            from mistralai.async_client import MistralAsyncClient
-            self.client = MistralAsyncClient(api_key=api_key)
-            self.model = model
-            self.logger = logging.getLogger(self.__class__.__name__)
-        except ImportError:
-            raise ImportError("mistralai package not installed. Run: pip install mistralai")
-
-    async def chat(
-        self,
-        messages: List[Dict[str, str]],
-        temperature: float = 0.7,
-        max_tokens: int = 2000,
-        **kwargs
-    ) -> str:
-        """Generate chat completion with Mistral."""
-        try:
-            response = await self.client.chat(
-                model=self.model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                **kwargs
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            self.logger.error(f"Mistral API error: {e}")
-            raise
-
-    def get_model_name(self) -> str:
-        return self.model
-
-    def get_provider_name(self) -> str:
-        return "mistral"
-
-
-class DeepSeekProvider(LLMProvider):
-    """DeepSeek provider - Efficient open-source alternative."""
-
-    def __init__(
-        self,
-        api_key: str,
-        model: str = "deepseek-chat"
-    ):
-        """
-        Initialize DeepSeek provider.
-
-        Args:
-            api_key: DeepSeek API key
-            model: Model identifier
-        """
-        try:
-            from openai import AsyncOpenAI
-            self.client = AsyncOpenAI(
-                api_key=api_key,
-                base_url="https://api.deepseek.com"
-            )
-            self.model = model
-            self.logger = logging.getLogger(self.__class__.__name__)
-        except ImportError:
-            raise ImportError("openai package not installed. Run: pip install openai")
-
-    async def chat(
-        self,
-        messages: List[Dict[str, str]],
-        temperature: float = 0.7,
-        max_tokens: int = 2000,
-        **kwargs
-    ) -> str:
-        """Generate chat completion with DeepSeek."""
-        try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                **kwargs
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            self.logger.error(f"DeepSeek API error: {e}")
-            raise
-
-    def get_model_name(self) -> str:
-        return self.model
-
-    def get_provider_name(self) -> str:
-        return "deepseek"
-
-
-class OpenAIProvider(LLMProvider):
-    """OpenAI provider - GPT-4/GPT-4o fallback."""
-
-    def __init__(
-        self,
-        api_key: str,
-        model: str = "gpt-4o-2024-11-20"
-    ):
-        """
-        Initialize OpenAI provider.
-
-        Args:
-            api_key: OpenAI API key
-            model: Model identifier
-        """
-        try:
-            from openai import AsyncOpenAI
-            self.client = AsyncOpenAI(api_key=api_key)
-            self.model = model
-            self.logger = logging.getLogger(self.__class__.__name__)
-        except ImportError:
-            raise ImportError("openai package not installed. Run: pip install openai")
-
-    async def chat(
-        self,
-        messages: List[Dict[str, str]],
-        temperature: float = 0.7,
-        max_tokens: int = 2000,
-        **kwargs
-    ) -> str:
-        """Generate chat completion with OpenAI."""
-        try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                **kwargs
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            self.logger.error(f"OpenAI API error: {e}")
-            raise
-
-    def get_model_name(self) -> str:
-        return self.model
-
-    def get_provider_name(self) -> str:
-        return "openai"
-
-
 class OllamaProvider(LLMProvider):
-    """Ollama provider - Local LLM support without API keys."""
+    """Ollama provider — local LLM inference without API keys."""
 
     def __init__(
         self,
-        api_key: str = "",  # Not used, kept for interface compatibility
-        model: str = "llama3.2",
-        base_url: str = None
+        model: str = "qwen2.5-coder:32b",
+        base_url: str = None,
+        timeout: int = 600
     ):
-        """
-        Initialize Ollama provider.
-
-        Args:
-            api_key: Not used (kept for interface compatibility)
-            model: Model identifier (default: llama3.2)
-            base_url: Ollama server URL (default: http://localhost:11434)
-        """
         self.model = model
-        self.base_url = base_url or os.environ.get(
+        self.base_url = (base_url or os.environ.get(
             'OLLAMA_BASE_URL', 'http://localhost:11434'
-        )
+        )).rstrip('/')
+        # Strip /v1 suffix if present (common misconfiguration)
+        if self.base_url.endswith('/v1'):
+            self.base_url = self.base_url[:-3]
+        self.timeout = timeout
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.info(f"Initialized OllamaProvider: {self.base_url}, model={self.model}")
 
@@ -283,10 +72,7 @@ class OllamaProvider(LLMProvider):
         **kwargs
     ) -> str:
         """Generate chat completion with Ollama."""
-        try:
-            import aiohttp
-        except ImportError:
-            raise ImportError("aiohttp package not installed. Run: pip install aiohttp")
+        import aiohttp
 
         url = f"{self.base_url}/api/chat"
         payload = {
@@ -301,11 +87,14 @@ class OllamaProvider(LLMProvider):
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=300)) as response:
+                async with session.post(
+                    url,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=self.timeout)
+                ) as response:
                     response.raise_for_status()
                     result = await response.json()
 
-                    # Extract response text
                     if 'message' in result and 'content' in result['message']:
                         text = result['message']['content']
                     elif 'response' in result:
@@ -317,7 +106,10 @@ class OllamaProvider(LLMProvider):
                     return text.strip()
 
         except aiohttp.ClientConnectorError as e:
-            error_msg = f"Failed to connect to Ollama at {self.base_url}. Is Ollama running? Error: {e}"
+            error_msg = (
+                f"Failed to connect to Ollama at {self.base_url}. "
+                f"Is Ollama running? Error: {e}"
+            )
             self.logger.error(error_msg)
             raise ConnectionError(error_msg) from e
         except aiohttp.ClientResponseError as e:
@@ -328,6 +120,37 @@ class OllamaProvider(LLMProvider):
             self.logger.error(f"Ollama error: {e}")
             raise
 
+    async def check_health(self) -> bool:
+        """Check if Ollama server is reachable."""
+        import aiohttp
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{self.base_url}/api/tags",
+                    timeout=aiohttp.ClientTimeout(total=5)
+                ) as response:
+                    return response.status == 200
+        except Exception:
+            return False
+
+    async def list_models(self) -> List[str]:
+        """List available models on the Ollama server."""
+        import aiohttp
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{self.base_url}/api/tags",
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+                    return [m['name'] for m in data.get('models', [])]
+        except Exception as e:
+            self.logger.error(f"Failed to list models: {e}")
+            return []
+
     def get_model_name(self) -> str:
         return self.model
 
@@ -335,89 +158,52 @@ class OllamaProvider(LLMProvider):
         return "ollama"
 
 
+# Task-to-model mapping
+TASK_MODELS = {
+    "coding": "qwen2.5-coder:32b",
+    "code_generation": "qwen2.5-coder:32b",
+    "refinement": "qwen2.5-coder:32b",
+    "error_fixing": "qwen2.5-coder:32b",
+    "reasoning": "mistral",
+    "chat": "mistral",
+    "summary": "mistral",
+    "coordination": "mistral",
+}
+
+
 class LLMFactory:
-    """Factory for creating LLM providers."""
-
-    PROVIDERS = {
-        "anthropic": AnthropicProvider,
-        "mistral": MistralProvider,
-        "deepseek": DeepSeekProvider,
-        "openai": OpenAIProvider,
-        "ollama": OllamaProvider,
-    }
-
-    DEFAULT_MODELS = {
-        "anthropic": "claude-sonnet-4-5-20250929",
-        "mistral": "devstral-2-123b",
-        "deepseek": "deepseek-chat",
-        "openai": "gpt-4o-2024-11-20",
-        "ollama": "llama3.2",
-    }
+    """Factory for creating Ollama LLM providers with task-based model routing."""
 
     @classmethod
     def create(
         cls,
-        provider: str,
-        api_key: str = "",
+        task: str = "coding",
         model: Optional[str] = None,
-        base_url: Optional[str] = None
-    ) -> LLMProvider:
+        base_url: Optional[str] = None,
+        timeout: int = 600,
+    ) -> OllamaProvider:
         """
-        Create LLM provider instance.
+        Create an OllamaProvider configured for a specific task.
 
         Args:
-            provider: Provider name (anthropic, mistral, deepseek, openai, ollama)
-            api_key: API key for the provider (not required for ollama)
-            model: Optional model identifier (uses default if not specified)
-            base_url: Optional base URL for local providers (ollama)
+            task: Task type — determines default model.
+                  coding/code_generation/refinement/error_fixing → qwen2.5-coder:32b
+                  reasoning/chat/summary/coordination → mistral
+            model: Override model (uses task default if None)
+            base_url: Ollama server URL (default: http://localhost:11434)
+            timeout: Request timeout in seconds (default: 600)
 
         Returns:
-            LLMProvider instance
+            OllamaProvider instance
 
         Example:
-            >>> llm = LLMFactory.create("anthropic", api_key="sk-...")
-            >>> llm = LLMFactory.create("ollama", model="llama3.2")
+            >>> llm = LLMFactory.create(task="coding")
+            >>> llm = LLMFactory.create(task="reasoning", model="mistral")
         """
-        provider = provider.lower()
+        resolved_model = model or TASK_MODELS.get(task, "qwen2.5-coder:32b")
 
-        if provider not in cls.PROVIDERS:
-            raise ValueError(
-                f"Unknown provider: {provider}. "
-                f"Available: {list(cls.PROVIDERS.keys())}"
-            )
+        kwargs = {"model": resolved_model, "timeout": timeout}
+        if base_url:
+            kwargs["base_url"] = base_url
 
-        provider_class = cls.PROVIDERS[provider]
-        model = model or cls.DEFAULT_MODELS[provider]
-
-        # Ollama doesn't require API key
-        if provider == "ollama":
-            if base_url:
-                return provider_class(model=model, base_url=base_url)
-            return provider_class(model=model)
-
-        if not api_key:
-            raise ValueError(f"API key required for provider: {provider}")
-
-        return provider_class(api_key=api_key, model=model)
-
-    @classmethod
-    def get_recommended_for_task(cls, task_type: str) -> str:
-        """
-        Get recommended provider for a task type.
-
-        Args:
-            task_type: Task type (reasoning, coding, general)
-
-        Returns:
-            Recommended provider name
-        """
-        recommendations = {
-            "reasoning": "anthropic",  # Sonnet 4.5 for complex reasoning
-            "coding": "mistral",       # Devstral for code generation
-            "general": "deepseek",     # Cost-effective for general tasks
-            "coordination": "anthropic",  # Sonnet for orchestration
-            "risk": "anthropic",       # Sonnet for nuanced risk decisions
-            "local": "ollama",         # Local LLM, no API key required
-        }
-
-        return recommendations.get(task_type, "anthropic")
+        return OllamaProvider(**kwargs)

@@ -147,18 +147,25 @@ quantcoder-cli/
 
 ---
 
-## Release Workflow (Future)
+## Release Workflow
+
+### v2.0.0 Release (Ollama-only, local models)
 
 ```bash
-# When v2.0 is ready:
+# Merge develop into main
 git checkout main
 git merge develop
-git tag -a v2.0 -m "v2.0: Multi-agent architecture"
+git tag -a v2.0.0 -m "v2.0.0: Ollama-only local LLM inference"
 git push origin main --tags
 
 # v1.0 and v1.1 remain accessible via tags
 git checkout v1.0  # Access old version anytime
 ```
+
+### Prerequisites for v2.0.0
+- Ollama installed and running
+- Models pulled: `ollama pull qwen2.5-coder:32b && ollama pull mistral`
+- No cloud API keys required
 
 ---
 

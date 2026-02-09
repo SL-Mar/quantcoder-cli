@@ -162,15 +162,8 @@ Create a plan for generating the QuantConnect algorithm."""
         strategy = plan.get("execution_strategy", "parallel")
 
         # Create specialized LLMs for different tasks
-        code_llm = LLMFactory.create(
-            LLMFactory.get_recommended_for_task("coding"),
-            self.config.api_key if self.config else ""
-        )
-
-        risk_llm = LLMFactory.create(
-            LLMFactory.get_recommended_for_task("risk"),
-            self.config.api_key if self.config else ""
-        )
+        code_llm = LLMFactory.create(task="coding")
+        risk_llm = LLMFactory.create(task="reasoning")
 
         files = {}
 

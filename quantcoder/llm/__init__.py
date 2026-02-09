@@ -1,19 +1,13 @@
-"""Multi-LLM provider support."""
+"""Ollama-only LLM provider support."""
 
 from .providers import (
     LLMProvider,
-    AnthropicProvider,
-    MistralProvider,
-    DeepSeekProvider,
-    OpenAIProvider,
-    LLMFactory
+    OllamaProvider,
+    LLMFactory,
 )
 
 __all__ = [
     "LLMProvider",
-    "AnthropicProvider",
-    "MistralProvider",
-    "DeepSeekProvider",
-    "OpenAIProvider",
-    "LLMFactory"
+    "OllamaProvider",
+    "LLMFactory",
 ]

@@ -3,10 +3,7 @@
 These tests verify end-to-end functionality of CLI commands with mocked external services.
 """
 
-import json
-import os
 import pytest
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 from click.testing import CliRunner
 
@@ -22,9 +19,7 @@ def cli_runner():
 @pytest.fixture
 def mock_env(tmp_path, monkeypatch):
     """Set up mock environment with API keys and temp directories."""
-    # Set up environment variables
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key-12345")
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-12345")
+    # Ollama does not require API keys — no cloud env vars needed
 
     # Create temp directories
     home_dir = tmp_path / ".quantcoder"
@@ -61,8 +56,9 @@ class TestCLISmoke:
         """Test that version command shows version info."""
         with patch("quantcoder.cli.Config") as mock_config_class:
             mock_config = MagicMock()
-            mock_config.api_key = "sk-test-key"
-            mock_config.load_api_key.return_value = "sk-test-key"
+            mock_config.get_logging_config.return_value = None
+            mock_config.api_key = None
+            mock_config.load_api_key.return_value = ""
             mock_config_class.load.return_value = mock_config
 
             result = cli_runner.invoke(main, ["version"])
@@ -163,8 +159,9 @@ class TestSearchCommand:
 
         with patch("quantcoder.cli.Config") as mock_config_class:
             mock_config = MagicMock()
-            mock_config.api_key = "sk-test-key"
-            mock_config.load_api_key.return_value = "sk-test-key"
+            mock_config.get_logging_config.return_value = None
+            mock_config.api_key = None
+            mock_config.load_api_key.return_value = ""
             mock_config_class.load.return_value = mock_config
 
             with patch("quantcoder.cli.SearchArticlesTool") as mock_tool_class:
@@ -186,8 +183,9 @@ class TestSearchCommand:
         """Test search command when no results found."""
         with patch("quantcoder.cli.Config") as mock_config_class:
             mock_config = MagicMock()
-            mock_config.api_key = "sk-test-key"
-            mock_config.load_api_key.return_value = "sk-test-key"
+            mock_config.get_logging_config.return_value = None
+            mock_config.api_key = None
+            mock_config.load_api_key.return_value = ""
             mock_config_class.load.return_value = mock_config
 
             with patch("quantcoder.cli.SearchArticlesTool") as mock_tool_class:
@@ -230,8 +228,9 @@ class TestStrategy(QCAlgorithm):
 
         with patch("quantcoder.cli.Config") as mock_config_class:
             mock_config = MagicMock()
-            mock_config.api_key = "sk-test-key"
-            mock_config.load_api_key.return_value = "sk-test-key"
+            mock_config.get_logging_config.return_value = None
+            mock_config.api_key = None
+            mock_config.load_api_key.return_value = ""
             mock_config_class.load.return_value = mock_config
 
             with patch("quantcoder.cli.GenerateCodeTool") as mock_tool_class:
@@ -280,8 +279,9 @@ class TestStrategy(QCAlgorithm):
 
         with patch("quantcoder.cli.Config") as mock_config_class:
             mock_config = MagicMock()
-            mock_config.api_key = "sk-test-key"
-            mock_config.load_api_key.return_value = "sk-test-key"
+            mock_config.get_logging_config.return_value = None
+            mock_config.api_key = None
+            mock_config.load_api_key.return_value = ""
             mock_config_class.load.return_value = mock_config
 
             with patch("quantcoder.cli.ValidateCodeTool") as mock_tool_class:
@@ -310,8 +310,9 @@ def broken_function(
 
         with patch("quantcoder.cli.Config") as mock_config_class:
             mock_config = MagicMock()
-            mock_config.api_key = "sk-test-key"
-            mock_config.load_api_key.return_value = "sk-test-key"
+            mock_config.get_logging_config.return_value = None
+            mock_config.api_key = None
+            mock_config.load_api_key.return_value = ""
             mock_config_class.load.return_value = mock_config
 
             with patch("quantcoder.cli.ValidateCodeTool") as mock_tool_class:
@@ -460,8 +461,9 @@ class RSIMomentumStrategy(QCAlgorithm):
 
         with patch("quantcoder.cli.Config") as mock_config_class:
             mock_config = MagicMock()
-            mock_config.api_key = "sk-test-key"
-            mock_config.load_api_key.return_value = "sk-test-key"
+            mock_config.get_logging_config.return_value = None
+            mock_config.api_key = None
+            mock_config.load_api_key.return_value = ""
             mock_config_class.load.return_value = mock_config
 
             # Step 1: Search
@@ -504,28 +506,26 @@ class TestErrorHandling:
     """Tests for error handling scenarios."""
 
     @pytest.mark.integration
-    def test_missing_api_key_graceful_error(self, cli_runner, monkeypatch):
-        """Test that missing API key produces a helpful error message."""
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-
+    def test_ollama_no_api_key_needed(self, cli_runner, monkeypatch):
+        """Test that CLI starts without any API keys (Ollama-only)."""
         with patch("quantcoder.cli.Config") as mock_config_class:
             mock_config = MagicMock()
+            mock_config.get_logging_config.return_value = None
             mock_config.api_key = None
-            mock_config.load_api_key.return_value = None
+            mock_config.model.provider = "ollama"
             mock_config_class.load.return_value = mock_config
 
-            # The CLI should prompt for API key or show an error
-            result = cli_runner.invoke(main, ["search", "test"], input="\n")
-            # Either prompts for key or shows error - both are acceptable
-            assert result.exit_code in [0, 1]
+            result = cli_runner.invoke(main, ["version"])
+            assert result.exit_code == 0
 
     @pytest.mark.integration
     def test_network_error_handling(self, cli_runner):
         """Test handling of network errors."""
         with patch("quantcoder.cli.Config") as mock_config_class:
             mock_config = MagicMock()
-            mock_config.api_key = "sk-test-key"
-            mock_config.load_api_key.return_value = "sk-test-key"
+            mock_config.get_logging_config.return_value = None
+            mock_config.api_key = None
+            mock_config.load_api_key.return_value = ""
             mock_config_class.load.return_value = mock_config
 
             with patch("quantcoder.cli.SearchArticlesTool") as mock_tool_class:
@@ -544,8 +544,9 @@ class TestErrorHandling:
         """Test handling of invalid article ID."""
         with patch("quantcoder.cli.Config") as mock_config_class:
             mock_config = MagicMock()
-            mock_config.api_key = "sk-test-key"
-            mock_config.load_api_key.return_value = "sk-test-key"
+            mock_config.get_logging_config.return_value = None
+            mock_config.api_key = None
+            mock_config.load_api_key.return_value = ""
             mock_config_class.load.return_value = mock_config
 
             with patch("quantcoder.cli.DownloadArticleTool") as mock_tool_class:

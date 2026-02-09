@@ -25,27 +25,15 @@ class LoggingConfigSettings:
 
 @dataclass
 class ModelConfig:
-    """Configuration for the AI model."""
-    provider: str = "anthropic"  # anthropic, mistral, deepseek, openai, ollama
-    model: str = "claude-sonnet-4-5-20250929"
+    """Configuration for the AI model (Ollama-only)."""
+    provider: str = "ollama"
+    model: str = "qwen2.5-coder:32b"
     temperature: float = 0.5
     max_tokens: int = 3000
-
-    # Multi-agent specific
-    coordinator_provider: str = "anthropic"  # Best for orchestration
-    code_provider: str = "mistral"  # Devstral for code generation
-    risk_provider: str = "anthropic"  # Sonnet for nuanced risk decisions
-
-    # Code generation provider: "anthropic" (Claude Opus) or "ollama" (local)
-    code_provider: str = "anthropic"
-
-    # Summary provider: "anthropic" (Claude Sonnet) or "ollama" (local)
-    summary_provider: str = "ollama"
-    summary_model: str = "claude-sonnet-4-5-20250929"
-
-    # Local LLM (Ollama) settings
-    ollama_base_url: str = "http://localhost:11434/v1"  # Ollama API endpoint
-    ollama_model: str = "llama3.2"  # Default Ollama model (codellama, qwen2.5-coder, etc.)
+    code_model: str = "qwen2.5-coder:32b"
+    reasoning_model: str = "mistral"
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_timeout: int = 600
 
 
 @dataclass
@@ -140,7 +128,16 @@ class Config:
         config = cls()
 
         if "model" in data:
-            config.model = ModelConfig(**data["model"])
+            model_data = dict(data["model"])
+            # Strip unknown fields from old configs (backwards compat)
+            valid_fields = {f.name for f in ModelConfig.__dataclass_fields__.values()}
+            model_data = {k: v for k, v in model_data.items() if k in valid_fields}
+            # Strip /v1 suffix from ollama_base_url
+            if 'ollama_base_url' in model_data:
+                url = model_data['ollama_base_url']
+                if isinstance(url, str) and url.endswith('/v1'):
+                    model_data['ollama_base_url'] = url[:-3]
+            config.model = ModelConfig(**model_data)
         if "ui" in data:
             config.ui = UIConfig(**data["ui"])
         if "tools" in data:
@@ -158,8 +155,10 @@ class Config:
                 "model": self.model.model,
                 "temperature": self.model.temperature,
                 "max_tokens": self.model.max_tokens,
+                "code_model": self.model.code_model,
+                "reasoning_model": self.model.reasoning_model,
                 "ollama_base_url": self.model.ollama_base_url,
-                "ollama_model": self.model.ollama_model,
+                "ollama_timeout": self.model.ollama_timeout,
             },
             "ui": {
                 "theme": self.ui.theme,
@@ -198,23 +197,8 @@ class Config:
         logger.info(f"Configuration saved to {config_path}")
 
     def load_api_key(self) -> str:
-        """Load API key from environment or .env file."""
-        from dotenv import load_dotenv
-
-        # Try to load from .env in home directory
-        env_path = self.home_dir / ".env"
-        if env_path.exists():
-            load_dotenv(env_path)
-
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise EnvironmentError(
-                "OPENAI_API_KEY not found. Please set it in your environment "
-                f"or create {env_path} with OPENAI_API_KEY=your_key"
-            )
-
-        self.api_key = api_key
-        return api_key
+        """No-op — Ollama does not require API keys."""
+        return ""
 
     def load_quantconnect_credentials(self) -> tuple[str, str]:
         """Load QuantConnect API credentials from environment."""
@@ -270,15 +254,8 @@ class Config:
         return os.getenv("TAVILY_API_KEY")
 
     def save_api_key(self, api_key: str):
-        """Save API key to .env file."""
-        env_path = self.home_dir / ".env"
-        env_path.parent.mkdir(parents=True, exist_ok=True)
-
-        with open(env_path, 'w') as f:
-            f.write(f"OPENAI_API_KEY={api_key}\n")
-
-        logger.info(f"API key saved to {env_path}")
-        self.api_key = api_key
+        """No-op — Ollama does not require API keys."""
+        pass
 
     def get_logging_config(self):
         """Get logging configuration for setup_logging()."""

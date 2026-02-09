@@ -32,13 +32,9 @@ class VariationGenerator:
         if llm:
             self.llm = llm
         else:
-            # Get API key from environment
-            import os
-            api_key = os.getenv('OPENAI_API_KEY', '')
             self.llm = LLMFactory.create(
-                config.llm_provider,
-                api_key,
-                config.model
+                task="coding",
+                model=config.model,
             )
 
         # Variation strategies for mutation
