@@ -1,13 +1,14 @@
 """Tests for the quantcoder.core.processor module."""
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, AsyncMock, patch
 
 from quantcoder.core.processor import (
     TextPreprocessor,
     CodeValidator,
     KeywordAnalyzer,
     SectionSplitter,
+    ArticleProcessor,
 )
 
 
@@ -123,3 +124,77 @@ class TestCodeValidator:
         """Test validation of simple expressions."""
         validator = CodeValidator()
         assert validator.validate_code("x = 1 + 2") is True
+
+
+class TestGenerateTwoPassSummary:
+    """Tests for ArticleProcessor.generate_two_pass_summary."""
+
+    def _make_processor(self, mock_config):
+        """Create ArticleProcessor with mocked LLM and PDF pipeline."""
+        with patch("quantcoder.core.processor.HeadingDetector"):
+            with patch("quantcoder.core.llm.LLMFactory") as mock_factory:
+                mock_provider = MagicMock()
+                mock_provider.get_model_name.return_value = "mistral"
+                mock_provider.chat = AsyncMock(return_value="test")
+                mock_factory.create.return_value = mock_provider
+                processor = ArticleProcessor(mock_config)
+        return processor
+
+    def test_two_pass_success(self, mock_config):
+        """Both passes succeed — returns Pass 2 output."""
+        processor = self._make_processor(mock_config)
+
+        fake_sections = {"Methodology": "OU process with theta=0.5"}
+        processor.extract_sections = MagicMock(return_value=fake_sections)
+        processor.llm_handler.extract_key_passages = MagicMock(
+            return_value='[Methodology] "OU process..."'
+        )
+        processor.llm_handler.interpret_strategy = MagicMock(
+            return_value="## STRATEGY OVERVIEW\nMean reversion via OU"
+        )
+
+        result = processor.generate_two_pass_summary("/fake/paper.pdf")
+
+        assert result is not None
+        assert "STRATEGY OVERVIEW" in result
+        processor.extract_sections.assert_called_once_with("/fake/paper.pdf")
+        processor.llm_handler.extract_key_passages.assert_called_once_with(fake_sections)
+
+    def test_fallback_on_pass1_failure(self, mock_config):
+        """Pass 1 fails — falls back to legacy path."""
+        processor = self._make_processor(mock_config)
+
+        processor.extract_sections = MagicMock(return_value={"Intro": "text"})
+        processor.llm_handler.extract_key_passages = MagicMock(return_value=None)
+        processor._legacy_summarize = MagicMock(return_value="legacy summary")
+
+        result = processor.generate_two_pass_summary("/fake/paper.pdf")
+
+        assert result == "legacy summary"
+        processor._legacy_summarize.assert_called_once()
+
+    def test_fallback_on_pass2_failure(self, mock_config):
+        """Pass 2 fails — falls back to legacy path."""
+        processor = self._make_processor(mock_config)
+
+        processor.extract_sections = MagicMock(return_value={"Intro": "text"})
+        processor.llm_handler.extract_key_passages = MagicMock(return_value="quotes")
+        processor.llm_handler.interpret_strategy = MagicMock(return_value=None)
+        processor._legacy_summarize = MagicMock(return_value="legacy summary")
+
+        result = processor.generate_two_pass_summary("/fake/paper.pdf")
+
+        assert result == "legacy summary"
+        processor._legacy_summarize.assert_called_once()
+
+    def test_fallback_on_empty_sections(self, mock_config):
+        """No sections extracted — falls back to legacy path."""
+        processor = self._make_processor(mock_config)
+
+        processor.extract_sections = MagicMock(return_value={})
+        processor._legacy_summarize = MagicMock(return_value="legacy summary")
+
+        result = processor.generate_two_pass_summary("/fake/paper.pdf")
+
+        assert result == "legacy summary"
+        processor._legacy_summarize.assert_called_once()

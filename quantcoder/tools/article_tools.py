@@ -400,15 +400,8 @@ class SummarizeArticleTool(Tool):
                 # Get article metadata
                 article_meta = articles[article_id - 1]
 
-                # Process the article
-                extracted_data = processor.extract_structure(str(filepath))
-
-                if not extracted_data:
-                    self.logger.warning(f"Failed to extract data from article {article_id}")
-                    continue
-
-                # Generate summary
-                summary_text = processor.generate_summary(extracted_data)
+                # Process the article (two-pass pipeline with legacy fallback)
+                summary_text = processor.generate_two_pass_summary(str(filepath))
 
                 if not summary_text:
                     self.logger.warning(f"Failed to generate summary for article {article_id}")

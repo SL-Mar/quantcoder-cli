@@ -71,6 +71,162 @@ class LLMHandler:
             f"summary: {self._summary_llm.get_model_name()}"
         )
 
+    # -- Two-pass summarization helpers ----------------------------------
+
+    @staticmethod
+    def _format_sections_for_prompt(
+        sections: Dict[str, str], max_chars: int = 60000
+    ) -> str:
+        """Format paper sections into a single string within a token budget.
+
+        Prioritizes methodology-relevant sections and truncates low-priority
+        ones (acknowledgments, references, appendix) when over budget.
+        """
+        HIGH_PRIORITY_KEYWORDS = {
+            "method", "model", "strategy", "trading", "signal", "algorithm",
+            "approach", "result", "experiment", "implementation", "data",
+            "feature", "regression", "portfolio", "backtest", "return",
+            "risk", "parameter", "calibration", "estimation", "framework",
+        }
+        LOW_PRIORITY_KEYWORDS = {
+            "acknowledg", "reference", "bibliography", "appendix", "vita",
+            "disclosure", "funding", "supplementar",
+        }
+
+        def _priority(name: str) -> int:
+            lower = name.lower()
+            if any(kw in lower for kw in LOW_PRIORITY_KEYWORDS):
+                return 2
+            if any(kw in lower for kw in HIGH_PRIORITY_KEYWORDS):
+                return 0
+            return 1
+
+        ordered = sorted(sections.items(), key=lambda kv: (_priority(kv[0]), kv[0]))
+
+        parts: list[str] = []
+        total = 0
+        for name, text in ordered:
+            header = f"\n### {name}\n"
+            available = max_chars - total - len(header)
+            if available <= 0:
+                break
+            chunk = text[:available]
+            parts.append(header + chunk)
+            total += len(header) + len(chunk)
+
+        return "".join(parts)
+
+    def extract_key_passages(self, sections: Dict[str, str]) -> Optional[str]:
+        """Pass 1 — Extractive: quote verbatim passages relevant to implementation."""
+        self.logger.info("Two-pass pipeline — Pass 1 (extract key passages)")
+
+        formatted = self._format_sections_for_prompt(sections)
+        if not formatted.strip():
+            self.logger.warning("No section text to send to LLM")
+            return None
+
+        system = (
+            "You are a quantitative finance research analyst. "
+            "Read the paper sections below and QUOTE VERBATIM every passage that "
+            "is relevant to implementing the described trading strategy or model. "
+            "Do NOT paraphrase — copy the exact text. Do NOT skip passages because "
+            "they use unfamiliar terms, novel formulas, or custom model names.\n\n"
+            "Focus on:\n"
+            "- Mathematical formulas and equations\n"
+            "- Parameter values and calibration details\n"
+            "- Entry and exit rules or signal generation logic\n"
+            "- Risk controls, stop-loss rules, position sizing\n"
+            "- Novel indicators or custom models (e.g., OU process, HMM, "
+            "regime-switching, proprietary scores)\n"
+            "- Universe selection and data requirements\n"
+            "- Execution details (order types, rebalancing frequency)\n\n"
+            "Output format: a numbered list of verbatim quotes, each preceded by "
+            "the section name in brackets. Example:\n"
+            "[Methodology] \"We define the signal as ...\"\n"
+        )
+
+        prompt = f"Extract all implementable passages from this paper:\n{formatted}"
+
+        try:
+            messages = [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ]
+            result = _run_async(
+                self._summary_llm.chat(
+                    messages=messages, max_tokens=4096, temperature=0.1
+                )
+            )
+            self.logger.info(
+                f"Pass 1 complete — extracted {len(result)} chars of passages"
+            )
+            return result
+        except Exception as e:
+            self.logger.error(f"Pass 1 (extract_key_passages) failed: {e}")
+            return None
+
+    def interpret_strategy(self, extractions: str) -> Optional[str]:
+        """Pass 2 — Interpretive: convert verbatim quotes into strategy spec."""
+        self.logger.info("Two-pass pipeline — Pass 2 (interpret strategy)")
+
+        if not extractions or not extractions.strip():
+            self.logger.warning("Empty extractions — nothing to interpret")
+            return None
+
+        system = (
+            "You are a quantitative trading strategist. Convert the verbatim "
+            "paper quotes below into a precise, implementable strategy "
+            "specification. Base your output ONLY on what the quotes say. "
+            "If the paper uses an OU process, specify an OU process — do NOT "
+            "substitute RSI or SMA. If the paper describes a proprietary model "
+            "or custom indicator, describe it faithfully.\n\n"
+            "Use the following flexible structure. Skip any section that is "
+            "genuinely irrelevant to this particular strategy:\n\n"
+            "## STRATEGY OVERVIEW\n"
+            "One paragraph summarizing the core idea.\n\n"
+            "## MATHEMATICAL MODEL\n"
+            "Formulas, distributions, state dynamics — as described in the paper.\n\n"
+            "## SIGNAL GENERATION\n"
+            "Exact entry/exit conditions with numeric thresholds.\n\n"
+            "## EXIT RULES\n"
+            "Stop loss, profit target, time stop, trailing stop — with exact values.\n\n"
+            "## RISK MANAGEMENT\n"
+            "Position sizing, max exposure, drawdown limits.\n\n"
+            "## UNIVERSE / STOCK SELECTION\n"
+            "Market, filters, number of instruments.\n\n"
+            "## EXECUTION DETAILS\n"
+            "Order types, rebalancing frequency, data resolution.\n\n"
+            "## PARAMETER TABLE\n"
+            "| Parameter | Value | Source |\n"
+            "|-----------|-------|--------|\n"
+            "Every numeric parameter from the paper with source attribution.\n"
+        )
+
+        prompt = (
+            "Convert these verbatim paper extractions into an implementable "
+            f"strategy specification:\n\n{extractions}"
+        )
+
+        try:
+            messages = [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ]
+            result = _run_async(
+                self._summary_llm.chat(
+                    messages=messages, max_tokens=4096, temperature=0.3
+                )
+            )
+            self.logger.info(
+                f"Pass 2 complete — strategy spec is {len(result)} chars"
+            )
+            return result
+        except Exception as e:
+            self.logger.error(f"Pass 2 (interpret_strategy) failed: {e}")
+            return None
+
+    # -- Legacy single-pass summary (kept intact) -------------------------
+
     def generate_summary(self, extracted_data: Dict[str, List[str]]) -> Optional[str]:
         """Generate a structured trading strategy summary for algorithm generation."""
         self.logger.info("Generating summary")

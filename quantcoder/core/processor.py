@@ -248,8 +248,33 @@ class ArticleProcessor:
         self.llm_handler = LLMHandler(config)
         self.max_refine_attempts = max_refine_attempts
 
+    def extract_sections(self, pdf_path: str) -> Dict[str, str]:
+        """Extract paper sections from PDF (no keyword filtering).
+
+        Returns:
+            Dict mapping section names to their full text.
+        """
+        self.logger.info(f"Extracting sections from PDF: {pdf_path}")
+
+        raw_text = self.pdf_loader.load_pdf(pdf_path)
+        if not raw_text:
+            self.logger.error("No text extracted from PDF")
+            return {}
+
+        preprocessed_text = self.preprocessor.preprocess_text(raw_text)
+        if not preprocessed_text:
+            self.logger.error("Preprocessing failed")
+            return {}
+
+        headings = self.heading_detector.detect_headings(preprocessed_text)
+        if not headings:
+            self.logger.warning("No headings detected. Using default sectioning")
+
+        sections = self.section_splitter.split_into_sections(preprocessed_text, headings)
+        return dict(sections)
+
     def extract_structure(self, pdf_path: str) -> Dict[str, List[str]]:
-        """Extract structured data from PDF."""
+        """Extract structured data from PDF (legacy keyword-filtered path)."""
         self.logger.info(f"Starting extraction for PDF: {pdf_path}")
 
         raw_text = self.pdf_loader.load_pdf(pdf_path)
@@ -272,20 +297,51 @@ class ArticleProcessor:
         return keyword_analysis
 
     def generate_summary(self, extracted_data: Dict[str, List[str]]) -> Optional[str]:
-        """Generate summary from extracted data."""
+        """Generate summary from extracted data (legacy single-pass)."""
+        return self.llm_handler.generate_summary(extracted_data)
+
+    def generate_two_pass_summary(self, pdf_path: str) -> Optional[str]:
+        """Two-pass LLM summarization: extract then interpret.
+
+        Falls back to the legacy keyword-filtered path if either LLM pass fails.
+        """
+        self.logger.info("Starting two-pass summarization pipeline")
+
+        # Step 1 — get full sections (no keyword filter)
+        sections = self.extract_sections(pdf_path)
+        if not sections:
+            self.logger.warning("No sections extracted, falling back to legacy path")
+            return self._legacy_summarize(pdf_path)
+
+        # Step 2 — Pass 1: extract verbatim quotes
+        extractions = self.llm_handler.extract_key_passages(sections)
+        if not extractions:
+            self.logger.warning("Pass 1 failed, falling back to legacy path")
+            return self._legacy_summarize(pdf_path)
+
+        # Step 3 — Pass 2: interpret into strategy spec
+        summary = self.llm_handler.interpret_strategy(extractions)
+        if not summary:
+            self.logger.warning("Pass 2 failed, falling back to legacy path")
+            return self._legacy_summarize(pdf_path)
+
+        self.logger.info("Two-pass summarization complete")
+        return summary
+
+    def _legacy_summarize(self, pdf_path: str) -> Optional[str]:
+        """Legacy single-pass summarization via KeywordAnalyzer + rigid template."""
+        self.logger.info("Using legacy summarization path")
+        extracted_data = self.extract_structure(pdf_path)
+        if not extracted_data:
+            return None
         return self.llm_handler.generate_summary(extracted_data)
 
     def extract_structure_and_generate_code(self, pdf_path: str) -> Dict:
         """Extract structure and generate QuantConnect code."""
         self.logger.info("Starting extraction and code generation")
 
-        extracted_data = self.extract_structure(pdf_path)
-        if not extracted_data:
-            self.logger.error("No data extracted for code generation")
-            return {"summary": None, "code": None}
-
-        # Generate summary
-        summary = self.llm_handler.generate_summary(extracted_data)
+        # Use two-pass pipeline (with automatic legacy fallback)
+        summary = self.generate_two_pass_summary(pdf_path)
         if not summary:
             self.logger.error("Failed to generate summary")
             summary = "Summary could not be generated."
