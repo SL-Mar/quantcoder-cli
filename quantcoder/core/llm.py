@@ -370,6 +370,149 @@ The algorithm must:
 
         return self._strip_markdown(code)
 
+    def generate_qc_framework(self, summary: str) -> Optional[str]:
+        """Stage 1 — Generate QC algorithm with stub methods for novel math.
+
+        Produces a compilable algorithm where standard QC framework code is
+        fully implemented, but novel mathematical models / custom indicators
+        are left as method stubs (signature + docstring + ``pass``).
+
+        Returns:
+            Code string with stubs, or None on failure.
+        """
+        self.logger.info("Stage 1: Generating QC framework with stubs")
+
+        system = (
+            "You are an expert QuantConnect algorithm developer. You write "
+            "production-quality LEAN Python algorithms.\n\n"
+            "CRITICAL RULES:\n"
+            "1. ALWAYS start with: from AlgorithmImports import *\n"
+            "2. Class must inherit from QCAlgorithm\n"
+            "3. Use snake_case methods: self.set_start_date(), self.set_cash(), "
+            "self.add_equity(), etc.\n"
+            "4. Register indicators via self methods, NOT standalone constructors\n"
+            "5. Always check indicator.is_ready before using .current.value\n"
+            "6. Use self.set_holdings() for position sizing or self.market_order() "
+            "for discrete orders\n"
+            "7. NEVER invent indicators or classes that don't exist in QuantConnect\n"
+            "8. Return ONLY Python code, no markdown, no explanations\n\n"
+            "INDICATOR SIGNATURES (these are EXACT - do NOT omit parameters):\n"
+            "- self.sma(symbol, period, resolution) -> 3 args\n"
+            "- self.ema(symbol, period, resolution) -> 3 args\n"
+            "- self.rsi(symbol, period, moving_average_type, resolution) -> 4 args\n"
+            "- self.atr(symbol, period, moving_average_type, resolution) -> 4 args\n"
+            "- self.macd(symbol, fast_period, slow_period, signal_period, "
+            "moving_average_type, resolution) -> 6 args\n"
+            "- self.bb(symbol, period, k, moving_average_type, resolution) -> 5 args\n"
+            "- self.momp(symbol, period, resolution) -> 3 args\n"
+            "- self.adx(symbol, period, resolution) -> 3 args\n\n"
+            "STUB METHODS RULE:\n"
+            "For any mathematical model, custom indicator, or non-standard "
+            "calculation (e.g., Ornstein-Uhlenbeck process, HMM, regime-switching, "
+            "jump-diffusion, custom scoring), create a METHOD STUB:\n"
+            "- Define the method with its full signature\n"
+            "- Add a docstring describing WHAT to compute and the expected "
+            "return value\n"
+            "- Use `pass` as the only body statement\n"
+            "Standard QC indicators (RSI, SMA, EMA, MACD, etc.) should be used "
+            "directly — only create stubs for novel/custom calculations.\n"
+            "The algorithm MUST be compilable even with pass-only stubs."
+        )
+
+        prompt = (
+            f"Convert this trading strategy into a complete QuantConnect Python "
+            f"algorithm:\n\n{summary}\n\n"
+            "IMPORTANT: All framework code (initialize, on_data, scheduling, "
+            "position management) must be fully implemented. Any novel "
+            "mathematical model or custom calculation should be a method stub "
+            "with a descriptive docstring and `pass` as the body."
+        )
+
+        try:
+            messages = [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ]
+            code = _run_async(
+                self._code_llm.chat(
+                    messages=messages,
+                    max_tokens=self.max_tokens,
+                    temperature=0.3,
+                )
+            )
+            self.logger.info(
+                f"Stage 1 framework generated with {self._code_llm.get_model_name()}"
+            )
+        except Exception as e:
+            self.logger.error(f"Stage 1 (generate_qc_framework) failed: {e}")
+            return None
+
+        return self._strip_markdown(code)
+
+    def fill_mathematical_core(
+        self, summary: str, framework_code: str
+    ) -> Optional[str]:
+        """Stage 2 — Fill stub methods with mathematical implementations.
+
+        Given a QC algorithm where novel math methods are stubs (``pass``
+        bodies), implement ONLY those methods using numpy / manual
+        calculations.  Framework code (initialize, on_data, scheduling) is
+        returned unchanged.
+
+        Returns:
+            Complete algorithm code with stubs filled, or None on failure.
+        """
+        self.logger.info("Stage 2: Filling mathematical core in stub methods")
+
+        system = (
+            "You are given a QuantConnect algorithm with placeholder methods "
+            "(pass bodies). Your ONLY job is to implement the stub methods.\n\n"
+            "RULES:\n"
+            "1. Do NOT modify initialize(), on_data(), scheduling, or position "
+            "management code.\n"
+            "2. Implement ONLY the methods whose body is currently `pass`.\n"
+            "3. Follow each stub's docstring precisely — it describes what to "
+            "compute.\n"
+            "4. Do NOT substitute standard indicators (RSI, SMA, EMA) for the "
+            "model described in the docstring.\n"
+            "5. You may import numpy as np at the top of the file.\n"
+            "6. Use self.history() to get price history as a DataFrame when "
+            "needed.\n"
+            "7. Use RollingWindow[float] or plain lists to maintain state "
+            "across calls.\n"
+            "8. Return the COMPLETE algorithm (framework + filled methods), "
+            "not just the methods.\n"
+            "9. Return ONLY Python code, no markdown, no explanations."
+        )
+
+        prompt = (
+            f"STRATEGY SPECIFICATION (for mathematical context):\n{summary}\n\n"
+            f"ALGORITHM WITH STUB METHODS:\n{framework_code}\n\n"
+            "Implement ONLY the stub methods (those with `pass` as their body). "
+            "Return the complete algorithm with the stubs filled in."
+        )
+
+        try:
+            messages = [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ]
+            code = _run_async(
+                self._code_llm.chat(
+                    messages=messages,
+                    max_tokens=self.max_tokens,
+                    temperature=0.3,
+                )
+            )
+            self.logger.info(
+                f"Stage 2 math core filled with {self._code_llm.get_model_name()}"
+            )
+        except Exception as e:
+            self.logger.error(f"Stage 2 (fill_mathematical_core) failed: {e}")
+            return None
+
+        return self._strip_markdown(code)
+
     def refine_code(self, code: str) -> Optional[str]:
         """Fix errors in generated QuantConnect code."""
         self.logger.info("Refining generated code")

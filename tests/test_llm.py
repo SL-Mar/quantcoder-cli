@@ -337,6 +337,101 @@ class TestAssessFidelity:
         assert result["score"] == 1
 
 
+class TestGenerateQCFramework:
+    """Tests for LLMHandler.generate_qc_framework (Stage 1)."""
+
+    def _make_handler(self, mock_config):
+        with patch("quantcoder.core.llm.LLMFactory") as mock_factory:
+            mock_provider = MagicMock()
+            mock_provider.get_model_name.return_value = "qwen2.5-coder:14b"
+            mock_provider.chat = AsyncMock(return_value="test")
+            mock_factory.create.return_value = mock_provider
+            handler = LLMHandler(mock_config)
+        return handler
+
+    def test_returns_code_with_stubs(self, mock_config):
+        """Returns framework code containing stub methods."""
+        handler = self._make_handler(mock_config)
+        stub_code = (
+            "from AlgorithmImports import *\n"
+            "class OUAlgo(QCAlgorithm):\n"
+            "    def initialize(self): pass\n"
+            "    def _compute_ou_signal(self, prices):\n"
+            '        """Compute OU mean-reversion signal."""\n'
+            "        pass\n"
+        )
+        with patch("quantcoder.core.llm._run_async", return_value=stub_code):
+            result = handler.generate_qc_framework("OU mean reversion strategy")
+
+        assert result is not None
+        assert "pass" in result
+        assert "AlgorithmImports" in result
+
+    def test_strips_markdown(self, mock_config):
+        """Markdown fences are stripped from output."""
+        handler = self._make_handler(mock_config)
+        md = "```python\ndef test(): pass\n```"
+        with patch("quantcoder.core.llm._run_async", return_value=md):
+            result = handler.generate_qc_framework("strategy")
+
+        assert "```" not in result
+
+    def test_returns_none_on_failure(self, mock_config):
+        """LLM exception returns None."""
+        handler = self._make_handler(mock_config)
+        with patch("quantcoder.core.llm._run_async", side_effect=Exception("timeout")):
+            result = handler.generate_qc_framework("strategy")
+
+        assert result is None
+
+
+class TestFillMathematicalCore:
+    """Tests for LLMHandler.fill_mathematical_core (Stage 2)."""
+
+    def _make_handler(self, mock_config):
+        with patch("quantcoder.core.llm.LLMFactory") as mock_factory:
+            mock_provider = MagicMock()
+            mock_provider.get_model_name.return_value = "qwen2.5-coder:14b"
+            mock_provider.chat = AsyncMock(return_value="test")
+            mock_factory.create.return_value = mock_provider
+            handler = LLMHandler(mock_config)
+        return handler
+
+    def test_returns_filled_code(self, mock_config):
+        """Returns complete algorithm with stubs filled."""
+        handler = self._make_handler(mock_config)
+        filled = (
+            "from AlgorithmImports import *\n"
+            "import numpy as np\n"
+            "class OUAlgo(QCAlgorithm):\n"
+            "    def _compute_ou_signal(self, prices):\n"
+            "        log_prices = np.log(prices)\n"
+            "        return log_prices[-1] - np.mean(log_prices)\n"
+        )
+        with patch("quantcoder.core.llm._run_async", return_value=filled):
+            result = handler.fill_mathematical_core("OU strategy", "framework code")
+
+        assert result is not None
+        assert "numpy" in result
+
+    def test_strips_markdown(self, mock_config):
+        """Markdown fences are stripped from output."""
+        handler = self._make_handler(mock_config)
+        md = "```python\nimport numpy as np\n```"
+        with patch("quantcoder.core.llm._run_async", return_value=md):
+            result = handler.fill_mathematical_core("summary", "framework")
+
+        assert "```" not in result
+
+    def test_returns_none_on_failure(self, mock_config):
+        """LLM exception returns None."""
+        handler = self._make_handler(mock_config)
+        with patch("quantcoder.core.llm._run_async", side_effect=Exception("timeout")):
+            result = handler.fill_mathematical_core("summary", "framework")
+
+        assert result is None
+
+
 class TestRegenerateWithCritique:
     """Tests for LLMHandler.regenerate_with_critique."""
 

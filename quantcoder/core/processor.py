@@ -356,9 +356,14 @@ class ArticleProcessor:
     def generate_code_from_summary(self, summary_text: str) -> Optional[str]:
         """Generate QuantConnect code from a pre-existing summary.
 
-        Includes a fidelity assessment loop: after the code passes syntax
-        validation, mistral evaluates whether it faithfully implements the
-        summary.  If not, qwen regenerates with structured critique.
+        Uses a two-stage pipeline:
+          Stage 1 — generate QC framework with method stubs for novel math.
+          Stage 2 — fill stub methods with mathematical implementations.
+
+        Falls back to single-shot ``generate_qc_code()`` if Stage 1 fails.
+        Falls back to the Stage 1 framework if Stage 2 fails syntax checks.
+
+        After both stages, runs the fidelity assessment loop (unchanged).
 
         Args:
             summary_text: The strategy summary text
@@ -372,9 +377,15 @@ class ArticleProcessor:
             self.logger.error("Empty summary provided")
             return None
 
-        # -- Phase 1: generate + syntax validation ---------------------------
-        qc_code = self.llm_handler.generate_qc_code(summary_text)
+        # -- Phase 1: two-stage code generation + syntax validation -----------
 
+        # Stage 1: framework with stubs (fall back to single-shot)
+        qc_code = self.llm_handler.generate_qc_framework(summary_text)
+        if not qc_code:
+            self.logger.warning("Stage 1 failed, falling back to single-shot generate_qc_code")
+            qc_code = self.llm_handler.generate_qc_code(summary_text)
+
+        # Syntax validation loop on Stage 1 output
         attempt = 0
         while qc_code and not self._validate_code(qc_code) and attempt < self.max_refine_attempts:
             self.logger.info(f"Syntax refine attempt {attempt + 1}")
@@ -388,7 +399,48 @@ class ArticleProcessor:
             self.logger.error("Failed to generate syntactically valid code")
             return "QuantConnect code could not be generated successfully."
 
-        # -- Phase 2: fidelity assessment loop --------------------------------
+        # Stage 2: fill mathematical core (only if stubs detected)
+        framework_code = qc_code  # save as fallback anchor
+        if self._has_stub_methods(framework_code):
+            self.logger.info("Stubs detected — running Stage 2 (fill mathematical core)")
+            filled_code = self.llm_handler.fill_mathematical_core(
+                summary_text, framework_code
+            )
+
+            if filled_code:
+                # Syntax validation loop on Stage 2 output
+                s2_attempt = 0
+                while (
+                    not self._validate_code(filled_code)
+                    and s2_attempt < self.max_refine_attempts
+                ):
+                    self.logger.info(
+                        f"Stage 2 syntax refine attempt {s2_attempt + 1}"
+                    )
+                    refined = self.llm_handler.refine_code(filled_code)
+                    if refined and self._validate_code(refined):
+                        filled_code = refined
+                        break
+                    elif refined:
+                        filled_code = refined
+                    s2_attempt += 1
+
+                if self._validate_code(filled_code):
+                    self.logger.info("Stage 2 code is syntactically valid")
+                    qc_code = filled_code
+                else:
+                    self.logger.warning(
+                        "Stage 2 code failed syntax validation — "
+                        "keeping Stage 1 framework"
+                    )
+            else:
+                self.logger.warning(
+                    "Stage 2 returned no code — keeping Stage 1 framework"
+                )
+        else:
+            self.logger.info("No stubs detected — skipping Stage 2")
+
+        # -- Phase 2: fidelity assessment loop (unchanged) --------------------
         for fidelity_attempt in range(self.max_fidelity_attempts):
             self.logger.info(f"Fidelity assessment attempt {fidelity_attempt + 1}")
 
@@ -449,3 +501,50 @@ class ArticleProcessor:
         except Exception as e:
             self.logger.error(f"Validation error: {e}")
             return False
+
+    @staticmethod
+    def _has_stub_methods(code: str) -> bool:
+        """Detect whether *code* contains method stubs (def + docstring + pass).
+
+        A stub is a ``def`` whose body consists of only an optional docstring
+        followed by ``pass``.  We use a simple line-based heuristic:
+        scan for ``pass`` lines and look backward for a preceding ``def``
+        with only blank lines, comments, or docstring delimiters between.
+
+        False positives are harmless (Stage 2 preserves non-stub code).
+        """
+        if not code:
+            return False
+
+        lines = code.splitlines()
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped != "pass":
+                continue
+            # Walk backward from this ``pass`` looking for a ``def``
+            in_docstring = False
+            j = i - 1
+            while j >= 0:
+                prev = lines[j].strip()
+                # toggle docstring state on triple-quote lines
+                if prev.startswith('"""') or prev.startswith("'''"):
+                    if prev.count('"""') == 2 or prev.count("'''") == 2:
+                        # single-line docstring — keep walking
+                        j -= 1
+                        continue
+                    in_docstring = not in_docstring
+                    j -= 1
+                    continue
+                if in_docstring:
+                    j -= 1
+                    continue
+                # skip blank lines and comments
+                if prev == "" or prev.startswith("#"):
+                    j -= 1
+                    continue
+                # the first real statement should be a def
+                if prev.startswith("def ") and prev.endswith(":"):
+                    return True
+                # anything else means this pass is not a stub
+                break
+        return False

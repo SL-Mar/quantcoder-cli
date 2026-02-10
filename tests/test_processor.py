@@ -220,7 +220,7 @@ class TestFidelityLoop:
         processor = self._make_processor(mock_config)
 
         valid_code = "from AlgorithmImports import *\nclass A(QCAlgorithm): pass"
-        processor.llm_handler.generate_qc_code = MagicMock(return_value=valid_code)
+        processor.llm_handler.generate_qc_framework = MagicMock(return_value=valid_code)
         processor.llm_handler.assess_fidelity = MagicMock(
             return_value={"faithful": True, "score": 4, "issues": [], "correction_plan": ""}
         )
@@ -237,7 +237,7 @@ class TestFidelityLoop:
         initial_code = "from AlgorithmImports import *\nclass A(QCAlgorithm): pass"
         better_code = "from AlgorithmImports import *\nimport numpy as np\nclass OU(QCAlgorithm): pass"
 
-        processor.llm_handler.generate_qc_code = MagicMock(return_value=initial_code)
+        processor.llm_handler.generate_qc_framework = MagicMock(return_value=initial_code)
         processor.llm_handler.assess_fidelity = MagicMock(
             side_effect=[
                 {"faithful": False, "score": 1, "issues": ["Uses RSI"], "correction_plan": "Use OU"},
@@ -257,7 +257,7 @@ class TestFidelityLoop:
         processor = self._make_processor(mock_config, max_fidelity_attempts=2)
 
         valid_code = "from AlgorithmImports import *\nclass A(QCAlgorithm): pass"
-        processor.llm_handler.generate_qc_code = MagicMock(return_value=valid_code)
+        processor.llm_handler.generate_qc_framework = MagicMock(return_value=valid_code)
         processor.llm_handler.assess_fidelity = MagicMock(
             return_value={"faithful": False, "score": 1, "issues": ["wrong model"], "correction_plan": "fix"}
         )
@@ -271,3 +271,197 @@ class TestFidelityLoop:
         assert "AlgorithmImports" in result
         # Should have tried max_fidelity_attempts times
         assert processor.llm_handler.assess_fidelity.call_count == 2
+
+
+class TestHasStubMethods:
+    """Tests for ArticleProcessor._has_stub_methods."""
+
+    def test_detects_simple_stub(self):
+        """Detects def + docstring + pass as a stub."""
+        code = (
+            "class Algo(QCAlgorithm):\n"
+            "    def _compute_signal(self, prices):\n"
+            '        """Compute OU signal."""\n'
+            "        pass\n"
+        )
+        assert ArticleProcessor._has_stub_methods(code) is True
+
+    def test_no_stubs_in_full_code(self):
+        """Fully implemented code has no stubs."""
+        code = (
+            "class Algo(QCAlgorithm):\n"
+            "    def initialize(self):\n"
+            "        self.set_cash(100000)\n"
+            "    def on_data(self, data):\n"
+            "        price = data['SPY'].price\n"
+        )
+        assert ArticleProcessor._has_stub_methods(code) is False
+
+    def test_pass_in_if_block_not_detected(self):
+        """pass inside an if-block is NOT a method stub."""
+        code = (
+            "class Algo(QCAlgorithm):\n"
+            "    def on_data(self, data):\n"
+            "        if not data.contains_key(self.symbol):\n"
+            "            pass\n"
+            "        price = data[self.symbol].price\n"
+        )
+        assert ArticleProcessor._has_stub_methods(code) is False
+
+    def test_multiline_docstring_stub(self):
+        """Detects stub with multi-line docstring."""
+        code = (
+            "class Algo(QCAlgorithm):\n"
+            "    def _estimate_theta(self, log_prices):\n"
+            '        """\n'
+            "        Estimate OU theta parameter via OLS regression\n"
+            "        on log-price differences.\n"
+            '        """\n'
+            "        pass\n"
+        )
+        assert ArticleProcessor._has_stub_methods(code) is True
+
+    def test_empty_code_returns_false(self):
+        """Empty string returns False."""
+        assert ArticleProcessor._has_stub_methods("") is False
+
+
+class TestTwoStageCodeGeneration:
+    """Tests for the two-stage pipeline in generate_code_from_summary."""
+
+    def _make_processor(self, mock_config, max_fidelity_attempts=3):
+        with patch("quantcoder.core.processor.HeadingDetector"):
+            with patch("quantcoder.core.llm.LLMFactory") as mock_factory:
+                mock_provider = MagicMock()
+                mock_provider.get_model_name.return_value = "qwen2.5-coder:14b"
+                mock_provider.chat = AsyncMock(return_value="test")
+                mock_factory.create.return_value = mock_provider
+                processor = ArticleProcessor(
+                    mock_config, max_fidelity_attempts=max_fidelity_attempts
+                )
+        return processor
+
+    def test_stage1_and_stage2_both_succeed(self, mock_config):
+        """Stage 1 produces stubs, Stage 2 fills them — returns Stage 2 output."""
+        processor = self._make_processor(mock_config)
+
+        framework = (
+            "from AlgorithmImports import *\n"
+            "class OUAlgo(QCAlgorithm):\n"
+            "    def initialize(self):\n"
+            "        self.set_cash(100000)\n"
+            "    def _compute_ou(self, prices):\n"
+            '        """Compute OU signal."""\n'
+            "        pass\n"
+        )
+        filled = (
+            "from AlgorithmImports import *\n"
+            "import numpy as np\n"
+            "class OUAlgo(QCAlgorithm):\n"
+            "    def initialize(self):\n"
+            "        self.set_cash(100000)\n"
+            "    def _compute_ou(self, prices):\n"
+            "        return np.mean(prices)\n"
+        )
+
+        processor.llm_handler.generate_qc_framework = MagicMock(return_value=framework)
+        processor.llm_handler.fill_mathematical_core = MagicMock(return_value=filled)
+        processor.llm_handler.assess_fidelity = MagicMock(
+            return_value={"faithful": True, "score": 4, "issues": [], "correction_plan": ""}
+        )
+
+        result = processor.generate_code_from_summary("OU strategy")
+
+        assert result == filled
+        processor.llm_handler.fill_mathematical_core.assert_called_once()
+
+    def test_stage2_fails_syntax_falls_back_to_stage1(self, mock_config):
+        """Stage 2 output fails syntax — keeps Stage 1 framework."""
+        processor = self._make_processor(mock_config)
+
+        framework = (
+            "from AlgorithmImports import *\n"
+            "class OUAlgo(QCAlgorithm):\n"
+            "    def _compute_ou(self, prices):\n"
+            '        """Compute OU signal."""\n'
+            "        pass\n"
+        )
+        bad_code = "def broken(\n"  # syntax error
+
+        processor.llm_handler.generate_qc_framework = MagicMock(return_value=framework)
+        processor.llm_handler.fill_mathematical_core = MagicMock(return_value=bad_code)
+        processor.llm_handler.refine_code = MagicMock(return_value=bad_code)
+        processor.llm_handler.assess_fidelity = MagicMock(
+            return_value={"faithful": True, "score": 4, "issues": [], "correction_plan": ""}
+        )
+
+        result = processor.generate_code_from_summary("OU strategy")
+
+        # Should fall back to framework (which has valid syntax)
+        assert result == framework
+
+    def test_stage2_returns_none_keeps_stage1(self, mock_config):
+        """Stage 2 returns None — keeps Stage 1 framework."""
+        processor = self._make_processor(mock_config)
+
+        framework = (
+            "from AlgorithmImports import *\n"
+            "class OUAlgo(QCAlgorithm):\n"
+            "    def _compute_ou(self, prices):\n"
+            '        """Compute OU signal."""\n'
+            "        pass\n"
+        )
+
+        processor.llm_handler.generate_qc_framework = MagicMock(return_value=framework)
+        processor.llm_handler.fill_mathematical_core = MagicMock(return_value=None)
+        processor.llm_handler.assess_fidelity = MagicMock(
+            return_value={"faithful": True, "score": 4, "issues": [], "correction_plan": ""}
+        )
+
+        result = processor.generate_code_from_summary("OU strategy")
+
+        assert result == framework
+
+    def test_no_stubs_skips_stage2(self, mock_config):
+        """No stubs detected — Stage 2 not called."""
+        processor = self._make_processor(mock_config)
+
+        code_no_stubs = (
+            "from AlgorithmImports import *\n"
+            "class RSIAlgo(QCAlgorithm):\n"
+            "    def initialize(self):\n"
+            "        self.set_cash(100000)\n"
+        )
+
+        processor.llm_handler.generate_qc_framework = MagicMock(return_value=code_no_stubs)
+        processor.llm_handler.fill_mathematical_core = MagicMock()
+        processor.llm_handler.assess_fidelity = MagicMock(
+            return_value={"faithful": True, "score": 5, "issues": [], "correction_plan": ""}
+        )
+
+        result = processor.generate_code_from_summary("RSI strategy")
+
+        assert result == code_no_stubs
+        processor.llm_handler.fill_mathematical_core.assert_not_called()
+
+    def test_stage1_fails_falls_back_to_single_shot(self, mock_config):
+        """Stage 1 returns None — falls back to generate_qc_code."""
+        processor = self._make_processor(mock_config)
+
+        fallback_code = (
+            "from AlgorithmImports import *\n"
+            "class Algo(QCAlgorithm):\n"
+            "    def initialize(self):\n"
+            "        self.set_cash(100000)\n"
+        )
+
+        processor.llm_handler.generate_qc_framework = MagicMock(return_value=None)
+        processor.llm_handler.generate_qc_code = MagicMock(return_value=fallback_code)
+        processor.llm_handler.assess_fidelity = MagicMock(
+            return_value={"faithful": True, "score": 4, "issues": [], "correction_plan": ""}
+        )
+
+        result = processor.generate_code_from_summary("some strategy")
+
+        assert result == fallback_code
+        processor.llm_handler.generate_qc_code.assert_called_once()
