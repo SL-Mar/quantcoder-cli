@@ -198,3 +198,76 @@ class TestGenerateTwoPassSummary:
 
         assert result == "legacy summary"
         processor._legacy_summarize.assert_called_once()
+
+
+class TestFidelityLoop:
+    """Tests for the fidelity assessment loop in generate_code_from_summary."""
+
+    def _make_processor(self, mock_config, max_fidelity_attempts=3):
+        with patch("quantcoder.core.processor.HeadingDetector"):
+            with patch("quantcoder.core.llm.LLMFactory") as mock_factory:
+                mock_provider = MagicMock()
+                mock_provider.get_model_name.return_value = "qwen2.5-coder:14b"
+                mock_provider.chat = AsyncMock(return_value="test")
+                mock_factory.create.return_value = mock_provider
+                processor = ArticleProcessor(
+                    mock_config, max_fidelity_attempts=max_fidelity_attempts
+                )
+        return processor
+
+    def test_passes_on_first_fidelity_check(self, mock_config):
+        """Code passes fidelity on first attempt — returned immediately."""
+        processor = self._make_processor(mock_config)
+
+        valid_code = "from AlgorithmImports import *\nclass A(QCAlgorithm): pass"
+        processor.llm_handler.generate_qc_code = MagicMock(return_value=valid_code)
+        processor.llm_handler.assess_fidelity = MagicMock(
+            return_value={"faithful": True, "score": 4, "issues": [], "correction_plan": ""}
+        )
+
+        result = processor.generate_code_from_summary("OU process strategy")
+
+        assert result == valid_code
+        processor.llm_handler.assess_fidelity.assert_called_once()
+
+    def test_fail_then_pass(self, mock_config):
+        """First fidelity check fails, regeneration passes on second check."""
+        processor = self._make_processor(mock_config)
+
+        initial_code = "from AlgorithmImports import *\nclass A(QCAlgorithm): pass"
+        better_code = "from AlgorithmImports import *\nimport numpy as np\nclass OU(QCAlgorithm): pass"
+
+        processor.llm_handler.generate_qc_code = MagicMock(return_value=initial_code)
+        processor.llm_handler.assess_fidelity = MagicMock(
+            side_effect=[
+                {"faithful": False, "score": 1, "issues": ["Uses RSI"], "correction_plan": "Use OU"},
+                {"faithful": True, "score": 4, "issues": [], "correction_plan": ""},
+            ]
+        )
+        processor.llm_handler.regenerate_with_critique = MagicMock(return_value=better_code)
+
+        result = processor.generate_code_from_summary("OU process strategy")
+
+        assert result == better_code
+        assert processor.llm_handler.assess_fidelity.call_count == 2
+        processor.llm_handler.regenerate_with_critique.assert_called_once()
+
+    def test_max_attempts_exhausted_graceful_degradation(self, mock_config):
+        """All fidelity checks fail — returns last syntactically valid code with warning."""
+        processor = self._make_processor(mock_config, max_fidelity_attempts=2)
+
+        valid_code = "from AlgorithmImports import *\nclass A(QCAlgorithm): pass"
+        processor.llm_handler.generate_qc_code = MagicMock(return_value=valid_code)
+        processor.llm_handler.assess_fidelity = MagicMock(
+            return_value={"faithful": False, "score": 1, "issues": ["wrong model"], "correction_plan": "fix"}
+        )
+        # Regeneration also returns valid but still unfaithful code
+        processor.llm_handler.regenerate_with_critique = MagicMock(return_value=valid_code)
+
+        result = processor.generate_code_from_summary("OU process strategy")
+
+        # Should still return code (graceful degradation), not None or error string
+        assert result is not None
+        assert "AlgorithmImports" in result
+        # Should have tried max_fidelity_attempts times
+        assert processor.llm_handler.assess_fidelity.call_count == 2

@@ -7,6 +7,7 @@ Routes tasks to the appropriate local model via OllamaProvider:
 
 import asyncio
 import logging
+import re
 from typing import Dict, List, Optional
 
 from quantcoder.llm import LLMFactory
@@ -470,6 +471,176 @@ Fix the error and return ONLY the corrected Python code."""
             )
         except Exception as e:
             self.logger.error(f"Error during chat: {e}")
+            return None
+
+    # -- Fidelity assessment ---------------------------------------------------
+
+    @staticmethod
+    def _parse_fidelity_response(response: str) -> Dict:
+        """Parse structured fidelity assessment from mistral's response.
+
+        Expected format in response:
+            FAITHFUL: YES/NO
+            SCORE: 1-5
+            ISSUES: - issue1 / - issue2
+            CORRECTION_PLAN: free text
+        """
+        result = {
+            "faithful": False,
+            "score": 1,
+            "issues": [],
+            "correction_plan": "",
+        }
+
+        if not response:
+            return result
+
+        # FAITHFUL
+        m = re.search(r"FAITHFUL\s*:\s*(YES|NO)", response, re.IGNORECASE)
+        if m:
+            result["faithful"] = m.group(1).upper() == "YES"
+
+        # SCORE
+        m = re.search(r"SCORE\s*:\s*(\d)", response)
+        if m:
+            score = int(m.group(1))
+            result["score"] = max(1, min(5, score))
+
+        # ISSUES — collect bullet lines between ISSUES: and CORRECTION_PLAN:
+        m = re.search(
+            r"ISSUES\s*:(.*?)(?:CORRECTION_PLAN|$)", response, re.DOTALL | re.IGNORECASE
+        )
+        if m:
+            issues_block = m.group(1)
+            issues = re.findall(r"-\s*(.+)", issues_block)
+            result["issues"] = [i.strip() for i in issues if i.strip()]
+
+        # CORRECTION_PLAN
+        m = re.search(r"CORRECTION_PLAN\s*:(.*)", response, re.DOTALL | re.IGNORECASE)
+        if m:
+            result["correction_plan"] = m.group(1).strip()
+
+        # Reconcile: if score >= 3 and FAITHFUL wasn't explicitly NO, treat as faithful
+        if result["score"] >= 3 and not re.search(
+            r"FAITHFUL\s*:\s*NO", response, re.IGNORECASE
+        ):
+            result["faithful"] = True
+
+        return result
+
+    def assess_fidelity(self, summary: str, code: str) -> Dict:
+        """Use the reasoning LLM (mistral) to evaluate whether code implements the summary.
+
+        Returns dict with keys: faithful (bool), score (1-5), issues (list), correction_plan (str).
+        """
+        self.logger.info("Assessing fidelity of generated code against summary")
+
+        system = (
+            "You are a quantitative finance code reviewer. You are given a strategy "
+            "specification (SUMMARY) and generated QuantConnect Python code (CODE).\n\n"
+            "Evaluate whether the CODE faithfully implements the mathematical model "
+            "and trading logic described in the SUMMARY.\n\n"
+            "Check specifically:\n"
+            "1. Does the code implement the EXACT model described (e.g., OU process, "
+            "HMM, regime-switching, jump-diffusion) — or does it substitute a generic "
+            "indicator (RSI, SMA) instead?\n"
+            "2. Are the parameters from the summary used in the code?\n"
+            "3. Does the code use custom logic (numpy, manual calculations, "
+            "PythonIndicator, RollingWindow) when the model requires it?\n"
+            "4. Are entry/exit conditions consistent with the summary?\n\n"
+            "Respond in EXACTLY this format:\n"
+            "FAITHFUL: YES or NO\n"
+            "SCORE: 1-5 (1=completely wrong model, 3=partial match, 5=exact)\n"
+            "ISSUES:\n"
+            "- issue 1\n"
+            "- issue 2\n"
+            "CORRECTION_PLAN:\n"
+            "Describe what the code should change to faithfully implement the summary."
+        )
+
+        prompt = f"SUMMARY:\n{summary}\n\nCODE:\n{code}"
+
+        try:
+            messages = [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ]
+            response = _run_async(
+                self._summary_llm.chat(
+                    messages=messages, max_tokens=2048, temperature=0.1
+                )
+            )
+            result = self._parse_fidelity_response(response)
+            self.logger.info(
+                f"Fidelity assessment: faithful={result['faithful']}, "
+                f"score={result['score']}, issues={len(result['issues'])}"
+            )
+            return result
+        except Exception as e:
+            self.logger.error(f"Fidelity assessment failed: {e}")
+            return {"faithful": False, "score": 1, "issues": [str(e)], "correction_plan": ""}
+
+    def regenerate_with_critique(
+        self, summary: str, code: str, critique: Dict
+    ) -> Optional[str]:
+        """Regenerate code using the coding LLM with structured critique feedback.
+
+        Args:
+            summary: The strategy specification.
+            code: The previous (unfaithful) generated code.
+            critique: Dict from assess_fidelity with issues and correction_plan.
+
+        Returns:
+            New code string, or None on failure.
+        """
+        self.logger.info("Regenerating code with fidelity critique")
+
+        issues_text = "\n".join(f"- {i}" for i in critique.get("issues", []))
+        correction_plan = critique.get("correction_plan", "")
+
+        system = (
+            "You are an expert QuantConnect algorithm developer. You previously "
+            "generated code that did NOT faithfully implement the strategy. "
+            "A reviewer found specific issues. Fix ALL of them.\n\n"
+            "CRITICAL RULES:\n"
+            "1. ALWAYS start with: from AlgorithmImports import *\n"
+            "2. Class must inherit from QCAlgorithm\n"
+            "3. Use snake_case methods: self.set_start_date(), self.add_equity(), etc.\n"
+            "4. Return ONLY Python code, no markdown, no explanations\n\n"
+            "WHEN THE STRATEGY REQUIRES A CUSTOM MODEL (OU process, HMM, "
+            "regime-switching, jump-diffusion, etc.):\n"
+            "- Import numpy as np inside the algorithm file\n"
+            "- Use self.history() to get price history as a DataFrame\n"
+            "- Implement the mathematical model directly with numpy operations\n"
+            "- Use RollingWindow[float] or plain lists to maintain state\n"
+            "- Do NOT substitute RSI, SMA, or other standard indicators unless "
+            "the strategy explicitly calls for them\n"
+            "- Create helper methods on the class for model calculations\n"
+        )
+
+        prompt = (
+            f"STRATEGY SPECIFICATION:\n{summary}\n\n"
+            f"PREVIOUS CODE (unfaithful — do not copy its approach):\n{code}\n\n"
+            f"REVIEWER ISSUES:\n{issues_text}\n\n"
+            f"CORRECTION PLAN:\n{correction_plan}\n\n"
+            "Generate a completely revised QuantConnect algorithm that faithfully "
+            "implements the strategy specification. Return ONLY Python code."
+        )
+
+        try:
+            messages = [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ]
+            new_code = _run_async(
+                self._code_llm.chat(
+                    messages=messages, max_tokens=self.max_tokens, temperature=0.3
+                )
+            )
+            self.logger.info("Regenerated code with critique feedback")
+            return self._strip_markdown(new_code) if new_code else None
+        except Exception as e:
+            self.logger.error(f"Regeneration with critique failed: {e}")
             return None
 
     @staticmethod

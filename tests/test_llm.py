@@ -224,3 +224,164 @@ class TestInterpretStrategy:
         with patch("quantcoder.core.llm._run_async", side_effect=Exception("timeout")):
             result = handler.interpret_strategy("some extractions")
         assert result is None
+
+
+class TestParseFidelityResponse:
+    """Tests for LLMHandler._parse_fidelity_response."""
+
+    def test_complete_unfaithful_response(self):
+        """Parse a complete structured response marking code as unfaithful."""
+        response = (
+            "FAITHFUL: NO\n"
+            "SCORE: 2\n"
+            "ISSUES:\n"
+            "- Code uses RSI instead of OU process\n"
+            "- Missing theta parameter\n"
+            "CORRECTION_PLAN:\n"
+            "Replace RSI logic with numpy-based OU mean-reversion calculation."
+        )
+        result = LLMHandler._parse_fidelity_response(response)
+        assert result["faithful"] is False
+        assert result["score"] == 2
+        assert len(result["issues"]) == 2
+        assert "RSI" in result["issues"][0]
+        assert "OU" in result["correction_plan"]
+
+    def test_faithful_response(self):
+        """Parse a response that marks code as faithful."""
+        response = (
+            "FAITHFUL: YES\n"
+            "SCORE: 4\n"
+            "ISSUES:\n"
+            "- Minor: could use more descriptive variable names\n"
+            "CORRECTION_PLAN:\n"
+            "No structural changes needed."
+        )
+        result = LLMHandler._parse_fidelity_response(response)
+        assert result["faithful"] is True
+        assert result["score"] == 4
+        assert len(result["issues"]) == 1
+
+    def test_missing_fields_returns_defaults(self):
+        """Malformed response returns safe defaults."""
+        result = LLMHandler._parse_fidelity_response("Some random text without structure")
+        assert result["faithful"] is False
+        assert result["score"] == 1
+        assert result["issues"] == []
+        assert result["correction_plan"] == ""
+
+    def test_empty_response(self):
+        """Empty string returns defaults."""
+        result = LLMHandler._parse_fidelity_response("")
+        assert result["faithful"] is False
+        assert result["score"] == 1
+
+
+class TestAssessFidelity:
+    """Tests for LLMHandler.assess_fidelity."""
+
+    def _make_handler(self, mock_config):
+        with patch("quantcoder.core.llm.LLMFactory") as mock_factory:
+            mock_provider = MagicMock()
+            mock_provider.get_model_name.return_value = "mistral"
+            mock_provider.chat = AsyncMock(return_value="test")
+            mock_factory.create.return_value = mock_provider
+            handler = LLMHandler(mock_config)
+        return handler
+
+    def test_faithful_code_passes(self, mock_config):
+        """Faithful response returns faithful=True."""
+        handler = self._make_handler(mock_config)
+        llm_response = "FAITHFUL: YES\nSCORE: 4\nISSUES:\n- None\nCORRECTION_PLAN:\nNone"
+
+        with patch("quantcoder.core.llm._run_async", return_value=llm_response):
+            result = handler.assess_fidelity("OU process summary", "ou code here")
+
+        assert result["faithful"] is True
+        assert result["score"] == 4
+
+    def test_unfaithful_code_fails(self, mock_config):
+        """Unfaithful response returns faithful=False."""
+        handler = self._make_handler(mock_config)
+        llm_response = (
+            "FAITHFUL: NO\nSCORE: 1\nISSUES:\n"
+            "- Uses RSI instead of OU process\n"
+            "CORRECTION_PLAN:\nImplement OU model with numpy"
+        )
+
+        with patch("quantcoder.core.llm._run_async", return_value=llm_response):
+            result = handler.assess_fidelity("OU process summary", "rsi code here")
+
+        assert result["faithful"] is False
+        assert result["score"] == 1
+        assert len(result["issues"]) > 0
+
+    def test_llm_failure_returns_unfaithful(self, mock_config):
+        """LLM exception returns unfaithful default."""
+        handler = self._make_handler(mock_config)
+
+        with patch("quantcoder.core.llm._run_async", side_effect=Exception("timeout")):
+            result = handler.assess_fidelity("summary", "code")
+
+        assert result["faithful"] is False
+        assert result["score"] == 1
+
+    def test_malformed_response_returns_unfaithful(self, mock_config):
+        """Garbled LLM output returns unfaithful."""
+        handler = self._make_handler(mock_config)
+
+        with patch("quantcoder.core.llm._run_async", return_value="I don't understand the question"):
+            result = handler.assess_fidelity("summary", "code")
+
+        assert result["faithful"] is False
+        assert result["score"] == 1
+
+
+class TestRegenerateWithCritique:
+    """Tests for LLMHandler.regenerate_with_critique."""
+
+    def _make_handler(self, mock_config):
+        with patch("quantcoder.core.llm.LLMFactory") as mock_factory:
+            mock_provider = MagicMock()
+            mock_provider.get_model_name.return_value = "qwen2.5-coder:14b"
+            mock_provider.chat = AsyncMock(return_value="test")
+            mock_factory.create.return_value = mock_provider
+            handler = LLMHandler(mock_config)
+        return handler
+
+    def test_returns_regenerated_code(self, mock_config):
+        """Returns new code from the coding LLM."""
+        handler = self._make_handler(mock_config)
+        new_code = "from AlgorithmImports import *\nclass OUAlgo(QCAlgorithm): pass"
+        critique = {
+            "issues": ["Uses RSI instead of OU"],
+            "correction_plan": "Implement OU with numpy",
+        }
+
+        with patch("quantcoder.core.llm._run_async", return_value=new_code):
+            result = handler.regenerate_with_critique("summary", "old code", critique)
+
+        assert result is not None
+        assert "AlgorithmImports" in result
+
+    def test_strips_markdown_from_output(self, mock_config):
+        """Markdown fences are stripped from regenerated code."""
+        handler = self._make_handler(mock_config)
+        md_code = "```python\ndef test(): pass\n```"
+        critique = {"issues": ["wrong model"], "correction_plan": "fix it"}
+
+        with patch("quantcoder.core.llm._run_async", return_value=md_code):
+            result = handler.regenerate_with_critique("summary", "old code", critique)
+
+        assert "```" not in result
+        assert result == "def test(): pass"
+
+    def test_returns_none_on_failure(self, mock_config):
+        """LLM exception returns None."""
+        handler = self._make_handler(mock_config)
+        critique = {"issues": ["wrong"], "correction_plan": "fix"}
+
+        with patch("quantcoder.core.llm._run_async", side_effect=Exception("timeout")):
+            result = handler.regenerate_with_critique("summary", "code", critique)
+
+        assert result is None

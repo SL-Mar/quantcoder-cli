@@ -237,7 +237,7 @@ class KeywordAnalyzer:
 class ArticleProcessor:
     """Main processor for article extraction and code generation."""
 
-    def __init__(self, config, max_refine_attempts: int = 6):
+    def __init__(self, config, max_refine_attempts: int = 6, max_fidelity_attempts: int = 3):
         self.config = config
         self.logger = logging.getLogger(f"quantcoder.{self.__class__.__name__}")
         self.pdf_loader = PDFLoader()
@@ -247,6 +247,7 @@ class ArticleProcessor:
         self.keyword_analyzer = KeywordAnalyzer()
         self.llm_handler = LLMHandler(config)
         self.max_refine_attempts = max_refine_attempts
+        self.max_fidelity_attempts = max_fidelity_attempts
 
     def extract_sections(self, pdf_path: str) -> Dict[str, str]:
         """Extract paper sections from PDF (no keyword filtering).
@@ -346,27 +347,18 @@ class ArticleProcessor:
             self.logger.error("Failed to generate summary")
             summary = "Summary could not be generated."
 
-        # Generate code
-        qc_code = self.llm_handler.generate_qc_code(summary)
-
-        # Refine code if needed
-        attempt = 0
-        while qc_code and not self._validate_code(qc_code) and attempt < self.max_refine_attempts:
-            self.logger.info(f"Attempt {attempt + 1} to refine code")
-            qc_code = self.llm_handler.refine_code(qc_code)
-            if qc_code and self._validate_code(qc_code):
-                self.logger.info("Refined code is valid")
-                break
-            attempt += 1
-
-        if not qc_code or not self._validate_code(qc_code):
-            self.logger.error("Failed to generate valid code after multiple attempts")
+        qc_code = self.generate_code_from_summary(summary)
+        if qc_code is None:
             qc_code = "QuantConnect code could not be generated successfully."
 
         return {"summary": summary, "code": qc_code}
 
     def generate_code_from_summary(self, summary_text: str) -> Optional[str]:
         """Generate QuantConnect code from a pre-existing summary.
+
+        Includes a fidelity assessment loop: after the code passes syntax
+        validation, mistral evaluates whether it faithfully implements the
+        summary.  If not, qwen regenerates with structured critique.
 
         Args:
             summary_text: The strategy summary text
@@ -380,23 +372,70 @@ class ArticleProcessor:
             self.logger.error("Empty summary provided")
             return None
 
-        # Generate code
+        # -- Phase 1: generate + syntax validation ---------------------------
         qc_code = self.llm_handler.generate_qc_code(summary_text)
 
-        # Refine code if needed
         attempt = 0
         while qc_code and not self._validate_code(qc_code) and attempt < self.max_refine_attempts:
-            self.logger.info(f"Attempt {attempt + 1} to refine code")
+            self.logger.info(f"Syntax refine attempt {attempt + 1}")
             qc_code = self.llm_handler.refine_code(qc_code)
             if qc_code and self._validate_code(qc_code):
-                self.logger.info("Refined code is valid")
+                self.logger.info("Refined code is syntactically valid")
                 break
             attempt += 1
 
         if not qc_code or not self._validate_code(qc_code):
-            self.logger.error("Failed to generate valid code after multiple attempts")
+            self.logger.error("Failed to generate syntactically valid code")
             return "QuantConnect code could not be generated successfully."
 
+        # -- Phase 2: fidelity assessment loop --------------------------------
+        for fidelity_attempt in range(self.max_fidelity_attempts):
+            self.logger.info(f"Fidelity assessment attempt {fidelity_attempt + 1}")
+
+            assessment = self.llm_handler.assess_fidelity(summary_text, qc_code)
+
+            if assessment.get("faithful") and assessment.get("score", 0) >= 3:
+                self.logger.info(
+                    f"Code passed fidelity check (score={assessment['score']})"
+                )
+                return qc_code
+
+            self.logger.warning(
+                f"Fidelity check failed (score={assessment.get('score', 0)}, "
+                f"issues={assessment.get('issues', [])})"
+            )
+
+            # Regenerate with critique
+            new_code = self.llm_handler.regenerate_with_critique(
+                summary_text, qc_code, assessment
+            )
+
+            if not new_code:
+                self.logger.warning("Regeneration returned no code, keeping previous version")
+                continue
+
+            # Mini syntax validation loop on the new code
+            syntax_attempt = 0
+            while not self._validate_code(new_code) and syntax_attempt < 3:
+                self.logger.info(f"Syntax refine on regenerated code, attempt {syntax_attempt + 1}")
+                refined = self.llm_handler.refine_code(new_code)
+                if refined and self._validate_code(refined):
+                    new_code = refined
+                    break
+                elif refined:
+                    new_code = refined
+                syntax_attempt += 1
+
+            if self._validate_code(new_code):
+                qc_code = new_code
+            else:
+                self.logger.warning("Regenerated code failed syntax validation, keeping previous version")
+
+        # Graceful degradation: fidelity never passed, keep last valid code
+        self.logger.warning(
+            f"Fidelity assessment did not pass after {self.max_fidelity_attempts} "
+            f"attempts — returning last syntactically valid code"
+        )
         return qc_code
 
     def _validate_code(self, code: str) -> bool:
