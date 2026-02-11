@@ -8,9 +8,11 @@
 
 QuantCoder transforms academic quant research into compilable QuantConnect LEAN algorithms using local LLMs. No cloud API keys required.
 
-**Models:**
+**Models (defaults):**
 - **qwen2.5-coder:14b** — code generation, refinement, error fixing
 - **mistral** — reasoning, summarization, chat
+
+> **Note:** Testing with various local LLMs (devstral, qwen2.5-coder:32b, and others) is ongoing to determine optimal model pairings for the two-stage code generation pipeline. Any Ollama-compatible model can be configured via `~/.quantcoder/config.toml`.
 
 ---
 
@@ -180,7 +182,7 @@ quantcoder/
 
 QuantCoder was initiated in November 2023 based on ["Dual Agent Chatbots and Expert Systems Design"](https://towardsdev.com/dual-agent-chatbots-and-expert-systems-design-25e2cba434e9). The initial version coded a blended momentum/mean-reversion strategy from ["Outperforming the Market (1000% in 10 years)"](https://medium.com/coinmonks/how-to-outperform-the-market-fe151b944c77?sk=7066045abe12d5cf88c7edc80ec2679c), which received over 10,000 impressions on LinkedIn.
 
-v2.0.0 is a complete rewrite — local-only inference, multi-agent architecture, evolution engine, and autonomous learning.
+v2.0.0 is a complete rewrite — local-only inference, multi-agent architecture, evolution engine, and autonomous learning. Recent additions include a two-stage code generation pipeline (framework stubs then mathematical core), two-pass summarization for high-fidelity strategy extraction, and a cross-model fidelity assessment loop that prevents indicator substitution when papers describe novel mathematical models.
 
 ---
 
