@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class LintIssue:
-    rule_id: str       # "QC001"–"QC009"
+    rule_id: str       # "QC001"–"QC010"
     line: int
     message: str
     severity: str      # "error" | "warning"
@@ -436,9 +436,33 @@ def _is_crypto_pair(ticker: str) -> bool:
     return base in _CRYPTO_BASES
 
 
+def _classify_tickers(tickers: list) -> str:
+    """Classify a list of tickers: 'forex', 'crypto', or 'equity'."""
+    forex_count = sum(1 for t in tickers if _is_forex_pair(t))
+    crypto_count = sum(1 for t in tickers if _is_crypto_pair(t))
+    if forex_count > len(tickers) // 2:
+        return "forex"
+    if crypto_count > len(tickers) // 2:
+        return "crypto"
+    return "equity"
+
+
+# Pattern: var = ["EURUSD", "GBPJPY", ...] (list of string literals)
+_TICKER_LIST = re.compile(
+    r'(\w+)\s*=\s*\[((?:\s*["\'][A-Z]{3,10}(?:/[A-Z]{2,5})?["\']\s*,?\s*)+)\]'
+)
+
+# Pattern: for var in list_var: ... self.add_equity(var
+_LOOP_ADD_EQUITY = re.compile(
+    r'for\s+(\w+)\s+in\s+(\w+)\s*:.*?self\.add_equity\s*\(\s*\1\b',
+    re.DOTALL,
+)
+
+
 def _rule_qc009(code: str, issues: List[LintIssue]) -> str:
     """Fix add_equity() used with forex or crypto tickers."""
-    # Process each match from right to left to preserve offsets
+
+    # --- Pattern 1: direct inline ticker ---
     matches = list(_ADD_EQUITY_TICKER.finditer(code))
     for m in reversed(matches):
         ticker = m.group(3)
@@ -464,6 +488,39 @@ def _rule_qc009(code: str, issues: List[LintIssue]) -> str:
                 original=old, replacement=new,
             ))
             code = code[:m.start()] + new + code[m.end():]
+
+    # --- Pattern 2: ticker list variable + loop with add_equity(var) ---
+    # Find all ticker list declarations and classify them
+    list_vars: dict = {}  # var_name -> asset_class
+    for m in _TICKER_LIST.finditer(code):
+        var_name = m.group(1)
+        raw = m.group(2)
+        tickers = re.findall(r'["\']([A-Z]{3,10}(?:/[A-Z]{2,5})?)["\']', raw)
+        asset_class = _classify_tickers(tickers)
+        if asset_class != "equity":
+            list_vars[var_name] = asset_class
+
+    # Find loops that iterate over a classified list and call add_equity
+    if list_vars:
+        for m in _LOOP_ADD_EQUITY.finditer(code):
+            loop_var = m.group(1)
+            list_var = m.group(2)
+            asset_class = list_vars.get(list_var)
+            if not asset_class:
+                continue
+            replacement = "self.add_forex" if asset_class == "forex" else "self.add_crypto"
+            # Replace add_equity with the correct method in this match
+            pat = re.compile(r'self\.add_equity(\s*\(\s*' + re.escape(loop_var) + r'\b)')
+            for sub_m in pat.finditer(code):
+                lineno = code[:sub_m.start()].count('\n') + 1
+                issues.append(LintIssue(
+                    rule_id="QC009", line=lineno,
+                    message=f"Ticker list {list_var} contains {asset_class} pairs — "
+                            f"use {replacement}(), not self.add_equity()",
+                    severity="error", fixed=True,
+                    original=sub_m.group(), replacement=replacement + sub_m.group(1),
+                ))
+            code = pat.sub(replacement + r'\1', code)
 
     return code
 
@@ -494,6 +551,47 @@ def _rule_qc008(code: str, issues: List[LintIssue]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# QC010 — Reserved QCAlgorithm attribute names (auto-fix)
+# ---------------------------------------------------------------------------
+
+# C#-backed properties that crash with "error return without exception set"
+# when assigned from Python. Common LLM parameter names that collide.
+_RESERVED_ATTRS = frozenset({
+    "alpha",          # Alpha framework model
+    "universe",       # Universe selection model
+    "execution",      # Execution model
+    "name",           # Algorithm.Name (read-only)
+    "risk_management",  # Risk management model
+    "portfolio_construction",  # Portfolio construction model
+})
+
+
+def _rule_qc010(code: str, issues: List[LintIssue]) -> str:
+    """Rename self.RESERVED = ... assignments and all references to self._RESERVED."""
+    for attr in _RESERVED_ATTRS:
+        # Check if there's an assignment to self.<attr>
+        assign_pat = re.compile(r'self\.' + re.escape(attr) + r'\s*=')
+        if not assign_pat.search(code):
+            continue
+
+        # Replace ALL occurrences of self.<attr> (assignments + reads)
+        # Word boundary after to avoid self.alpha_value → self._alpha_value
+        usage_pat = re.compile(r'self\.' + re.escape(attr) + r'(?![a-zA-Z0-9_])')
+        for m in usage_pat.finditer(code):
+            lineno = code[:m.start()].count('\n') + 1
+            issues.append(LintIssue(
+                rule_id="QC010", line=lineno,
+                message=f"self.{attr} is a reserved QCAlgorithm property — "
+                        f"renamed to self._{attr}",
+                severity="error", fixed=True,
+                original=f"self.{attr}", replacement=f"self._{attr}",
+            ))
+        code = usage_pat.sub(f"self._{attr}", code)
+
+    return code
+
+
+# ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
@@ -502,6 +600,7 @@ _RULES = [
     _rule_qc001,   # PascalCase → snake_case (must run first)
     _rule_qc007,   # Resolution casing
     _rule_qc009,   # Wrong asset class API (runs after QC001 normalizes add_equity)
+    _rule_qc010,   # Reserved QCAlgorithm attribute names
     _rule_qc004,   # Action() wrapper
     _rule_qc002,   # len() on RollingWindow
     _rule_qc003,   # .Values on RollingWindow

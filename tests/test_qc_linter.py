@@ -437,6 +437,102 @@ class TestQC009AssetClass:
         assert result.code.count("self.add_forex") == 3
         assert "self.add_equity" not in result.code
 
+    def test_loop_pattern_forex(self):
+        """Ticker list + for loop with add_equity → add_forex."""
+        code = (
+            "symbols = [\"EURGBP\", \"EURUSD\", \"EURJPY\", \"USDJPY\"]\n"
+            "for symbol in symbols:\n"
+            "    self.add_equity(symbol, Resolution.TICK)\n"
+        )
+        result = lint_qc_code(code)
+        assert result.had_fixes
+        assert "self.add_forex(symbol" in result.code
+        assert "self.add_equity" not in result.code
+
+    def test_loop_pattern_crypto(self):
+        """Ticker list + for loop with add_equity → add_crypto."""
+        code = (
+            "coins = [\"BTCUSD\", \"ETHUSD\", \"SOLUSD\"]\n"
+            "for c in coins:\n"
+            "    self.add_equity(c, Resolution.DAILY)\n"
+        )
+        result = lint_qc_code(code)
+        assert result.had_fixes
+        assert "self.add_crypto(c" in result.code
+
+    def test_loop_pattern_equity_unchanged(self):
+        """Equity ticker list should not be changed."""
+        code = (
+            "tickers = [\"AAPL\", \"MSFT\", \"GOOGL\"]\n"
+            "for t in tickers:\n"
+            "    self.add_equity(t, Resolution.DAILY)\n"
+        )
+        result = lint_qc_code(code)
+        qc009_issues = _issues_by_rule(result, "QC009")
+        assert len(qc009_issues) == 0
+        assert "self.add_equity(t" in result.code
+
+
+# ---------------------------------------------------------------------------
+# QC010 — Reserved QCAlgorithm attribute names
+# ---------------------------------------------------------------------------
+
+class TestQC010ReservedAttrs:
+    """self.alpha = ... → self._alpha = ... (reserved C# property)."""
+
+    def test_alpha_renamed(self):
+        code = (
+            "class Algo(QCAlgorithm):\n"
+            "    def initialize(self):\n"
+            "        self.alpha = 0.5\n"
+            "    def on_data(self, data):\n"
+            "        x = self.alpha * price\n"
+        )
+        result = lint_qc_code(code)
+        assert result.had_fixes
+        assert "self._alpha = 0.5" in result.code
+        assert "self._alpha * price" in result.code
+        assert "self.alpha" not in result.code
+
+    def test_universe_renamed(self):
+        code = (
+            "class Algo(QCAlgorithm):\n"
+            "    def initialize(self):\n"
+            "        self.universe = ['SPY']\n"
+        )
+        result = lint_qc_code(code)
+        assert result.had_fixes
+        assert "self._universe" in result.code
+
+    def test_no_assignment_no_change(self):
+        """Reading a framework property should not trigger a rename."""
+        code = "x = self.alpha\n"
+        result = lint_qc_code(code)
+        qc010_issues = _issues_by_rule(result, "QC010")
+        assert len(qc010_issues) == 0
+
+    def test_underscore_prefix_unchanged(self):
+        code = (
+            "class Algo(QCAlgorithm):\n"
+            "    def initialize(self):\n"
+            "        self._alpha = 0.5\n"
+        )
+        result = lint_qc_code(code)
+        qc010_issues = _issues_by_rule(result, "QC010")
+        assert len(qc010_issues) == 0
+
+    def test_alpha_value_not_matched(self):
+        """self.alpha_value should NOT be renamed to self._alpha_value."""
+        code = (
+            "class Algo(QCAlgorithm):\n"
+            "    def initialize(self):\n"
+            "        self.alpha_value = 0.5\n"
+        )
+        result = lint_qc_code(code)
+        qc010_issues = _issues_by_rule(result, "QC010")
+        assert len(qc010_issues) == 0
+        assert "self.alpha_value" in result.code
+
 
 class TestComposition:
     """Multiple rules apply to the same code."""
