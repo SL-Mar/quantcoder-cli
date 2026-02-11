@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class LintIssue:
-    rule_id: str       # "QC001"–"QC008"
+    rule_id: str       # "QC001"–"QC009"
     line: int
     message: str
     severity: str      # "error" | "warning"
@@ -386,6 +386,88 @@ _INDICATOR_NAMES = frozenset({
 })
 
 
+# ---------------------------------------------------------------------------
+# QC009 — Wrong asset class API (e.g. add_equity for forex pairs)
+# ---------------------------------------------------------------------------
+
+# ISO 4217 major currency codes used in forex pairs
+_FOREX_CURRENCIES = frozenset({
+    "EUR", "USD", "GBP", "JPY", "CHF", "AUD", "NZD", "CAD",
+    "SEK", "NOK", "DKK", "SGD", "HKD", "ZAR", "MXN", "TRY",
+    "PLN", "CZK", "HUF", "INR", "CNY", "CNH", "KRW", "BRL",
+})
+
+# Common crypto base tickers
+_CRYPTO_BASES = frozenset({
+    "BTC", "ETH", "LTC", "XRP", "BCH", "ADA", "DOT", "LINK",
+    "SOL", "AVAX", "DOGE", "SHIB", "MATIC", "UNI", "AAVE",
+    "ATOM", "XLM", "ALGO", "FIL", "NEAR",
+})
+
+# Matches: self.add_equity("EUR/USD" ...) or self.add_equity("EURUSD" ...)
+# Captures the full call including open paren, quote char, ticker, and quote char
+_ADD_EQUITY_TICKER = re.compile(
+    r'(self\.add_equity\s*\(\s*)(["\'])([A-Z]{3,10}(?:/[A-Z]{2,5})?)\2'
+)
+
+
+def _is_forex_pair(ticker: str) -> bool:
+    """Check if ticker looks like a forex pair (e.g. EUR/USD, EURUSD)."""
+    if "/" in ticker:
+        parts = ticker.split("/")
+        return (len(parts) == 2
+                and parts[0] in _FOREX_CURRENCIES
+                and parts[1] in _FOREX_CURRENCIES)
+    # No slash: EURUSD style (6 chars, both halves are currencies)
+    if len(ticker) == 6:
+        return (ticker[:3] in _FOREX_CURRENCIES
+                and ticker[3:] in _FOREX_CURRENCIES)
+    return False
+
+
+def _is_crypto_pair(ticker: str) -> bool:
+    """Check if ticker looks like a crypto pair (e.g. BTCUSD, BTC/USD)."""
+    if "/" in ticker:
+        base = ticker.split("/")[0]
+    elif len(ticker) >= 6:
+        base = ticker[:-3]  # assume 3-char quote (USD, EUR, etc.)
+    else:
+        return False
+    return base in _CRYPTO_BASES
+
+
+def _rule_qc009(code: str, issues: List[LintIssue]) -> str:
+    """Fix add_equity() used with forex or crypto tickers."""
+    # Process each match from right to left to preserve offsets
+    matches = list(_ADD_EQUITY_TICKER.finditer(code))
+    for m in reversed(matches):
+        ticker = m.group(3)
+        if _is_forex_pair(ticker):
+            lineno = code[:m.start()].count('\n') + 1
+            old = m.group()
+            new = m.group().replace("self.add_equity", "self.add_forex", 1)
+            issues.append(LintIssue(
+                rule_id="QC009", line=lineno,
+                message=f"Forex pair {ticker} should use self.add_forex(), not self.add_equity()",
+                severity="error", fixed=True,
+                original=old, replacement=new,
+            ))
+            code = code[:m.start()] + new + code[m.end():]
+        elif _is_crypto_pair(ticker):
+            lineno = code[:m.start()].count('\n') + 1
+            old = m.group()
+            new = m.group().replace("self.add_equity", "self.add_crypto", 1)
+            issues.append(LintIssue(
+                rule_id="QC009", line=lineno,
+                message=f"Crypto pair {ticker} should use self.add_crypto(), not self.add_equity()",
+                severity="error", fixed=True,
+                original=old, replacement=new,
+            ))
+            code = code[:m.start()] + new + code[m.end():]
+
+    return code
+
+
 def _rule_qc008(code: str, issues: List[LintIssue]) -> str:
     """Warn about self.xxx = ... where xxx is a QCAlgorithm indicator method."""
     try:
@@ -417,14 +499,15 @@ def _rule_qc008(code: str, issues: List[LintIssue]) -> str:
 
 # Rule execution order: case normalization first, then structural fixes, then warnings
 _RULES = [
-    _rule_qc001,
-    _rule_qc007,
-    _rule_qc004,
-    _rule_qc002,
-    _rule_qc003,
-    _rule_qc005,
-    _rule_qc006,
-    _rule_qc008,
+    _rule_qc001,   # PascalCase → snake_case (must run first)
+    _rule_qc007,   # Resolution casing
+    _rule_qc009,   # Wrong asset class API (runs after QC001 normalizes add_equity)
+    _rule_qc004,   # Action() wrapper
+    _rule_qc002,   # len() on RollingWindow
+    _rule_qc003,   # .Values on RollingWindow
+    _rule_qc005,   # History as Slice (warning)
+    _rule_qc006,   # history() in on_data() (warning)
+    _rule_qc008,   # Indicator shadowing (warning)
 ]
 
 

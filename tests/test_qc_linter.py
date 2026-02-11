@@ -361,6 +361,83 @@ class TestQC008IndicatorShadowing:
 # Integration / composition tests
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# QC009 — Wrong asset class API
+# ---------------------------------------------------------------------------
+
+class TestQC009AssetClass:
+    """add_equity() with forex/crypto tickers → add_forex()/add_crypto()."""
+
+    def test_forex_slash_fixed(self):
+        code = (
+            "class Algo(QCAlgorithm):\n"
+            "    def initialize(self):\n"
+            "        self.add_equity(\"EUR/USD\", Resolution.TICK)\n"
+            "        self.add_equity(\"USD/JPY\", Resolution.TICK)\n"
+        )
+        result = lint_qc_code(code)
+        assert result.had_fixes
+        assert "self.add_forex(\"EUR/USD\"" in result.code
+        assert "self.add_forex(\"USD/JPY\"" in result.code
+        assert "self.add_equity" not in result.code
+
+    def test_forex_noslash_fixed(self):
+        code = "self.add_equity(\"EURUSD\", Resolution.MINUTE)\n"
+        result = lint_qc_code(code)
+        assert result.had_fixes
+        assert "self.add_forex(\"EURUSD\"" in result.code
+
+    def test_forex_single_quotes(self):
+        code = "self.add_equity('GBP/CHF', Resolution.DAILY)\n"
+        result = lint_qc_code(code)
+        assert result.had_fixes
+        assert "self.add_forex('GBP/CHF'" in result.code
+
+    def test_crypto_fixed(self):
+        code = "self.add_equity(\"BTCUSD\", Resolution.DAILY)\n"
+        result = lint_qc_code(code)
+        assert result.had_fixes
+        assert "self.add_crypto(\"BTCUSD\"" in result.code
+
+    def test_crypto_slash_fixed(self):
+        code = "self.add_equity(\"ETH/USD\", Resolution.HOUR)\n"
+        result = lint_qc_code(code)
+        assert result.had_fixes
+        assert "self.add_crypto(\"ETH/USD\"" in result.code
+
+    def test_equity_ticker_unchanged(self):
+        code = "self.add_equity(\"SPY\", Resolution.DAILY)\n"
+        result = lint_qc_code(code)
+        qc009_issues = _issues_by_rule(result, "QC009")
+        assert len(qc009_issues) == 0
+        assert "self.add_equity(\"SPY\"" in result.code
+
+    def test_already_add_forex_unchanged(self):
+        code = "self.add_forex(\"EUR/USD\", Resolution.TICK)\n"
+        result = lint_qc_code(code)
+        qc009_issues = _issues_by_rule(result, "QC009")
+        assert len(qc009_issues) == 0
+
+    def test_pascalcase_addequity_forex_chain(self):
+        """QC001 normalizes AddEquity first, then QC009 fixes to add_forex."""
+        code = "self.AddEquity(\"EUR/GBP\", Resolution.Daily)\n"
+        result = lint_qc_code(code)
+        assert "self.add_forex(\"EUR/GBP\"" in result.code
+        assert "Resolution.DAILY" in result.code
+
+    def test_multiple_pairs_all_fixed(self):
+        code = (
+            "for pair in ['EUR/USD', 'GBP/JPY', 'AUD/NZD']:\n"
+            "    pass\n"
+            "self.add_equity(\"EUR/USD\", Resolution.TICK)\n"
+            "self.add_equity(\"GBP/JPY\", Resolution.TICK)\n"
+            "self.add_equity(\"AUD/NZD\", Resolution.TICK)\n"
+        )
+        result = lint_qc_code(code)
+        assert result.code.count("self.add_forex") == 3
+        assert "self.add_equity" not in result.code
+
+
 class TestComposition:
     """Multiple rules apply to the same code."""
 
