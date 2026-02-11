@@ -62,7 +62,31 @@ class OllamaProvider(LLMProvider):
             self.base_url = self.base_url[:-3]
         self.timeout = timeout
         self.logger = logging.getLogger(f"quantcoder.{self.__class__.__name__}")
-        self.logger.info(f"Initialized OllamaProvider: {self.base_url}, model={self.model}")
+        self._num_ctx = self._query_context_length()
+        self.logger.info(
+            f"Initialized OllamaProvider: {self.base_url}, model={self.model}, "
+            f"num_ctx={self._num_ctx}"
+        )
+
+    def _query_context_length(self) -> int:
+        """Query model's context window from Ollama, default 32768."""
+        import urllib.request
+        import json as _json
+        try:
+            req = urllib.request.Request(
+                f"{self.base_url}/api/show",
+                data=_json.dumps({"name": self.model}).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = _json.loads(resp.read())
+            for key, val in data.get("model_info", {}).items():
+                if "context_length" in key:
+                    return int(val)
+        except Exception:
+            pass
+        return 32768
 
     async def chat(
         self,
@@ -81,7 +105,8 @@ class OllamaProvider(LLMProvider):
             "stream": False,
             "options": {
                 "temperature": temperature,
-                "num_predict": max_tokens
+                "num_predict": max_tokens,
+                "num_ctx": self._num_ctx,
             }
         }
 
