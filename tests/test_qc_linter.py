@@ -472,6 +472,21 @@ class TestQC009AssetClass:
         assert len(qc009_issues) == 0
         assert "self.add_equity(t" in result.code
 
+    def test_loop_pattern_self_var(self):
+        """self.currency_pairs = [...] + for symbol in self.currency_pairs."""
+        code = (
+            "self.currency_pairs = [\n"
+            "    \"EURGBP\", \"EURUSD\", \"EURJPY\", \"CHFJPY\",\n"
+            "    \"EURCHF\", \"USDCHF\", \"USDJPY\", \"USDCAD\"\n"
+            "]\n"
+            "for symbol in self.currency_pairs:\n"
+            "    self.add_equity(symbol, Resolution.TICK)\n"
+        )
+        result = lint_qc_code(code)
+        assert result.had_fixes
+        assert "self.add_forex(symbol" in result.code
+        assert "self.add_equity" not in result.code
+
 
 # ---------------------------------------------------------------------------
 # QC010 — Reserved QCAlgorithm attribute names
@@ -532,6 +547,32 @@ class TestQC010ReservedAttrs:
         qc010_issues = _issues_by_rule(result, "QC010")
         assert len(qc010_issues) == 0
         assert "self.alpha_value" in result.code
+
+
+# ---------------------------------------------------------------------------
+# QC011 — IndicatorBase[float]
+# ---------------------------------------------------------------------------
+
+class TestQC011IndicatorBase:
+    """IndicatorBase[float] → IndicatorBase[IndicatorDataPoint]."""
+
+    def test_indicator_base_float_fixed(self):
+        code = "class MyInd(IndicatorBase[float]):\n    pass\n"
+        result = lint_qc_code(code)
+        assert result.had_fixes
+        assert "IndicatorBase[IndicatorDataPoint]" in result.code
+        assert "IndicatorBase[float]" not in result.code
+
+    def test_indicator_base_correct_unchanged(self):
+        code = "class MyInd(IndicatorBase[IndicatorDataPoint]):\n    pass\n"
+        result = lint_qc_code(code)
+        qc011_issues = _issues_by_rule(result, "QC011")
+        assert len(qc011_issues) == 0
+
+    def test_indicator_base_with_spaces(self):
+        code = "class MyInd(IndicatorBase[ float ]):\n    pass\n"
+        result = lint_qc_code(code)
+        assert "IndicatorBase[IndicatorDataPoint]" in result.code
 
 
 class TestComposition:

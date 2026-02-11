@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class LintIssue:
-    rule_id: str       # "QC001"–"QC010"
+    rule_id: str       # "QC001"–"QC011"
     line: int
     message: str
     severity: str      # "error" | "warning"
@@ -447,14 +447,15 @@ def _classify_tickers(tickers: list) -> str:
     return "equity"
 
 
-# Pattern: var = ["EURUSD", "GBPJPY", ...] (list of string literals)
+# Pattern: var = ["EURUSD", "GBPJPY", ...] or self.var = [...] (list of string literals)
 _TICKER_LIST = re.compile(
-    r'(\w+)\s*=\s*\[((?:\s*["\'][A-Z]{3,10}(?:/[A-Z]{2,5})?["\']\s*,?\s*)+)\]'
+    r'(?:self\.)?(\w+)\s*=\s*\[((?:\s*["\'][A-Z]{3,10}(?:/[A-Z]{2,5})?["\']\s*,?\s*)+)\]'
 )
 
 # Pattern: for var in list_var: ... self.add_equity(var
+# Also match: for var in self.list_var: ... self.add_equity(var
 _LOOP_ADD_EQUITY = re.compile(
-    r'for\s+(\w+)\s+in\s+(\w+)\s*:.*?self\.add_equity\s*\(\s*\1\b',
+    r'for\s+(\w+)\s+in\s+(?:self\.)?(\w+)\s*:.*?self\.add_equity\s*\(\s*\1\b',
     re.DOTALL,
 )
 
@@ -551,6 +552,26 @@ def _rule_qc008(code: str, issues: List[LintIssue]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# QC011 — IndicatorBase[float] → IndicatorBase[IndicatorDataPoint]
+# ---------------------------------------------------------------------------
+
+def _rule_qc011(code: str, issues: List[LintIssue]) -> str:
+    """Fix IndicatorBase[float] which crashes C#-Python generic interop."""
+    pattern = re.compile(r'IndicatorBase\s*\[\s*float\s*\]')
+    for m in pattern.finditer(code):
+        lineno = code[:m.start()].count('\n') + 1
+        issues.append(LintIssue(
+            rule_id="QC011", line=lineno,
+            message="IndicatorBase[float] → IndicatorBase[IndicatorDataPoint] "
+                    "(C# generic type constraint)",
+            severity="error", fixed=True,
+            original=m.group(), replacement="IndicatorBase[IndicatorDataPoint]",
+        ))
+    code = pattern.sub("IndicatorBase[IndicatorDataPoint]", code)
+    return code
+
+
+# ---------------------------------------------------------------------------
 # QC010 — Reserved QCAlgorithm attribute names (auto-fix)
 # ---------------------------------------------------------------------------
 
@@ -601,6 +622,7 @@ _RULES = [
     _rule_qc007,   # Resolution casing
     _rule_qc009,   # Wrong asset class API (runs after QC001 normalizes add_equity)
     _rule_qc010,   # Reserved QCAlgorithm attribute names
+    _rule_qc011,   # IndicatorBase[float] → IndicatorBase[IndicatorDataPoint]
     _rule_qc004,   # Action() wrapper
     _rule_qc002,   # len() on RollingWindow
     _rule_qc003,   # .Values on RollingWindow
