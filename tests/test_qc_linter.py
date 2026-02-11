@@ -84,6 +84,58 @@ class TestQC001PascalCase:
         assert ".invested" in result.code
         assert ".Invested" not in result.code
 
+    def test_chained_schedule_api_fixed(self):
+        code = (
+            "self.Schedule.On(self.DateRules.EveryDay(), "
+            "self.TimeRules.AfterMarketOpen('SPY', 30), self.rebalance)\n"
+        )
+        result = lint_qc_code(code)
+        assert result.had_fixes
+        assert "self.schedule.on(" in result.code
+        assert "self.date_rules.every_day()" in result.code
+        assert "self.time_rules.after_market_open(" in result.code
+        assert "self.Schedule.On" not in result.code
+        assert "self.DateRules" not in result.code
+        assert "self.TimeRules" not in result.code
+
+    def test_chained_time_rules_variants(self):
+        code = (
+            "self.Schedule.On(self.DateRules.MonthStart(), "
+            "self.TimeRules.BeforeMarketClose('SPY', 5), self.close)\n"
+        )
+        result = lint_qc_code(code)
+        assert "self.date_rules.month_start()" in result.code
+        assert "self.time_rules.before_market_close(" in result.code
+
+    def test_chained_every_day_vs_every(self):
+        """EveryDay should not partially match Every."""
+        code = (
+            "a = self.DateRules.EveryDay()\n"
+            "b = self.DateRules.Every(DayOfWeek.MONDAY)\n"
+        )
+        result = lint_qc_code(code)
+        assert "self.date_rules.every_day()" in result.code
+        assert "self.date_rules.every(DayOfWeek" in result.code
+
+    def test_rolling_window_add_fixed(self):
+        code = (
+            "self.prices = RollingWindow[float](20)\n"
+            "self.prices.Add(data['SPY'].close)\n"
+        )
+        result = lint_qc_code(code)
+        assert result.had_fixes
+        assert "self.prices.add(" in result.code
+        assert "self.prices.Add(" not in result.code
+
+    def test_clean_schedule_api_unchanged(self):
+        code = (
+            "self.schedule.on(self.date_rules.every_day(), "
+            "self.time_rules.after_market_open('SPY', 30), self.rebalance)\n"
+        )
+        result = lint_qc_code(code)
+        qc001_issues = _issues_by_rule(result, "QC001")
+        assert len(qc001_issues) == 0
+
 
 # ---------------------------------------------------------------------------
 # QC002 — len() on RollingWindow
@@ -180,19 +232,26 @@ class TestQC004ActionWrapper:
 class TestQC005HistorySlice:
     """Warn about C# History iteration patterns."""
 
-    def test_bars_access_warned(self):
-        code = "history.Bars[symbol].Close\n"
+    def test_foreach_warned(self):
+        code = "history.ForEach(lambda x: x)\n"
         result = lint_qc_code(code)
         qc005_issues = _issues_by_rule(result, "QC005")
         assert len(qc005_issues) == 1
         assert qc005_issues[0].severity == "warning"
         assert not qc005_issues[0].fixed
 
-    def test_foreach_warned(self):
-        code = "history.ForEach(lambda x: x)\n"
+    def test_getvalue_warned(self):
+        code = "history.GetValue(symbol)\n"
         result = lint_qc_code(code)
         qc005_issues = _issues_by_rule(result, "QC005")
         assert len(qc005_issues) == 1
+
+    def test_bars_access_not_warned(self):
+        """data.Bars[symbol] is valid Slice access in on_data, not a History issue."""
+        code = "if data.Bars.ContainsKey(self.symbol):\n    price = data.Bars[self.symbol].close\n"
+        result = lint_qc_code(code)
+        qc005_issues = _issues_by_rule(result, "QC005")
+        assert len(qc005_issues) == 0
 
     def test_clean_history_no_warning(self):
         code = "df = self.history(self.symbol, 20, Resolution.DAILY)\n"
@@ -319,14 +378,15 @@ class TestComposition:
             "        self.spy = spy.Symbol\n"
             "        self.rsi = self.RSI(self.spy, 14, Resolution.Daily)\n"
             "        self.prices = RollingWindow[float](20)\n"
-            "        self.schedule.on(\n"
-            "            self.date_rules.every_day(),\n"
-            "            self.time_rules.at(10, 0),\n"
+            "        self.Schedule.On(\n"
+            "            self.DateRules.EveryDay(),\n"
+            "            self.TimeRules.AfterMarketOpen('SPY', 30),\n"
             "            Action(self.trade)\n"
             "        )\n"
             "\n"
             "    def OnData(self, data):\n"
             "        if self.rsi.IsReady:\n"
+            "            self.prices.Add(data['SPY'].close)\n"
             "            if len(self.prices) >= 20:\n"
             "                avg = sum(self.prices.Values) / 20\n"
             "\n"
@@ -344,6 +404,16 @@ class TestComposition:
         assert "def on_data(self" in result.code
         assert ".invested" in result.code
         assert "self.liquidate" in result.code
+
+        # QC001 chained API fixes
+        assert "self.schedule.on(" in result.code
+        assert "self.date_rules.every_day()" in result.code
+        assert "self.time_rules.after_market_open(" in result.code
+        assert "self.Schedule.On" not in result.code
+
+        # QC001 .Add() fix
+        assert "self.prices.add(" in result.code
+        assert "self.prices.Add(" not in result.code
 
         # QC007 fixes
         assert "Resolution.DAILY" in result.code

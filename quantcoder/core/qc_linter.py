@@ -117,6 +117,22 @@ _ATTR_MAP = {
     ".Volume": ".volume",
 }
 
+# self.Attr.Method( → self.attr.method( (chained scheduling API)
+# Ordered longest-first to avoid partial matches (EveryDay before Every)
+_CHAINED_MAP = {
+    "self.Schedule.On": "self.schedule.on",
+    "self.DateRules.EveryDay": "self.date_rules.every_day",
+    "self.DateRules.MonthStart": "self.date_rules.month_start",
+    "self.DateRules.MonthEnd": "self.date_rules.month_end",
+    "self.DateRules.WeekStart": "self.date_rules.week_start",
+    "self.DateRules.WeekEnd": "self.date_rules.week_end",
+    "self.DateRules.Every": "self.date_rules.every",
+    "self.TimeRules.AfterMarketOpen": "self.time_rules.after_market_open",
+    "self.TimeRules.BeforeMarketClose": "self.time_rules.before_market_close",
+    "self.TimeRules.At": "self.time_rules.at",
+    "self.TimeRules.Every": "self.time_rules.every",
+}
+
 # def MethodName(self → def method_name(self
 _DEF_MAP = {
     "Initialize": "initialize",
@@ -156,6 +172,33 @@ def _rule_qc001(code: str, issues: List[LintIssue]) -> str:
                 original=m.group(), replacement=snake,
             ))
         code = pattern.sub(snake, code)
+
+    # Chained scheduling API: self.Schedule.On( → self.schedule.on(
+    for pascal, snake in _CHAINED_MAP.items():
+        pattern = re.compile(re.escape(pascal) + r'(?=\s*\()')
+        for m in pattern.finditer(code):
+            lineno = code[:m.start()].count('\n') + 1
+            issues.append(LintIssue(
+                rule_id="QC001", line=lineno,
+                message=f"PascalCase chained API {pascal}() → {snake}()",
+                severity="error", fixed=True,
+                original=m.group(), replacement=snake,
+            ))
+        code = pattern.sub(snake, code)
+
+    # RollingWindow .Add( → .add(
+    rw_names = set(_RW_DECL.findall(code))
+    for name in rw_names:
+        pattern = re.compile(r'(self\.' + re.escape(name) + r')\.Add(?=\s*\()')
+        for m in pattern.finditer(code):
+            lineno = code[:m.start()].count('\n') + 1
+            issues.append(LintIssue(
+                rule_id="QC001", line=lineno,
+                message=f"self.{name}.Add() → self.{name}.add() (RollingWindow)",
+                severity="error", fixed=True,
+                original=f"self.{name}.Add", replacement=f"self.{name}.add",
+            ))
+        code = pattern.sub(rf'\1.add', code)
 
     # Method definitions: def PascalCase(self
     for pascal, snake in _DEF_MAP.items():
@@ -280,8 +323,9 @@ def _rule_qc003(code: str, issues: List[LintIssue]) -> str:
 # ---------------------------------------------------------------------------
 
 _HISTORY_SLICE_PATTERNS = [
-    re.compile(r'\.Bars\s*\['),
+    # .Bars[ is valid Slice access in on_data — only flag History-specific C# patterns
     re.compile(r'\.ForEach\s*\('),
+    re.compile(r'\.GetValue\s*\('),
 ]
 
 
