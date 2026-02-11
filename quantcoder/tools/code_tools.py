@@ -195,6 +195,19 @@ class ValidateCodeTool(Tool):
                 data={"line": e.lineno, "offset": e.offset, "stage": "local"}
             )
 
+        # Step 1.5: QC API linting
+        from quantcoder.core.qc_linter import lint_qc_code
+
+        lint_result = lint_qc_code(code)
+        if lint_result.issues:
+            fix_count = sum(1 for i in lint_result.issues if i.fixed)
+            warn_count = sum(1 for i in lint_result.issues if not i.fixed)
+            self.logger.info("QC linter: %d fixes, %d warnings", fix_count, warn_count)
+            for issue in lint_result.issues:
+                self.logger.info("  %s L%d: %s", issue.rule_id, issue.line, issue.message)
+        if lint_result.had_fixes:
+            code = lint_result.code
+
         # Step 2: QuantConnect validation (if enabled and credentials available)
         if use_quantconnect and self.config.has_quantconnect_credentials():
             try:

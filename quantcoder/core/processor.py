@@ -580,6 +580,19 @@ class ArticleProcessor:
         else:
             self.logger.info("No stubs detected — skipping Stage 2")
 
+        # -- Phase 1.5: QC API linting ----------------------------------------
+        from .qc_linter import lint_qc_code
+
+        lint_result = lint_qc_code(qc_code)
+        if lint_result.had_fixes and self._validate_code(lint_result.code):
+            self.logger.info(
+                "QC linter applied %d auto-fixes",
+                sum(1 for i in lint_result.issues if i.fixed),
+            )
+            qc_code = lint_result.code
+        for hint in lint_result.unfixable_hints:
+            self.logger.warning("QC linter warning: %s", hint)
+
         # -- Phase 2: fidelity assessment loop (unchanged) --------------------
         for fidelity_attempt in range(self.max_fidelity_attempts):
             self.logger.info(f"Fidelity assessment attempt {fidelity_attempt + 1}")
@@ -619,6 +632,10 @@ class ArticleProcessor:
                 syntax_attempt += 1
 
             if self._validate_code(new_code):
+                # Lint regenerated code too
+                regen_lint = lint_qc_code(new_code)
+                if regen_lint.had_fixes and self._validate_code(regen_lint.code):
+                    new_code = regen_lint.code
                 qc_code = new_code
             else:
                 self.logger.warning("Regenerated code failed syntax validation, keeping previous version")
