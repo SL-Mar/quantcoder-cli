@@ -13,12 +13,23 @@ from .llm import LLMHandler
 
 logger = logging.getLogger(__name__)
 
-try:
-    from magic_pdf.pipe.UNIPipe import UNIPipe
-    from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
-    MINERU_AVAILABLE = True
-except ImportError:
-    MINERU_AVAILABLE = False
+import shutil
+import subprocess
+import sys
+
+def _find_mineru() -> Optional[str]:
+    """Find the mineru binary on PATH or in the current venv."""
+    path = shutil.which("mineru")
+    if path:
+        return path
+    # Check inside the venv's bin directory (Claude Code shell may lack venv activation)
+    venv_bin = Path(sys.prefix) / "bin" / "mineru"
+    if venv_bin.is_file():
+        return str(venv_bin)
+    return None
+
+_MINERU_PATH = _find_mineru()
+MINERU_AVAILABLE = _MINERU_PATH is not None
 
 
 class PDFLoader:
@@ -250,30 +261,38 @@ class MinerULoader:
         self.logger = logging.getLogger(f"quantcoder.{self.__class__.__name__}")
 
     def load_and_split(self, pdf_path: str) -> Dict[str, str]:
-        """Read PDF, run MinerU pipeline, return sections dict.
+        """Run MinerU CLI on *pdf_path*, return sections dict.
 
         Returns:
             Dict mapping section headings to their text content,
             with LaTeX equations preserved as ``$...$`` / ``$$...$$``.
         """
         self.logger.info(f"Loading PDF via MinerU: {pdf_path}")
-        try:
-            pdf_bytes = Path(pdf_path).read_bytes()
-        except FileNotFoundError:
+        pdf_path = str(Path(pdf_path).resolve())
+        if not Path(pdf_path).exists():
             self.logger.error(f"PDF file not found: {pdf_path}")
-            return {}
-        except Exception as e:
-            self.logger.error(f"Failed to read PDF: {e}")
             return {}
 
         try:
             with tempfile.TemporaryDirectory() as tmp_dir:
-                image_writer = DiskReaderWriter(tmp_dir)
-                pipe = UNIPipe(pdf_bytes, {"_pdf_type": "", "model_list": []}, image_writer)
-                pipe.pipe_classify()
-                pipe.pipe_analyze()
-                pipe.pipe_parse()
-                md_content = pipe.pipe_mk_markdown(tmp_dir, drop_mode="none")
+                result = subprocess.run(
+                    [_MINERU_PATH, "-p", pdf_path, "-o", tmp_dir, "-m", "auto"],
+                    capture_output=True, text=True, timeout=600,
+                )
+                if result.returncode != 0:
+                    self.logger.error(f"MinerU CLI failed: {result.stderr[:500]}")
+                    return {}
+
+                # MinerU outputs to <tmp_dir>/<stem>/hybrid_auto/<stem>.md
+                stem = Path(pdf_path).stem
+                md_candidates = list(Path(tmp_dir).rglob(f"{stem}.md"))
+                if not md_candidates:
+                    self.logger.error("MinerU produced no markdown output")
+                    return {}
+                md_content = md_candidates[0].read_text(encoding="utf-8")
+        except subprocess.TimeoutExpired:
+            self.logger.error("MinerU timed out after 600s")
+            return {}
         except Exception as e:
             self.logger.error(f"MinerU pipeline failed: {e}")
             return {}
@@ -284,8 +303,9 @@ class MinerULoader:
 
     @staticmethod
     def _parse_markdown_sections(md_content: str) -> Dict[str, str]:
-        """Split markdown on ``##`` headers into a sections dict.
+        """Split markdown on heading lines into a sections dict.
 
+        Handles any heading level (``#``, ``##``, ``###``, etc.).
         Text before the first heading is stored under ``"Introduction"``.
         LaTeX equations (``$...$``, ``$$...$$``) are preserved verbatim.
 
@@ -298,18 +318,20 @@ class MinerULoader:
         if not md_content or not md_content.strip():
             return {}
 
+        heading_re = re.compile(r'^(#{1,6})\s+(.+)$')
+
         sections: Dict[str, str] = {}
         current_heading = "Introduction"
         current_lines: list[str] = []
 
         for line in md_content.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("## "):
+            m = heading_re.match(line.strip())
+            if m:
                 # Store previous section
                 body = "\n".join(current_lines).strip()
                 if body:
                     sections[current_heading] = body
-                current_heading = stripped.lstrip("# ").strip()
+                current_heading = m.group(2).strip()
                 current_lines = []
             else:
                 current_lines.append(line)
