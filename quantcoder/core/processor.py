@@ -260,6 +260,32 @@ class MinerULoader:
     def __init__(self):
         self.logger = logging.getLogger(f"quantcoder.{self.__class__.__name__}")
 
+    @staticmethod
+    def _unload_ollama_models() -> None:
+        """Ask Ollama to unload all resident models to free GPU VRAM."""
+        import urllib.request
+        import json as _json
+        try:
+            resp = urllib.request.urlopen(
+                "http://localhost:11434/api/ps", timeout=3
+            )
+            data = _json.loads(resp.read())
+            for model in data.get("models", []):
+                name = model.get("name")
+                if not name:
+                    continue
+                req = urllib.request.Request(
+                    "http://localhost:11434/api/generate",
+                    data=_json.dumps(
+                        {"model": name, "keep_alive": 0}
+                    ).encode(),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                urllib.request.urlopen(req, timeout=10)
+        except Exception:
+            pass
+
     def load_and_split(self, pdf_path: str) -> Dict[str, str]:
         """Run MinerU CLI on *pdf_path*, return sections dict.
 
@@ -273,6 +299,10 @@ class MinerULoader:
             self.logger.error(f"PDF file not found: {pdf_path}")
             return {}
 
+        # Free GPU VRAM — MinerU's VLM needs the GPU that Ollama may occupy
+        self.logger.info("Unloading Ollama models to free GPU for MinerU")
+        self._unload_ollama_models()
+
         try:
             with tempfile.TemporaryDirectory() as tmp_dir:
                 result = subprocess.run(
@@ -285,7 +315,7 @@ class MinerULoader:
 
                 # MinerU outputs to <tmp_dir>/<stem>/hybrid_auto/<stem>.md
                 stem = Path(pdf_path).stem
-                md_candidates = list(Path(tmp_dir).rglob(f"{stem}.md"))
+                md_candidates = list(Path(tmp_dir).rglob(f"*.md"))
                 if not md_candidates:
                     self.logger.error("MinerU produced no markdown output")
                     return {}
