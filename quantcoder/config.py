@@ -52,6 +52,7 @@ class ToolsConfig:
     disabled_tools: list[str] = field(default_factory=list)
     downloads_dir: str = "downloads"
     generated_code_dir: str = "generated_code"
+    pdf_backend: str = "auto"  # "auto", "mineru", or "pdfplumber"
 
 
 @dataclass
@@ -171,6 +172,7 @@ class Config:
                 "disabled_tools": self.tools.disabled_tools,
                 "downloads_dir": self.tools.downloads_dir,
                 "generated_code_dir": self.tools.generated_code_dir,
+                "pdf_backend": self.tools.pdf_backend,
             },
             "logging": {
                 "level": self.logging.level,

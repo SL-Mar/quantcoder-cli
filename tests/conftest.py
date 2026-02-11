@@ -96,5 +96,6 @@ def mock_config():
     config.model.reasoning_model = "mistral"
     config.model.ollama_base_url = "http://localhost:11434"
     config.model.ollama_timeout = 600
+    config.tools.pdf_backend = "pdfplumber"
     config.home_dir = MagicMock()
     return config

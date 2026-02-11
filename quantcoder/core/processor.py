@@ -3,13 +3,22 @@
 import re
 import ast
 import logging
+import tempfile
 import pdfplumber
 import spacy
 from collections import defaultdict
+from pathlib import Path
 from typing import Dict, List, Optional
 from .llm import LLMHandler
 
 logger = logging.getLogger(__name__)
+
+try:
+    from magic_pdf.pipe.UNIPipe import UNIPipe
+    from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
+    MINERU_AVAILABLE = True
+except ImportError:
+    MINERU_AVAILABLE = False
 
 
 class PDFLoader:
@@ -234,28 +243,159 @@ class KeywordAnalyzer:
         return keyword_map
 
 
+class MinerULoader:
+    """Converts PDF to structured markdown using MinerU (magic-pdf)."""
+
+    def __init__(self):
+        self.logger = logging.getLogger(f"quantcoder.{self.__class__.__name__}")
+
+    def load_and_split(self, pdf_path: str) -> Dict[str, str]:
+        """Read PDF, run MinerU pipeline, return sections dict.
+
+        Returns:
+            Dict mapping section headings to their text content,
+            with LaTeX equations preserved as ``$...$`` / ``$$...$$``.
+        """
+        self.logger.info(f"Loading PDF via MinerU: {pdf_path}")
+        try:
+            pdf_bytes = Path(pdf_path).read_bytes()
+        except FileNotFoundError:
+            self.logger.error(f"PDF file not found: {pdf_path}")
+            return {}
+        except Exception as e:
+            self.logger.error(f"Failed to read PDF: {e}")
+            return {}
+
+        try:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                image_writer = DiskReaderWriter(tmp_dir)
+                pipe = UNIPipe(pdf_bytes, {"_pdf_type": "", "model_list": []}, image_writer)
+                pipe.pipe_classify()
+                pipe.pipe_analyze()
+                pipe.pipe_parse()
+                md_content = pipe.pipe_mk_markdown(tmp_dir, drop_mode="none")
+        except Exception as e:
+            self.logger.error(f"MinerU pipeline failed: {e}")
+            return {}
+
+        sections = self._parse_markdown_sections(md_content)
+        self.logger.info(f"MinerU extracted {len(sections)} sections")
+        return sections
+
+    @staticmethod
+    def _parse_markdown_sections(md_content: str) -> Dict[str, str]:
+        """Split markdown on ``##`` headers into a sections dict.
+
+        Text before the first heading is stored under ``"Introduction"``.
+        LaTeX equations (``$...$``, ``$$...$$``) are preserved verbatim.
+
+        Args:
+            md_content: Raw markdown string from MinerU.
+
+        Returns:
+            Dict mapping heading text to section body.
+        """
+        if not md_content or not md_content.strip():
+            return {}
+
+        sections: Dict[str, str] = {}
+        current_heading = "Introduction"
+        current_lines: list[str] = []
+
+        for line in md_content.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("## "):
+                # Store previous section
+                body = "\n".join(current_lines).strip()
+                if body:
+                    sections[current_heading] = body
+                current_heading = stripped.lstrip("# ").strip()
+                current_lines = []
+            else:
+                current_lines.append(line)
+
+        # Store last section
+        body = "\n".join(current_lines).strip()
+        if body:
+            sections[current_heading] = body
+
+        return sections
+
+
 class ArticleProcessor:
     """Main processor for article extraction and code generation."""
 
     def __init__(self, config, max_refine_attempts: int = 6, max_fidelity_attempts: int = 3):
         self.config = config
         self.logger = logging.getLogger(f"quantcoder.{self.__class__.__name__}")
+
+        pdf_backend = getattr(getattr(config, "tools", None), "pdf_backend", "auto")
+        self._use_mineru = self._resolve_pdf_backend(pdf_backend)
+
+        if self._use_mineru:
+            self.logger.info("Using MinerU PDF backend")
+            self._mineru_loader = MinerULoader()
+        else:
+            self.logger.info("Using pdfplumber PDF backend")
+
+        # Legacy pdfplumber pipeline (always available for fallback)
         self.pdf_loader = PDFLoader()
         self.preprocessor = TextPreprocessor()
         self.heading_detector = HeadingDetector()
         self.section_splitter = SectionSplitter()
         self.keyword_analyzer = KeywordAnalyzer()
+
         self.llm_handler = LLMHandler(config)
         self.max_refine_attempts = max_refine_attempts
         self.max_fidelity_attempts = max_fidelity_attempts
 
+    @staticmethod
+    def _resolve_pdf_backend(pdf_backend: str) -> bool:
+        """Determine whether to use MinerU based on config value.
+
+        Args:
+            pdf_backend: ``"auto"``, ``"mineru"``, or ``"pdfplumber"``.
+
+        Returns:
+            True if MinerU should be used, False for pdfplumber.
+
+        Raises:
+            ImportError: If ``"mineru"`` is requested but not installed.
+        """
+        if pdf_backend == "pdfplumber":
+            return False
+        if pdf_backend == "mineru":
+            if not MINERU_AVAILABLE:
+                raise ImportError(
+                    "MinerU is not installed. Install with: pip install 'quantcoder-cli[mineru]'"
+                )
+            return True
+        # "auto" — use MinerU if available
+        return MINERU_AVAILABLE
+
     def extract_sections(self, pdf_path: str) -> Dict[str, str]:
         """Extract paper sections from PDF (no keyword filtering).
+
+        Uses MinerU when configured, with automatic fallback to pdfplumber
+        if MinerU returns empty results.
 
         Returns:
             Dict mapping section names to their full text.
         """
-        self.logger.info(f"Extracting sections from PDF: {pdf_path}")
+        if self._use_mineru:
+            self.logger.info(f"Extracting sections via MinerU: {pdf_path}")
+            sections = self._mineru_loader.load_and_split(pdf_path)
+            if sections:
+                return sections
+            self.logger.warning(
+                "MinerU returned empty results — falling back to pdfplumber"
+            )
+
+        return self._extract_sections_pdfplumber(pdf_path)
+
+    def _extract_sections_pdfplumber(self, pdf_path: str) -> Dict[str, str]:
+        """Extract sections using the legacy pdfplumber + SpaCy pipeline."""
+        self.logger.info(f"Extracting sections via pdfplumber: {pdf_path}")
 
         raw_text = self.pdf_loader.load_pdf(pdf_path)
         if not raw_text:

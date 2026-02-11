@@ -41,6 +41,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# MinerU PDF backend (structured markdown with LaTeX preservation)
+mineru = ["mineru[core]>=2.0.0"]
 # Development dependencies
 dev = [
     "pytest>=7.4.0",
@@ -109,6 +111,8 @@ module = [
     "InquirerPy.*",
     "rich.*",
     "toml.*",
+    "magic_pdf.*",
+    "mineru.*",
 ]
 ignore_missing_imports = true
 
